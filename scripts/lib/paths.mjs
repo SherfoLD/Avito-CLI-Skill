@@ -7,7 +7,7 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 export const PROJECT_ROOT = path.resolve(HERE, '..', '..');
 
 export const VERIFY_DIR = path.join(PROJECT_ROOT, 'verify');
-export const FIXTURES_DIR = path.join(PROJECT_ROOT, 'fixtures');
+export const FIXTURES_DIR = path.join(PROJECT_ROOT, 'evidence');
 export const DOCS_DIR = path.join(PROJECT_ROOT, 'docs');
 
 export function relativeToRoot(absolute) {

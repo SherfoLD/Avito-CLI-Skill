@@ -7,21 +7,17 @@
  *   1. Does every command have a fixture? A command without one has no check
  *      that looks at real values, so a decoder reading the wrong field would
  *      pass every offline suite.
- *   2. Is every fixture well formed? A typo in a key name is silently ignored
- *      by a matcher that only looks at keys it knows, which turns a rule the
- *      author believed they wrote into no rule at all.
- *   3. Does `expect.columns` still match the command descriptor, exactly and in
- *      order? That equality is what pins the row shape across the four commands
- *      that share it.
- *
- * It also warns about a fixture that carries neither `patterns` nor `notEmpty`:
- * that is a seed nobody hardened, and it will pass against almost any output.
+ *   2. Does every fixture load and export a `rows` schema over the returned
+ *      array? A fixture that throws on import is a live check nobody runs.
+ *   3. Does it constrain something a schema does not already guarantee, and does
+ *      every column it names exist? A rule about a column the command never
+ *      returns can never fire, and neither can a fixture that says nothing.
  *
  * Usage: node scripts/check-verify-fixtures.mjs
  */
 
 import { loadManifest } from './lib/manifest.mjs';
-import { listFixtures, loadFixture, validateFixtureSchema } from './lib/verify-fixture.mjs';
+import { listFixtures, loadFixture, validateFixture } from './lib/verify-fixture.mjs';
 import { relativeToRoot } from './lib/paths.mjs';
 
 const manifest = await loadManifest();
@@ -33,16 +29,16 @@ const warnings = [];
 
 for (const entry of manifest) {
   if (!fixtures.some((fixture) => fixture.command === entry.name)) {
-    errors.push(`${entry.name}: verify/${entry.name}.json is missing — every command needs one`);
+    errors.push(`${entry.name}: verify/${entry.name}.mjs is missing — every command needs one`);
   }
 }
 
 for (const { command, file } of fixtures) {
   let fixture;
   try {
-    fixture = loadFixture(command);
+    fixture = await loadFixture(command);
   } catch (error) {
-    errors.push(`${command}: ${error instanceof Error ? error.message : String(error)}`);
+    errors.push(`${command}: ${error.message}`);
     continue;
   }
 
@@ -51,14 +47,8 @@ for (const { command, file } of fixtures) {
     warnings.push(`${command}: ${relativeToRoot(file)} has no command in src/commands`);
   }
 
-  const problems = validateFixtureSchema(fixture, { declaredColumns: descriptor?.columns });
-  for (const problem of problems) errors.push(`${command}: ${problem}`);
-
-  const expect = fixture?.expect ?? {};
-  const hasPatterns = expect.patterns && Object.keys(expect.patterns).length > 0;
-  const hasNotEmpty = Array.isArray(expect.notEmpty) && expect.notEmpty.length > 0;
-  if (!hasPatterns && !hasNotEmpty) {
-    warnings.push(`${command}: no patterns and no notEmpty — this is an untightened seed, not a check`);
+  for (const problem of validateFixture(fixture, { declaredColumns: descriptor?.columns })) {
+    errors.push(`${command}: ${problem}`);
   }
   if (!('args' in fixture)) {
     warnings.push(`${command}: no args — the fixture will run the command with none`);

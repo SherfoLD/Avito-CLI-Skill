@@ -2,7 +2,7 @@
 
 Private Avito CLI: ten read-only commands driving a user-owned Chrome over the
 DevTools Protocol. Code in [src/](src/), project memory in [docs/](docs/), live
-checks in [verify/](verify/), anonymised response samples in [fixtures/](fixtures/).
+checks in [verify/](verify/), anonymised response samples in [evidence/](evidence/).
 
 ## Before you work
 
@@ -11,8 +11,8 @@ about to touch: [docs/areas/](docs/areas/). Everything else is behind a link,
 when you need it. The document map and the rules for writing into it are in
 [docs/README.md](docs/README.md).
 
-Writing or changing a command: [.agents/skills/cdp-command-author/SKILL.md](.agents/skills/cdp-command-author/SKILL.md).
-A command that broke: [.agents/skills/cdp-command-repair/SKILL.md](.agents/skills/cdp-command-repair/SKILL.md).
+Writing or changing a command: [.agents/skills/write-command/SKILL.md](.agents/skills/write-command/SKILL.md).
+A command that broke: [.agents/skills/fix-command/SKILL.md](.agents/skills/fix-command/SKILL.md).
 
 ## The rule the rest follow from
 
@@ -42,7 +42,11 @@ that fails, because nobody goes looking.
   saved search. Photo sizes and sort labels are not named in code either — that
   vocabulary belongs to Avito.
 - Response-shape drift ends the call with a typed error, never with a fallback
-  value.
+  value. On the Node side that is `decode(schema, payload, subject)`; inside the
+  page it is hand-written, because a serialized function carries no imports.
+- The row contract is the `row` schema in the descriptor and nowhere else.
+  `columns` is derived from it, the CLI parses every row through it, and a
+  verify fixture says only what is true of its own request.
 - Do not relax a `verify/` fixture to get green, and do not weaken an offline
   assertion. A failing rule means the command is wrong. The one legitimate
   reason to edit a fixture is that Avito changed shape, and then the fact goes
@@ -52,17 +56,54 @@ that fails, because nobody goes looking.
 - Look for the other copies before declaring a fix done. A rule that exists in
   one command usually exists in four, and the fifth holds it as `continue`
   instead of `throw`.
-- Raw responses, HTML and trace artefacts live in `fixtures/` (anonymised,
+- Raw responses, HTML and trace artefacts live in `evidence/` (anonymised,
   committed) or `/tmp`. Traces never enter the repository.
 - Drive the browser through the Chrome DevTools MCP tools. The shipped code does
   not: it talks to Chrome through `src/runtime/cdp.mjs`. Open tabs without a
   side panel.
 
+## Comments
+
+A comment earns its place by saying something the code cannot. Two kinds fail
+that test and keep coming back.
+
+**Narrating your own change.** The next agent starts from the tree as it is and
+has never seen what you replaced. "Everything is *now* checked where it is
+declared", "the part of the old convention audit a schema cannot replace",
+"*since* the row contract moved into the schema", "before the merge this file
+rewrote source with a regex" — each describes a repository that does not exist,
+to a reader who cannot check the claim. Write what is true. Git holds what
+changed, and the commit message is where the change gets described.
+
+The same applies to defending a road not taken. "Nothing about formatting is
+configured here on purpose", "merging the two decoders would mean…", "a shared
+traversal would have to be parameterised until it was a `for` loop" — nobody
+asked. If the choice was load-bearing it is a `D-0xx` in `docs/areas/`; if it was
+not, it needs no monument.
+
+**Restating the code.** `// The visible name, falling back to its ID` above a
+body that reads `name || String(locationId)` costs a line and adds nothing.
+Neither does a header that lists which commands import this file, tours the
+directory layout, or explains the split between `src/browser/` and `src/site/`
+for the fourth time.
+
+What does earn a comment: a fact about Avito that is not in the code (`robots.txt`
+contains the word `captcha`; an unknown rating key answers `200` with an empty
+feed), a trap in the shape (`{ requestError }` alone, with no status to mistake
+for a zero), a contract invisible from the signature (`card.mjs` throws where
+`item.mjs` returns `null`), and the `F-0xx` / `D-0xx` a reader would otherwise
+have to go looking for.
+
+Two tests before you write one. **Would this sentence make sense to somebody who
+opened the repository today?** If it only makes sense to somebody who watched you
+edit it, delete it. **Is this the fourth copy?** If the same paragraph belongs in
+eight files, it belongs in one of them, in one line.
+
 ## Done means
 
 ```sh
 npm run check                # every static gate plus the offline suite
-npm run verify <command>     # live, against verify/<command>.json
+npm run verify <command>     # live, against verify/<command>.mjs
 ```
 
 Both green, **and** the values compared against the visible page field by field.
@@ -83,7 +124,7 @@ Both green, **and** the values compared against the visible page field by field.
   and there is no reason to start one. A document holds what is true now; git
   holds how it got that way.
 - Do not duplicate across layers: the flag list and the column list live in
-  `--help`, not in markdown.
+  `--help`, generated from the descriptor and its row schema, not in markdown.
 
 ## Stop and ask
 

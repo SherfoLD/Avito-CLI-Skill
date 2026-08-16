@@ -24,8 +24,17 @@ import {
   TimeoutError,
 } from '../runtime/errors.mjs';
 import { defineCommand } from '../runtime/command.mjs';
+import {
+  count,
+  decode,
+  httpsUrl,
+  optionalText,
+  requiredText,
+  text,
+  z,
+} from '../runtime/schema.mjs';
 import { AVITO_BASE_URL } from '../site/geo.mjs';
-import { readJsonResponse } from '../browser/json.mjs';
+import { readJsonResponse } from '../browser/prelude/json.mjs';
 
 // Origin priming only: the body is never read. Rendering the catalog would pull its
 // scripts, images and telemetry for the sake of one JSON blob in the markup.
@@ -37,6 +46,43 @@ const IMAGE_HOST_SUFFIX = '.img.avito.st';
 const FEED_PAGE_SIZE = 25;
 const MAX_FEED_ENTRIES = 200;
 const MAX_REVIEW_IMAGES = 20;
+
+/**
+ * The rating context of the listing: the feed key and the visible review count.
+ * `item` is optional so that "Avito answered about no listing at all" keeps its
+ * own message instead of becoming a shape error.
+ */
+const RATING_CONTEXT = z.object({
+  buyerItem: z.object({
+    item: z.object({ id: z.unknown() }).nullish(),
+    rating: z.object({
+      userKey: optionalText(),
+      summary: optionalText(),
+    }).nullish(),
+  }),
+});
+
+/** One photo as Avito ships it: the same picture under several size keys. */
+const IMAGE_VARIANTS = z.record(z.string(), z.union([z.string(), z.number(), z.null()]));
+
+/**
+ * One visible review. A review without a score is a real class, not missing
+ * data: Avito prints those under its own "Отзывы без оценки" divider and keeps
+ * them out of the rating, so the score stays null instead of collapsing to 0
+ * (F-046).
+ */
+const REVIEW = z.object({
+  id: z.coerce.number().int().positive(),
+  score: z.coerce.number().int().min(1).max(5).nullable().default(null),
+  stageTitle: optionalText(),
+  rated: optionalText(),
+  title: requiredText(),
+  titleCaption: optionalText(),
+  itemTitle: optionalText(),
+  textSections: z.array(z.object({ text: optionalText() })).default([]),
+  answer: z.object({ text: optionalText(), answered: optionalText() }).nullish(),
+  images: z.array(IMAGE_VARIANTS).max(MAX_REVIEW_IMAGES).nullable().default([]),
+});
 
 function cleanText(value) {
   return String(value ?? '').replace(/\s+/g, ' ').trim();
@@ -129,13 +175,8 @@ function buildFeedUrl({ ratingUserKey, itemId, offset, sort }) {
  * feed and would be indistinguishable from a seller without reviews (F-046).
  */
 function decodeRatingContext(payload, expectedItemId) {
-  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
-    throw new CommandExecutionError('Avito item API response has an unexpected shape');
-  }
-  const buyerItem = payload.buyerItem;
-  if (!buyerItem || typeof buyerItem !== 'object' || Array.isArray(buyerItem)) {
-    throw new CommandExecutionError('Avito item API response has no buyerItem');
-  }
+  const { buyerItem } = decode(RATING_CONTEXT, payload, 'Avito item API response');
+
   const observedItemId = String(buyerItem.item?.id ?? '');
   if (!/^\d+$/.test(observedItemId) || observedItemId !== expectedItemId) {
     // Named, not defaulted: "unknown" would hide the difference between Avito
@@ -145,54 +186,47 @@ function decodeRatingContext(payload, expectedItemId) {
       : `Avito item API returned no item ID where ${expectedItemId} was expected`);
   }
 
-  const rating = buyerItem.rating;
   // `ratingKey` / `reviewsCount` rather than the column names: this is the rating
   // context of the listing, not a row, and naming it like one is how a carrier gets
   // mistaken for output.
+  const rating = buyerItem.rating;
   if (rating == null) return { ratingKey: null, reviewsCount: null };
-  if (typeof rating !== 'object' || Array.isArray(rating)) {
-    throw new CommandExecutionError('Avito item API returned a malformed seller rating');
-  }
 
-  const ratingUserKey = cleanText(rating.userKey);
-  if (ratingUserKey && !/^[A-Za-z0-9]{32,64}$/.test(ratingUserKey)) {
+  if (rating.userKey && !/^[A-Za-z0-9]{32,64}$/.test(rating.userKey)) {
     throw new CommandExecutionError('Avito item API returned a malformed seller rating key');
   }
 
-  // Same source and semantics as sellerReviewsCount in item and the search-compatible
-  // rows: the visible summary counts scored reviews only, unlike activeReviewsCount.
-  const summary = cleanText(rating.summary);
-  let sellerReviewsCount = null;
-  if (summary) {
-    if (/^нет отзывов$/i.test(summary)) {
-      sellerReviewsCount = 0;
-    } else {
-      const digits = summary.replace(/[^\d]/g, '');
-      const count = digits ? Number(digits) : NaN;
-      if (!Number.isSafeInteger(count) || count < 0) {
-        throw new CommandExecutionError(`Avito item API returned an unreadable review summary "${summary}"`);
-      }
-      sellerReviewsCount = count;
-    }
-  }
-
-  return { ratingKey: ratingUserKey || null, reviewsCount: sellerReviewsCount };
+  return { ratingKey: rating.userKey, reviewsCount: decodeReviewSummary(rating.summary) };
 }
 
-function decodeReviewImages(rawImages) {
-  if (rawImages == null) return [];
-  if (!Array.isArray(rawImages) || rawImages.length > MAX_REVIEW_IMAGES) return null;
+/**
+ * Same source and semantics as `sellerReviewsCount` in `get-item` and the
+ * listing rows: the visible summary counts scored reviews only, unlike
+ * `activeReviewsCount`. "нет отзывов" is a real zero.
+ */
+function decodeReviewSummary(summary) {
+  if (!summary) return null;
+  if (/^нет отзывов$/i.test(summary)) return 0;
+  const digits = summary.replace(/[^\d]/g, '');
+  const parsed = digits ? Number(digits) : NaN;
+  if (!Number.isSafeInteger(parsed) || parsed < 0) {
+    throw new CommandExecutionError(`Avito item API returned an unreadable review summary "${summary}"`);
+  }
+  return parsed;
+}
 
+/**
+ * Avito owns the set of size keys, so the largest offered variant wins instead
+ * of a named pair: a renamed key then costs nothing, while an entry carrying no
+ * size at all fails closed rather than dropping a photo silently (F-047).
+ */
+function decodeReviewImages(variantSets, position) {
   const images = [];
   const seen = new Set();
-  for (const rawImage of rawImages) {
-    if (!rawImage || typeof rawImage !== 'object' || Array.isArray(rawImage)) return null;
-    // Avito owns the set of size keys, so the largest offered variant wins instead of a
-    // named pair: a renamed key costs nothing, and an entry carrying no size at all still
-    // fails closed rather than dropping a photo silently (F-047).
+  for (const variants of variantSets) {
     let source = null;
     let sourceArea = -1;
-    for (const [key, value] of Object.entries(rawImage)) {
+    for (const [key, value] of Object.entries(variants)) {
       const url = cleanText(value);
       const size = /^(\d+)x(\d+)$/.exec(key);
       if (!url || !size) continue;
@@ -202,73 +236,44 @@ function decodeReviewImages(rawImages) {
         source = url;
       }
     }
-    if (!source) return null;
+    if (!source) {
+      throw new CommandExecutionError(`Avito review ${position} carries a photo with no recognizable size variant`);
+    }
 
     let parsed;
     try {
       parsed = new URL(source);
     } catch {
-      return null;
+      throw new CommandExecutionError(`Avito review ${position} carries a malformed photo URL`);
     }
-    if (parsed.protocol !== 'https:' || !parsed.hostname.endsWith(IMAGE_HOST_SUFFIX)) return null;
+    if (parsed.protocol !== 'https:' || !parsed.hostname.endsWith(IMAGE_HOST_SUFFIX)) {
+      throw new CommandExecutionError(`Avito review ${position} carries a photo outside Avito image hosting`);
+    }
 
-    const url = parsed.toString();
-    if (seen.has(url)) continue;
-    seen.add(url);
-    images.push(url);
+    if (!seen.has(parsed.href)) {
+      seen.add(parsed.href);
+      images.push(parsed.href);
+    }
   }
   return images;
 }
 
-/**
- * Decode one visible review. A review without a score is a real class, not missing data:
- * Avito prints those under the "Отзывы без оценки" divider and keeps them out of the
- * rating, so the score stays null instead of collapsing to 0 (F-046).
- */
-function decodeReviewRow(entry, sellerReviewsCount) {
-  const value = entry?.value;
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
-
-  const reviewId = Number(value.id);
-  if (!Number.isSafeInteger(reviewId) || reviewId <= 0) return null;
-
-  let score = null;
-  if (value.score != null) {
-    const rawScore = Number(value.score);
-    if (!Number.isSafeInteger(rawScore) || rawScore < 1 || rawScore > 5) return null;
-    score = rawScore;
-  }
-
-  const authorName = cleanText(value.title);
-  if (!authorName) return null;
-
-  const textSections = value.textSections == null ? [] : value.textSections;
-  if (!Array.isArray(textSections)) return null;
-  const textParts = [];
-  for (const section of textSections) {
-    if (!section || typeof section !== 'object' || Array.isArray(section)) return null;
-    const part = cleanText(section.text);
-    if (part) textParts.push(part);
-  }
-
-  const answer = value.answer;
-  if (answer != null && (typeof answer !== 'object' || Array.isArray(answer))) return null;
-
-  const images = decodeReviewImages(value.images);
-  if (images === null) return null;
+function decodeReviewRow(entry, sellerReviewsCount, position) {
+  const review = decode(REVIEW, entry?.value, `Avito review ${position}`);
+  const textParts = review.textSections.map((section) => section.text).filter(Boolean);
 
   return {
-    reviewId,
-    score,
-    stage: cleanText(value.stageTitle) || null,
-    rated: cleanText(value.rated) || null,
-    authorName,
-    authorRole: cleanText(value.titleCaption) || null,
-    itemTitle: cleanText(value.itemTitle) || null,
+    reviewId: review.id,
+    score: review.score,
+    stage: review.stageTitle,
+    rated: review.rated,
+    authorName: review.title,
+    authorRole: review.titleCaption,
+    itemTitle: review.itemTitle,
     text: textParts.join('\n') || null,
-    answerText: answer ? (cleanText(answer.text) || null) : null,
-    answered: answer ? (cleanText(answer.answered) || null) : null,
-    images,
+    answerText: review.answer?.text ?? null,
+    answered: review.answer?.answered ?? null,
+    images: decodeReviewImages(review.images ?? [], position),
     sellerReviewsCount,
   };
 }
@@ -347,20 +352,23 @@ export default defineCommand({
     },
     { name: 'page', type: 'int', default: 1, help: 'Positive feed page number; Avito fixes the page at 25 reviews' },
   ],
-  columns: [
-    'reviewId',
-    'score',
-    'stage',
-    'rated',
-    'authorName',
-    'authorRole',
-    'itemTitle',
-    'text',
-    'answerText',
-    'answered',
-    'images',
-    'sellerReviewsCount',
-  ],
+  // `score` is nullable because a review without one is a real class Avito
+  // prints under its own divider, and `sellerReviewsCount` because the visible
+  // summary is what carries it — a seller can have a feed and no summary.
+  row: z.strictObject({
+    reviewId: z.number().int().positive(),
+    score: z.number().int().min(1).max(5).nullable(),
+    stage: text().nullable(),
+    rated: text().nullable(),
+    authorName: text(),
+    authorRole: text().nullable(),
+    itemTitle: text().nullable(),
+    text: text().nullable(),
+    answerText: text().nullable(),
+    answered: text().nullable(),
+    images: z.array(httpsUrl()),
+    sellerReviewsCount: count().nullable(),
+  }),
   run: async (page, args) => {
     const { normalizedUrl, normalizedItemId, itemApiUrl } = normalizeItemUrl(args.itemUrl);
     const requestedSort = normalizeSort(args.sort);
@@ -472,9 +480,7 @@ export default defineCommand({
     const rows = [];
     for (const entry of entries) {
       if (entry?.type !== 'rating') continue;
-      const row = decodeReviewRow(entry, reviewsCount);
-      if (!row) throw new CommandExecutionError('Avito reviews response has a malformed review entry');
-      rows.push(row);
+      rows.push(decodeReviewRow(entry, reviewsCount, rows.length + offset + 1));
     }
 
     if (!rows.length) {

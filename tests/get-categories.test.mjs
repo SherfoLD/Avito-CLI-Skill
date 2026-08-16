@@ -3,7 +3,7 @@
 //
 // This command follows nothing, but `move-category` follows what it prints, so a row
 // described wrongly here sends that command at the wrong route.
-import { assertDeclaredColumns, loadCommand, runner } from './harness.mjs';
+import { assertRows, loadCommand, runner } from './harness.mjs';
 import { ORIGIN } from './carrier.mjs';
 
 const { COMMAND } = await loadCommand('get-categories');
@@ -112,7 +112,7 @@ check('every node becomes a row in Avito order, with its depth', async () => {
   assert(JSON.stringify(rows.map((row) => row.rank)) === '[1,2,3,4]', 'rank must be the reading order');
   assert(rows[0].name === 'Телефоны' && rows[0].depth === 0, 'the branch comes first at depth 0');
   assert(rows.slice(1).every((row) => row.depth === 1), 'its children are one level deeper');
-  for (const row of rows) assertDeclaredColumns(COMMAND, row);
+  assertRows(COMMAND, rows);
 });
 
 // The three roles are Avito's node type, shared with move-category; `back` is the
@@ -178,14 +178,14 @@ check('a node whose state contradicts its type stops the command', async () => {
     [[node({ id: 1, name: 'Мобильные телефоны', isCurrent: true })], /inconsistent type\/state/],
     [[node({ id: 1, name: 'Xiaomi', type: 2, isCurrent: false })], /inconsistent type\/state/],
     [[node({ id: 1, name: 'Телефоны', type: 7 })], /unsupported type/],
-    [[node({ id: 1, name: 'Телефоны', children: 'not an array' })], /malformed children/],
-    [[node({ id: 1, name: 'Телефоны', isOpened: 'yes' })], /malformed state/],
-    [[node({ id: 0, name: 'Телефоны' })], /invalid or duplicate node ID/],
-    [[node({ id: 1, name: 'A' }), node({ id: 1, name: 'B' })], /invalid or duplicate node ID/],
-    [[node({ id: 1, name: '   ' })], /malformed name/],
+    [[node({ id: 1, name: 'Телефоны', children: 'not an array' })], /children: .*expected array/],
+    [[node({ id: 1, name: 'Телефоны', isOpened: 'yes' })], /isOpened: .*expected boolean/],
+    [[node({ id: 0, name: 'Телефоны' })], /id: Too small/],
+    [[node({ id: 1, name: 'A' }), node({ id: 1, name: 'B' })], /repeats node ID 1/],
+    [[node({ id: 1, name: '   ' })], /name: must not be empty/],
     [[node({ id: 1, name: 'Телефоны', url: 'https://example.com/moskva' })], /points outside/],
     [[node({ id: 1, name: 'Телефоны', url: '' })], /missing URL/],
-    [['not a node at all'], /malformed node/],
+    [['not a node at all'], /expected object, received string/],
   ];
   for (const [sideNodes, pattern] of cases) {
     await refuses(withNodes(sideNodes), pattern);
@@ -211,9 +211,9 @@ check('a bootstrap belonging to another route is refused', async () => {
 });
 
 check('a malformed searchCore is refused before any node is read', async () => {
-  await refuses(observedState({ searchCore: null }), /no valid searchCore/);
-  await refuses(observedState({ searchCore: { ...SEARCH_CORE, query: 42 } }), /malformed query/);
-  await refuses(observedState({ searchCore: { ...SEARCH_CORE, locationId: 0 } }), /malformed location ID/);
+  await refuses(observedState({ searchCore: null }), /navigation state has an unexpected shape/);
+  await refuses(observedState({ searchCore: { ...SEARCH_CORE, query: 42 } }), /query: .*expected string/);
+  await refuses(observedState({ searchCore: { ...SEARCH_CORE, locationId: 0 } }), /locationId: Too small/);
 });
 
 check('a challenge, a bad status and an empty bootstrap fail closed', async () => {

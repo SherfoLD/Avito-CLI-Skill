@@ -21,7 +21,8 @@ import {
   TimeoutError,
 } from '../runtime/errors.mjs';
 import { defineCommand } from '../runtime/command.mjs';
-import { applyFilters } from '../decoders/apply-filters.mjs';
+import { applyFilters } from '../browser/commands/apply-filters.mjs';
+import { LISTING_ROW, applyReservedFilter, listingRows } from '../site/listing.mjs';
 
 // Origin priming only: the body is never read. Rendering the catalog would pull its
 // scripts, images and telemetry for the sake of one JSON blob in the markup.
@@ -87,26 +88,6 @@ function normalizeBoolean(value, label) {
   if (value == null || value === false || value === 'false') return false;
   if (value === true || value === 'true') return true;
   throw new ArgumentError(`${label} must be a boolean flag`);
-}
-
-// Avito offers no reservation filter, so this is a local predicate over the page it
-// returned: the page is only shortened, never refilled from the next one (F-048, D-024).
-function applyReservedFilter(rows, removeReserved, command) {
-  if (!removeReserved) return rows;
-  if (rows.some((row) => typeof row.apiReserved !== 'boolean')) {
-    throw new CommandExecutionError(
-      'Avito stopped reporting the reservation flag for part of the page; '
-      + 'remove-reserved is refused rather than applied to a guess',
-    );
-  }
-  const available = rows.filter((row) => row.apiReserved === false);
-  if (available.length === 0) {
-    throw new EmptyResultError(
-      command,
-      `every listing Avito returned on this page (${rows.length}) is reserved`,
-    );
-  }
-  return available;
 }
 
 function normalizePrice(value, label) {
@@ -241,9 +222,7 @@ export function normalizeSelections(raw) {
 }
 
 // A repeated named option silently keeps only the last one, and the other filters never
-// reach Avito at all (F-050). That loss is invisible in the output, so it is refused here
-// instead. The CLI parser has the same behaviour as the one this was first observed on, so
-// the guard moved across the rewrite unchanged.
+// reach Avito at all (F-050). That loss is invisible in the output, so it is refused here.
 export function assertSingleSetOption(argv) {
   const occurrences = argv.filter((entry) => entry === '--set' || entry.startsWith('--set='));
   if (occurrences.length > 1) {
@@ -291,20 +270,7 @@ export default defineCommand({
       help: 'Drop the listings Avito marks as reserved; Avito has no server-side filter for them, so the page comes back shorter',
     },
   ],
-  columns: [
-    'itemId',
-    'title',
-    'price',
-    'location',
-    'descriptionPreview',
-    'published',
-    'sellerName',
-    'sellerRating',
-    'sellerReviewsCount',
-    'imagesPreviews',
-    'url',
-    'searchUrl',
-  ],
+  row: LISTING_ROW,
   run: async (page, args) => {
     assertSingleSetOption(process.argv);
     const requestedUrl = normalizeCatalogUrl(args.searchUrl);
@@ -360,19 +326,9 @@ export default defineCommand({
       throw new CommandExecutionError('Avito filter application returned invalid search metadata');
     }
 
-    return applyReservedFilter(observed.apiRows, removeReserved, 'avito apply-filters').map((row) => ({
-      itemId: row.apiItemId,
-      title: row.apiTitle,
-      price: row.apiPrice,
-      location: row.apiLocation,
-      descriptionPreview: row.apiDescriptionPreview,
-      published: row.apiPublished,
-      sellerName: row.apiSeller.name,
-      sellerRating: row.apiSeller.rating,
-      sellerReviewsCount: row.apiSeller.reviewsCount,
-      imagesPreviews: row.apiImages,
-      url: row.apiUrl,
+    return listingRows(
+      applyReservedFilter(observed.apiRows, removeReserved, 'avito apply-filters'),
       searchUrl,
-    }));
+    );
   },
 });

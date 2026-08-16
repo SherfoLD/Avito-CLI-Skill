@@ -24,42 +24,44 @@ an empty profile, and Avito refuses an empty profile outright.
 
 ```
 bin/avito.mjs             CLI entry — argument parsing, --help, exit codes
-src/runtime/              the CDP client, the broker, the descriptor contract, the typed errors
-src/commands/             one file per command: navigation, guards, postconditions
-src/decoders/             pure functions over a payload, no network
-src/browser/              shared code that runs inside the page
+src/runtime/              the CDP client, the broker, the descriptor and row contract, typed errors
+src/commands/             the Node half of each command: arguments, guards, postconditions
+src/browser/commands/     the page half of each command, shipped into the page and run there
+src/browser/prelude/      page-side code shared by all of them, inlined into every call
 src/site/                 shared Avito knowledge that runs in Node
 tests/                    the offline suite — no network, no browser
 scripts/                  the static checks, and the live verify runner
-verify/                   one fixture per command: what a live run must satisfy
-fixtures/                 anonymised response samples, dated, never edited
+verify/                   one fixture per command: what a live run must answer with
+evidence/                 anonymised response samples, dated, never edited
 docs/                     project memory — state, plan, one file per command domain
 skills/avito/             the consumer skill: how an agent uses the finished CLI
-.agents/skills/           the development skills: writing a command, repairing one
+.agents/skills/           the development skills: write-command, fix-command
 ```
 
 ## Checks
 
 ```sh
 npm install
-npm run check      # every gate plus the offline suite
+npm run check      # lint, every gate, and the offline suite
+npm run lint       # eslint, including the four rules in scripts/lib/eslint-rules.mjs
 npm test           # the offline suite alone
 npm run verify     # live: a command against its verify fixture (needs Chrome)
 ```
 
-`scripts/README.md` explains what each gate defends. In short: commands declare
-their contract in a descriptor, rows may not carry keys the descriptor does not,
-arguments are refused rather than clamped, missing data never becomes a fallback
-value, Avito's identifiers are never hardcoded, nothing session-bound is
-committed, and every command has a verify fixture that was tightened by hand.
+`scripts/README.md` explains what each gate defends. In short: a command declares
+its output as a schema and every row is parsed through it before the caller sees
+it, so a row cannot carry a key the descriptor does not; arguments are refused
+rather than clamped; missing data never becomes a fallback value; Avito's
+identifiers are never hardcoded; nothing session-bound is committed; and every
+command has a verify fixture saying what its own request must come back with.
 
 ## Working here
 
 Read [AGENTS.md](AGENTS.md) first, then [docs/STATUS.md](docs/STATUS.md) and the
 domain file for whatever you are touching.
 
-- Writing or changing a command → [.agents/skills/cdp-command-author/SKILL.md](.agents/skills/cdp-command-author/SKILL.md)
-- A command that broke → [.agents/skills/cdp-command-repair/SKILL.md](.agents/skills/cdp-command-repair/SKILL.md)
+- Writing or changing a command → [.agents/skills/write-command/SKILL.md](.agents/skills/write-command/SKILL.md)
+- A command that broke → [.agents/skills/fix-command/SKILL.md](.agents/skills/fix-command/SKILL.md)
 - Using the finished CLI → [skills/avito/SKILL.md](skills/avito/SKILL.md)
 
 Development drives Chrome through the Chrome DevTools MCP tools. The shipped code

@@ -26,7 +26,7 @@ in the numbering are normal — a dropped decision is deleted, not rewritten.
 | installation, command list, exit codes, examples | [../README.md](../README.md) | anyone installing the CLI |
 | a fact about Avito, or a decision about us | the domain file in [areas/](areas/) | anyone editing a command |
 | what any Avito author will hit, ours or not | [site-memory.md](site-memory.md) | the next project |
-| an anonymised response sample | `../fixtures/<name>-<YYYYMMDDHHMM>.json` | whoever proves the site drifted |
+| an anonymised response sample | `../evidence/<name>-<YYYYMMDDHHMM>.json` | whoever proves the site drifted |
 | how we got here | the commit message | git |
 
 The flag list and the column list are never duplicated here: that is a rotting
@@ -35,7 +35,7 @@ why it is shaped that way, what it is mutually exclusive with, what happens when
 it is omitted.
 
 Raw responses, HTML and trace artefacts go into no document at all — only into
-`fixtures/` or `/tmp`.
+`evidence/` or `/tmp`.
 
 ## Session ritual
 

@@ -3,11 +3,11 @@
 //
 // The target is resolved from the navigation state Avito itself rendered, never built from a
 // slug, so the checks below are about refusing every ambiguous or non-navigable answer.
-import { assertDeclaredColumns, loadCommand, runner } from './harness.mjs';
+import { assertRow, loadCommand, runner } from './harness.mjs';
 import {
   FILTERS, ORIGIN, bootstrapHtml, evaluateRunner, item, makeFetch, searchCore,
 } from './carrier.mjs';
-import { moveCategory } from '../src/decoders/move-category.mjs';
+import { moveCategory } from '../src/browser/commands/move-category.mjs';
 
 const { COMMAND } = await loadCommand('move-category');
 
@@ -275,6 +275,7 @@ const ROW = {
   apiPrice: 15990,
   apiLocation: 'Москва',
   apiDescriptionPreview: 'Новый, запечатан',
+  apiPublished: null,
   apiSeller: { name: 'AMD INTEL', rating: 5, reviewsCount: 2015 },
   apiImages: [],
   apiReserved: false,
@@ -295,7 +296,7 @@ check('the command primes robots.txt once and hands the trimmed name to the brow
   const page = movePage(observedMove([ROW]));
   const rows = await COMMAND.run(page, { searchUrl: SOURCE, to: '  Мобильные   телефоны ' });
   assert(rows.length === 1 && rows[0].searchUrl === TARGET, 'the new searchUrl must reach every row');
-  assertDeclaredColumns(COMMAND, rows[0]);
+  assertRow(COMMAND, rows[0]);
   assert(page.calls.goto.length === 1 && page.calls.goto[0] === 'https://www.avito.ru/robots.txt',
     `expected one robots.txt priming, got ${JSON.stringify(page.calls.goto)}`);
   assert(page.calls.evaluateWithArgs[0].target === 'Мобильные телефоны',

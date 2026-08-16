@@ -14,7 +14,8 @@ import {
   TimeoutError,
 } from '../runtime/errors.mjs';
 import { defineCommand } from '../runtime/command.mjs';
-import { moveCategory } from '../decoders/move-category.mjs';
+import { moveCategory } from '../browser/commands/move-category.mjs';
+import { LISTING_ROW, applyReservedFilter, listingRows } from '../site/listing.mjs';
 
 // Origin priming only: the body is never read. Rendering the catalog would pull its
 // scripts, images and telemetry for the sake of one JSON blob in the markup.
@@ -84,26 +85,6 @@ function normalizeResultUrl(value) {
   return parsed.href;
 }
 
-// Avito offers no reservation filter, so this is a local predicate over the page it
-// returned: the page is only shortened, never refilled from the next one (F-048, D-024).
-function applyReservedFilter(rows, removeReserved, command) {
-  if (!removeReserved) return rows;
-  if (rows.some((row) => typeof row.apiReserved !== 'boolean')) {
-    throw new CommandExecutionError(
-      'Avito stopped reporting the reservation flag for part of the page; '
-      + 'remove-reserved is refused rather than applied to a guess',
-    );
-  }
-  const available = rows.filter((row) => row.apiReserved === false);
-  if (available.length === 0) {
-    throw new EmptyResultError(
-      command,
-      `every listing Avito returned on this page (${rows.length}) is reserved`,
-    );
-  }
-  return available;
-}
-
 function asExecutionError(error, action) {
   const message = error instanceof Error ? error.message : String(error);
   if (/timed?\s*out|timeout|aborted/i.test(message)) {
@@ -139,20 +120,7 @@ export default defineCommand({
       help: 'Drop the listings Avito marks as reserved; Avito has no server-side filter for them, so the page comes back shorter',
     },
   ],
-  columns: [
-    'itemId',
-    'title',
-    'price',
-    'location',
-    'descriptionPreview',
-    'published',
-    'sellerName',
-    'sellerRating',
-    'sellerReviewsCount',
-    'imagesPreviews',
-    'url',
-    'searchUrl',
-  ],
+  row: LISTING_ROW,
   run: async (page, args) => {
     const requestedUrl = normalizeCatalogUrl(args.searchUrl);
     const requestedName = normalizeTargetName(args.to);
@@ -207,19 +175,9 @@ export default defineCommand({
       throw new CommandExecutionError('Avito category move returned invalid search metadata');
     }
 
-    return applyReservedFilter(observed.resultRows, removeReserved, 'avito move-category').map((row) => ({
-      itemId: row.apiItemId,
-      title: row.apiTitle,
-      price: row.apiPrice,
-      location: row.apiLocation,
-      descriptionPreview: row.apiDescriptionPreview,
-      published: row.apiPublished,
-      sellerName: row.apiSeller.name,
-      sellerRating: row.apiSeller.rating,
-      sellerReviewsCount: row.apiSeller.reviewsCount,
-      imagesPreviews: row.apiImages,
-      url: row.apiUrl,
+    return listingRows(
+      applyReservedFilter(observed.resultRows, removeReserved, 'avito move-category'),
       searchUrl,
-    }));
+    );
   },
 });

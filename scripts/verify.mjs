@@ -29,7 +29,7 @@ import {
   expandFixtureArgs,
   listFixtures,
   loadFixture,
-  validateRowShape,
+  validateFixture,
   validateRows,
 } from './lib/verify-fixture.mjs';
 
@@ -51,8 +51,14 @@ function runCommand(command, argv) {
 }
 
 async function verifyOne(command) {
-  const fixture = loadFixture(command);
-  if (!fixture) return { command, failures: [{ rule: 'fixture', detail: `verify/${command}.json is missing` }] };
+  const fixture = await loadFixture(command);
+  if (!fixture) return { command, failures: [{ rule: 'fixture', detail: `verify/${command}.mjs is missing` }] };
+
+  // A malformed fixture applies fewer rules than its author wrote.
+  const malformed = validateFixture(fixture);
+  if (malformed.length > 0) {
+    return { command, failures: malformed.map((detail) => ({ rule: 'fixture', detail })) };
+  }
 
   const argv = expandFixtureArgs(fixture.args);
   console.log(`\navito ${command} ${argv.join(' ')}`);
@@ -81,8 +87,11 @@ async function verifyOne(command) {
     return { command, failures: [{ rule: 'output', detail: 'the command printed something other than an array of rows' }] };
   }
 
-  const failures = [...validateRows(rows, fixture), ...validateRowShape(rows)];
-  if (failures.length === 0) console.log(`  OK — ${rows.length} row(s) satisfy verify/${command}.json`);
+  // The shape is the CLI's own gate: a row that breaks its schema never reaches
+  // stdout, so a run that got this far has already passed it. What is left is
+  // whether these are the rows this request had to answer with.
+  const failures = validateRows(rows, fixture);
+  if (failures.length === 0) console.log(`  OK — ${rows.length} row(s) satisfy verify/${command}.mjs`);
   return { command, failures, rowCount: rows.length };
 }
 
@@ -126,8 +135,7 @@ for (const result of results) {
   failed += 1;
   console.log(`\nFAIL  ${result.command}`);
   for (const failure of result.failures) {
-    const where = failure.rowIndex === undefined ? '' : ` [row ${failure.rowIndex}]`;
-    console.log(`  ${failure.rule}${where}: ${failure.detail}`);
+    console.log(`  ${failure.rule}: ${failure.detail}`);
   }
 }
 

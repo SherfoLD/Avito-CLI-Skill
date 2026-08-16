@@ -12,33 +12,41 @@
  *     args: [
  *       { name: 'query', type: 'string', required: true, positional: true, help: '…' },
  *     ],
- *     columns: ['itemId', '…'],    // ordered; the order is pinned by verify/<name>.json
+ *     row: z.strictObject({        // the output contract, in declaration order
+ *       itemId: idString(),
+ *       title: text(),
+ *     }),
  *     run: async (ctx, args) => [ …rows… ],
  *   })
  *
- * `run` returns an array of flat row objects. It never returns a partial row and
- * never returns `[]` to mean "something went wrong" — that is what the typed
- * errors in `errors.mjs` are for.
+ * `columns` is derived from `row` and is never written by hand.
+ *
+ * `run` returns an array of flat row objects, and the CLI parses every one of
+ * them through `row` before printing. It never returns a partial row and never
+ * returns `[]` to mean "something went wrong" — that is what the typed errors in
+ * `errors.mjs` are for.
  */
+
+import { assertRowSchema, rowColumns } from './schema.mjs';
 
 const ARG_TYPES = new Set(['string', 'int', 'bool']);
 
 export const MAX_ROW_KEYS = 12;
-export const MAX_ROW_DEPTH = 1;
 
 export function defineCommand(descriptor) {
   assert(isRecord(descriptor), 'command descriptor must be an object');
 
-  const { name, description, access, domain, example, args, columns, run } = descriptor;
+  const { name, description, access, domain, example, args, row, run } = descriptor;
 
   assert(typeof name === 'string' && name.trim() !== '', 'command needs a name');
   assert(typeof description === 'string' && description.trim() !== '', `${name}: needs a description`);
   assert(access === 'read' || access === 'write', `${name}: access must be 'read' or 'write'`);
   assert(typeof domain === 'string' && domain.trim() !== '', `${name}: needs a domain`);
   assert(typeof run === 'function', `${name}: needs a run function`);
-  assert(Array.isArray(columns) && columns.length > 0, `${name}: needs a non-empty columns list`);
-  assert(columns.length <= MAX_ROW_KEYS, `${name}: declares ${columns.length} columns, ceiling is ${MAX_ROW_KEYS}`);
-  assert(new Set(columns).size === columns.length, `${name}: duplicate column names`);
+  assert(descriptor.columns === undefined, `${name}: columns are derived from row, not declared`);
+
+  assertRowSchema(name, row, { maxKeys: MAX_ROW_KEYS });
+  const columns = rowColumns(row);
 
   const declaredArgs = Array.isArray(args) ? args : [];
   const seen = new Set();
@@ -65,7 +73,8 @@ export function defineCommand(descriptor) {
     domain,
     example: example ?? null,
     args: Object.freeze(declaredArgs.map((arg) => Object.freeze({ ...arg }))),
-    columns: Object.freeze([...columns]),
+    row,
+    columns: Object.freeze(columns),
     run,
   });
 }

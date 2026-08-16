@@ -12,10 +12,9 @@
   },
   "scripts": {
     "test": "node tests/run.mjs",
-    "check": "npm run check:conventions && npm run check:typed-errors && npm run check:column-drop && npm run check:fixtures && npm run check:secrets && npm run check:docs && npm test",
-    "check:conventions": "node scripts/check-conventions.mjs",
-    "check:typed-errors": "node scripts/check-typed-error-lint.mjs",
-    "check:column-drop": "node scripts/check-silent-column-drop.mjs",
+    "check": "npm run lint && npm run check:commands && npm run check:fixtures && npm run check:secrets && npm run check:docs && npm test",
+    "lint": "eslint .",
+    "check:commands": "node scripts/check-commands.mjs",
     "check:fixtures": "node scripts/check-verify-fixtures.mjs",
     "check:secrets": "node scripts/check-no-secrets.mjs",
     "check:docs": "node scripts/check-doc-coverage.mjs",
@@ -23,6 +22,12 @@
     "verify": "node scripts/verify.mjs"
   },
   "devDependencies": {
+    "@eslint/js": "~10.0.1",
+    "eslint": "~10.8.1",
+    "globals": "~17.11.0",
     "linkedom": "^0.18.0"
+  },
+  "dependencies": {
+    "zod": "~4.4.3"
   }
 }

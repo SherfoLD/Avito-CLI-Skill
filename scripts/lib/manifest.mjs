@@ -1,14 +1,8 @@
 /**
- * In-memory command manifest.
+ * In-memory command manifest, built by importing every command module.
  *
- * There is no committed manifest file on purpose: the descriptor in each
- * command module is the single source of truth, and a second copy on disk
- * would rot the moment somebody edits one and not the other. The column order
- * that actually needs pinning is pinned where it is checked — in
- * `verify/<command>.json`.
- *
- * Every check script reads the manifest through this module, so a command that
- * fails to import is a hard error here rather than a silently missing entry.
+ * Every check script reads it through here, so a command that fails to import
+ * is a hard error rather than a silently missing entry.
  */
 
 import * as fs from 'node:fs';

@@ -14,7 +14,15 @@ import {
   TimeoutError,
 } from '../runtime/errors.mjs';
 import { defineCommand } from '../runtime/command.mjs';
-import { readItemApi, readItemPage } from '../decoders/get-item.mjs';
+import {
+  count,
+  httpsUrl,
+  idString,
+  itemUrl,
+  text,
+  z,
+} from '../runtime/schema.mjs';
+import { readItemApi, readItemPage } from '../browser/commands/get-item.mjs';
 
 // Origin priming only: the body is never read. Rendering the catalog would pull its
 // scripts, images and telemetry for the sake of one JSON blob in the markup.
@@ -125,20 +133,24 @@ export default defineCommand({
   args: [
     { name: 'url', type: 'string', required: true, positional: true, help: 'Full https://www.avito.ru item URL from avito search' },
   ],
-  columns: [
-    'itemId',
-    'title',
-    'price',
-    'location',
-    'description',
-    'attributes',
-    'publishedText',
-    'sellerName',
-    'sellerRating',
-    'sellerReviewsCount',
-    'images',
-    'url',
-  ],
+  // The listing row of `search` with three differences: the whole description
+  // instead of its preview, the original-size photos instead of the previews,
+  // and `publishedText` — the rendered string Avito prints, because the listing
+  // page carries no machine-readable date anywhere (D-039, F-059).
+  row: z.strictObject({
+    itemId: idString(),
+    title: text(),
+    price: z.number().nonnegative().nullable(),
+    location: text().nullable(),
+    description: text().nullable(),
+    attributes: z.record(text(), text()),
+    publishedText: text().nullable(),
+    sellerName: text().nullable(),
+    sellerRating: z.number().min(0).max(5).nullable(),
+    sellerReviewsCount: count().nullable(),
+    images: z.array(httpsUrl()),
+    url: itemUrl(),
+  }),
   run: async (page, args) => {
     const { normalizedUrl, normalizedItemId, itemApiUrl } = normalizeItemUrl(args.url);
 

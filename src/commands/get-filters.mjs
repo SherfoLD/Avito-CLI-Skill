@@ -18,25 +18,38 @@ import {
   TimeoutError,
 } from '../runtime/errors.mjs';
 import { defineCommand } from '../runtime/command.mjs';
-import { filterOptions, flattenFilters } from '../browser/filters.mjs';
-import { readFilterState } from '../decoders/get-filters.mjs';
+import { text, z } from '../runtime/schema.mjs';
+import { filterOptions, flattenFilters } from '../browser/prelude/filters.mjs';
+import { readFilterState } from '../browser/commands/get-filters.mjs';
 
 // Origin priming only: the body is never read. Rendering the catalog would pull its
 // scripts, images and telemetry for the sake of one JSON blob in the markup.
 const ORIGIN_BOOTSTRAP_URL = 'https://www.avito.ru/robots.txt';
 const AVITO_HOSTS = new Set(['avito.ru', 'www.avito.ru']);
+// What a caller may write as the value of a key. `valueSyntaxFor` returns one
+// of these or `null` for "not applicable", and the `valueSyntax` column accepts
+// exactly these.
+const SYNTAX = Object.freeze({
+  ON: '1',
+  VALUE: '<value>',
+  VALUES: '<value>[,<value>]',
+  TEXT: '<text>[,<text>]',
+  RANGE: '<from>..<to>',
+});
+const VALUE_SYNTAX = z.enum(Object.values(SYNTAX));
+
 const SHORT_KEYS = Object.freeze({
   price: {
-    valueSyntax: '<from>..<to>',
+    valueSyntax: SYNTAX.RANGE,
     // Short keys read from searchCore: their filtersV2.currentValue is stale or missing even
     // when the server URL proves the value applied. Both carriers ship in the same
     // bootstrap, so the authoritative one is free (F-032).
     currentValue: (core) => rangeOrNull(core.priceMin, core.priceMax),
   },
-  user: { valueSyntax: '<value>', currentValue: (core) => selectionOrNull(core.owner, '0') },
-  d: { valueSyntax: '<value>', currentValue: (core) => selectionOrNull(core.withDeliveryOnly, '0') },
-  localPriority: { valueSyntax: '1', currentValue: (core) => selectionOrNull(core.localPriority, '0') },
-  sort: { valueSyntax: '<value>', currentValue: (core) => selectionOrNull(core.sort) },
+  user: { valueSyntax: SYNTAX.VALUE, currentValue: (core) => selectionOrNull(core.owner, '0') },
+  d: { valueSyntax: SYNTAX.VALUE, currentValue: (core) => selectionOrNull(core.withDeliveryOnly, '0') },
+  localPriority: { valueSyntax: SYNTAX.ON, currentValue: (core) => selectionOrNull(core.localPriority, '0') },
+  sort: { valueSyntax: SYNTAX.VALUE, currentValue: (core) => selectionOrNull(core.sort) },
 });
 // A type missing from this map stops the command: it reports that the map is behind Avito,
 // which is not a fact about any filter. The three non-obvious entries:
@@ -142,12 +155,12 @@ function valueSyntaxFor(filterKey, normalizedType, optionCount) {
   if (Object.hasOwn(SHORT_KEYS, filterKey)) return SHORT_KEYS[filterKey].valueSyntax;
   if (!/^params\[\d+\]$/.test(filterKey)) return null;
   if (normalizedType === 'entrypoint') return null;
-  if (normalizedType === 'range') return '<from>..<to>';
-  if (normalizedType === 'text') return '<text>[,<text>]';
-  if (normalizedType === 'boolean' && optionCount === 0) return '1';
+  if (normalizedType === 'range') return SYNTAX.RANGE;
+  if (normalizedType === 'text') return SYNTAX.TEXT;
+  if (normalizedType === 'boolean' && optionCount === 0) return SYNTAX.ON;
   if (optionCount === 0) return null;
-  if (normalizedType === 'multi_enum') return '<value>[,<value>]';
-  if (normalizedType === 'enum' || normalizedType === 'boolean') return '<value>';
+  if (normalizedType === 'multi_enum') return SYNTAX.VALUES;
+  if (normalizedType === 'enum' || normalizedType === 'boolean') return SYNTAX.VALUE;
   return null;
 }
 
@@ -245,14 +258,18 @@ export default defineCommand({
   args: [
     { name: 'searchUrl', type: 'string', required: true, positional: true, help: 'Search URL from avito search, apply-filters, move-category or get-page' },
   ],
-  columns: [
-    'key',
-    'name',
-    'unit',
-    'valueSyntax',
-    'currentValue',
-    'options',
-  ],
+  // A row exists if and only if `apply-filters` can set the key, so `key` and
+  // `valueSyntax` are never null: a filter that cannot be applied is not a row.
+  // `options` is empty for a range with plain numeric bounds and for a keyword
+  // field, which is what separates those from an enum (F-063, F-064).
+  row: z.strictObject({
+    key: z.string().regex(FILTER_KEY_PATTERN, 'must be params[<attrId>] or a short key'),
+    name: text().max(MAX_LABEL_LENGTH),
+    unit: text().max(MAX_LABEL_LENGTH).nullable(),
+    valueSyntax: VALUE_SYNTAX,
+    currentValue: text().max(MAX_CURRENT_VALUE_LENGTH).nullable(),
+    options: z.record(text().max(MAX_OPTION_VALUE_LENGTH), text().max(MAX_LABEL_LENGTH)),
+  }),
   run: async (page, args) => {
     const requestedUrl = normalizeCatalogUrl(args.searchUrl);
 

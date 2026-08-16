@@ -24,16 +24,68 @@ import {
 } from '../runtime/errors.mjs';
 import { defineCommand } from '../runtime/command.mjs';
 import {
+  decode,
+  idString,
+  optionalText,
+  rank,
+  requiredText,
+  text,
+  z,
+} from '../runtime/schema.mjs';
+import {
   AVITO_BASE_URL,
   fetchAvitoJson,
   geoDirectory,
   locationDescriptor,
 } from '../site/geo.mjs';
-import { readAccessState } from '../decoders/get-location.mjs';
+import { readAccessState } from '../browser/commands/get-location.mjs';
 
 const SUGGEST_LIMIT = 10;
 const GEO_LIMIT = 400;
-const GEO_MODES = new Set(['metro', 'districts']);
+// The two tabs of Avito's geo filter. The argument, the column and the
+// directory call all read this one enum.
+const GEO_MODE = z.enum(['metro', 'districts']);
+
+/** An Avito directory ID as it arrives: a positive integer, before we stringify it. */
+const DIRECTORY_ID = z.number().int().positive();
+
+/**
+ * `/web/1/slocations`. `names['1']` is Avito's own name-form index; the parent
+ * region is what separates two cities of the same name, so it is read but never
+ * required — a top-level region has no parent.
+ */
+const SUGGESTIONS_PAYLOAD = z.object({
+  result: z.object({
+    locations: z.array(z.object({
+      id: DIRECTORY_ID,
+      names: z.object({ 1: requiredText() }),
+      parent: z.object({ names: z.object({ 1: optionalText() }).optional() }).nullish(),
+    })),
+  }),
+});
+
+/** `/web/2/locations/metro`. A station belongs to one or more named lines. */
+const METRO_PAYLOAD = z.object({
+  lines: z.array(z.object({ id: DIRECTORY_ID, name: requiredText() })),
+  stations: z.array(z.object({
+    id: DIRECTORY_ID,
+    name: requiredText(),
+    lineIds: z.array(DIRECTORY_ID).default([]),
+  })),
+});
+
+/** `/web/2/locations/districts`. Districts carry their group the other way round. */
+const DISTRICTS_PAYLOAD = z.object({
+  districts: z.array(z.object({ id: DIRECTORY_ID, name: requiredText() })),
+  regions: z.array(z.object({
+    shortName: optionalText(),
+    fullName: optionalText(),
+    districtIds: z.array(DIRECTORY_ID).default([]),
+  })).default([]),
+});
+
+/** What `search` and this command both need a location to tell them about itself. */
+const CAPABILITIES = z.object({ hasMetro: z.boolean(), hasDistricts: z.boolean() });
 
 function normalizeLimit(value, maxLimit) {
   if (value === null || value === undefined || value === '') return maxLimit;
@@ -49,11 +101,11 @@ function normalizeLimit(value, maxLimit) {
 
 function normalizeGeoMode(value) {
   if (value === null || value === undefined || value === '') return null;
-  const mode = String(value).trim().toLowerCase();
-  if (!GEO_MODES.has(mode)) {
-    throw new ArgumentError('geo must be "metro" or "districts"');
+  const mode = GEO_MODE.safeParse(String(value).trim().toLowerCase());
+  if (!mode.success) {
+    throw new ArgumentError(`geo must be ${GEO_MODE.options.map((option) => `"${option}"`).join(' or ')}`);
   }
-  return mode;
+  return mode.data;
 }
 
 function cleanText(value) {
@@ -72,36 +124,22 @@ function asExecutionError(error, action) {
   throw new CommandExecutionError(`${action} failed: ${message}`);
 }
 
-function positiveId(value) {
-  return Number.isInteger(value) && value > 0;
-}
-
 function decodeSuggestions(payload, query) {
-  const rawSuggestions = payload?.result?.locations;
-  if (!Array.isArray(rawSuggestions)) {
-    throw new CommandExecutionError('Avito locations response has an unexpected shape');
-  }
-  if (rawSuggestions.length === 0) {
+  const { result } = decode(SUGGESTIONS_PAYLOAD, payload, 'Avito locations response');
+  if (result.locations.length === 0) {
     throw new EmptyResultError('avito get-location', `No locations matched "${query}"`);
   }
 
-  return rawSuggestions.map((entry, index) => {
-    const rawId = entry?.id;
-    const rawName = entry?.names?.['1'];
-    const normalizedName = cleanText(rawName);
-    if (!positiveId(rawId) || !normalizedName) {
-      throw new CommandExecutionError(
-        `Avito locations response contains a malformed row at index ${index}`,
-      );
-    }
-    const parentName = cleanText(entry?.parent?.names?.['1']) || null;
-    // The `suggested*` prefix marks these as the decoder's own shape, the way
-    // `api*` does in the card decoder: a suggestion is not a row, and it carries
-    // one field — the label with its parent region — that no column has.
+  // The `suggested*` prefix marks these as the decoder's own shape, the way
+  // `api*` does in the card decoder: a suggestion is not a row, and it carries
+  // one field — the label with its parent region — that no column has.
+  return result.locations.map((entry) => {
+    const name = entry.names[1];
+    const parentName = entry.parent?.names?.[1] ?? null;
     return {
-      suggestedId: String(rawId),
-      suggestedName: normalizedName,
-      suggestedLabel: parentName ? `${normalizedName}, ${parentName}` : normalizedName,
+      suggestedId: String(entry.id),
+      suggestedName: name,
+      suggestedLabel: parentName ? `${name}, ${parentName}` : name,
     };
   });
 }
@@ -126,45 +164,26 @@ function resolveExactLocation(suggestions, query) {
 }
 
 function decodeCapabilities(payload, locationId) {
-  const descriptor = locationDescriptor(payload, locationId);
-  if (typeof descriptor.hasMetro !== 'boolean' || typeof descriptor.hasDistricts !== 'boolean') {
-    throw new CommandExecutionError('Avito location capabilities are missing metro/district flags');
-  }
-  return { hasMetro: descriptor.hasMetro, hasDistricts: descriptor.hasDistricts };
+  return decode(
+    CAPABILITIES,
+    locationDescriptor(payload, locationId),
+    'Avito location capabilities',
+  );
 }
 
 // A station belongs to one or more lines, and the line names are the group a caller reads
 // to tell two stations of the same name apart.
 function decodeMetro(payload) {
-  const stations = payload?.stations;
-  const lines = payload?.lines;
-  if (!Array.isArray(stations) || !Array.isArray(lines)) {
-    throw new CommandExecutionError('Avito metro response has an unexpected shape');
-  }
+  const { lines, stations } = decode(METRO_PAYLOAD, payload, 'Avito metro response');
+  const lineNameById = new Map(lines.map((line) => [line.id, line.name]));
 
-  const lineNameById = new Map();
-  for (const line of lines) {
-    const name = cleanText(line?.name);
-    if (!positiveId(line?.id) || !name) {
-      throw new CommandExecutionError('Avito metro response contains a malformed line');
-    }
-    lineNameById.set(line.id, name);
-  }
-
-  return stations.map((station, index) => {
-    const name = cleanText(station?.name);
-    if (!positiveId(station?.id) || !name) {
-      throw new CommandExecutionError(
-        `Avito metro response contains a malformed station at index ${index}`,
-      );
-    }
-    const lineIds = Array.isArray(station.lineIds) ? station.lineIds : [];
-    const groupNames = lineIds
+  return stations.map((station) => {
+    const groupNames = station.lineIds
       .map((lineId) => lineNameById.get(lineId))
-      .filter((lineName) => typeof lineName === 'string' && lineName);
+      .filter(Boolean);
     return {
       geoId: String(station.id),
-      geoName: name,
+      geoName: station.name,
       geoGroup: groupNames.length ? groupNames.join(', ') : null,
     };
   });
@@ -172,35 +191,22 @@ function decodeMetro(payload) {
 
 // Districts carry their group the other way round: the region lists the districts it holds.
 function decodeDistricts(payload) {
-  const districts = payload?.districts;
-  if (!Array.isArray(districts)) {
-    throw new CommandExecutionError('Avito districts response has an unexpected shape');
-  }
+  const { districts, regions } = decode(DISTRICTS_PAYLOAD, payload, 'Avito districts response');
 
   const groupNameByDistrictId = new Map();
-  const regions = Array.isArray(payload?.regions) ? payload.regions : [];
   for (const region of regions) {
-    const groupName = cleanText(region?.shortName) || cleanText(region?.fullName);
-    const districtIds = Array.isArray(region?.districtIds) ? region.districtIds : [];
+    const groupName = region.shortName ?? region.fullName;
     if (!groupName) continue;
-    for (const districtId of districtIds) {
-      if (positiveId(districtId)) groupNameByDistrictId.set(districtId, groupName);
+    for (const districtId of region.districtIds) {
+      groupNameByDistrictId.set(districtId, groupName);
     }
   }
 
-  return districts.map((district, index) => {
-    const name = cleanText(district?.name);
-    if (!positiveId(district?.id) || !name) {
-      throw new CommandExecutionError(
-        `Avito districts response contains a malformed district at index ${index}`,
-      );
-    }
-    return {
-      geoId: String(district.id),
-      geoName: name,
-      geoGroup: groupNameByDistrictId.get(district.id) ?? null,
-    };
-  });
+  return districts.map((district) => ({
+    geoId: String(district.id),
+    geoName: district.name,
+    geoGroup: groupNameByDistrictId.get(district.id) ?? null,
+  }));
 }
 
 export default defineCommand({
@@ -215,7 +221,18 @@ export default defineCommand({
     { name: 'geo', type: 'string', help: 'List geo IDs instead of suggestions: metro or districts' },
     { name: 'geo-query', type: 'string', help: 'Filter geo entries by visible station or district name' },
   ],
-  columns: ['rank', 'locationId', 'locationName', 'geoMode', 'geoId', 'geoName', 'geoGroup'],
+  // `locationName` always means a city or a region and `geoName` always means a
+  // station or a district, in both modes. In suggestion mode the four geo
+  // columns are null together; in geo mode none of them is.
+  row: z.strictObject({
+    rank: rank(),
+    locationId: idString(),
+    locationName: text(),
+    geoMode: GEO_MODE.nullable(),
+    geoId: idString().nullable(),
+    geoName: text().nullable(),
+    geoGroup: text().nullable(),
+  }),
   run: async (page, args) => {
     const query = cleanText(args.query);
     if (!query) {

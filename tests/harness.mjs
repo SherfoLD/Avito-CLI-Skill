@@ -1,9 +1,11 @@
 // Offline harness: `loadCommand` for a command module and its descriptor,
-// `assertDeclaredColumns` for a returned row against the columns it declares,
+// `assertRows` for what a command returned against the contract it declares,
 // and the check runner.
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
+
+import { parseRows } from '../src/runtime/schema.mjs';
 
 const PROJECT_ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 
@@ -11,8 +13,8 @@ export function readCommandSource(name) {
   return readFileSync(join(PROJECT_ROOT, 'src', 'commands', `${name}.mjs`), 'utf8');
 }
 
-export function readDecoderSource(name) {
-  return readFileSync(join(PROJECT_ROOT, 'src', 'decoders', `${name}.mjs`), 'utf8');
+export function readPageSource(name) {
+  return readFileSync(join(PROJECT_ROOT, 'src', 'browser', 'commands', `${name}.mjs`), 'utf8');
 }
 
 /**
@@ -34,18 +36,17 @@ export async function loadCommand(name, exportNames = []) {
 }
 
 /**
- * A returned row must fill exactly the columns the command declares: a key renamed in one
- * of the two places (the `columns` list or the row mapping) is a silent contract drift the
- * decoder checks cannot see.
+ * Parse what a command returned through the contract it declares — the same
+ * parse `bin/avito.mjs` runs before printing, so a suite cannot pass on a row a
+ * caller would never be given.
  */
-export function assertDeclaredColumns(command, row) {
-  const keys = Object.keys(row);
-  if (keys.length !== command.columns.length) {
-    throw new Error(`row has ${keys.length} keys, ${command.columns.length} columns declared: ${keys.join(',')}`);
-  }
-  for (const column of command.columns) {
-    if (!(column in row)) throw new Error(`declared column ${column} is missing from the row`);
-  }
+export function assertRows(command, rows) {
+  return parseRows(command.row, rows, command.name);
+}
+
+/** The same, for a suite that built exactly one row. */
+export function assertRow(command, row) {
+  return assertRows(command, [row])[0];
 }
 
 export function runner() {

@@ -19,7 +19,7 @@ import * as path from 'node:path';
 
 import { PROJECT_ROOT, relativeToRoot } from './lib/paths.mjs';
 
-const SCAN_DIRS = ['fixtures', 'verify', 'docs', 'src', 'tests', 'scripts', 'skills'];
+const SCAN_DIRS = ['evidence', 'verify', 'docs', 'src', 'tests', 'scripts', 'skills'];
 const SCAN_EXTENSIONS = new Set(['.json', '.md', '.mjs', '.js']);
 const SKIP_DIRS = new Set(['node_modules', 'traces', '.git']);
 

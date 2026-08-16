@@ -7,9 +7,15 @@ How each command is built is in its domain file, [docs/areas/](areas/).
 
 ## Commands
 
-Ten commands, all read-only. `npm run check` is green with both baselines empty;
-the offline suite is 184 checks across twelve suites. All ten fixtures pass live
-in one run over one browser connection.
+Ten commands, all read-only. `npm run check` is green; the offline suite is 199
+checks across fifteen suites. No fixture has been run live since the row contract
+moved into the descriptor schemas (D-048, D-049) — phase 21 opens with that.
+
+The row contract is a `z.strictObject` in each descriptor: `columns` is derived
+from it, the CLI parses every row through it before printing, and the offline
+suites run the same parse. A `verify/<command>.mjs` fixture is a schema over the
+whole returned array, saying what that one request must answer with. What neither
+can express is four ESLint rules over the AST (`npm run lint`).
 
 The browser has to be one the user already runs, with debugging on at
 `chrome://inspect/#remote-debugging` — a purpose-launched empty profile is
@@ -127,7 +133,8 @@ Cross-cutting. Risks specific to one command are in its domain file.
 - Every command depends on the undocumented internal shape of the SSR bootstrap
   and on seven undocumented endpoints. Any drift must end fail-closed.
 - The shared row decoder serves four listing commands; its drift shows up as
-  different semantics, not as a refusal.
+  different semantics, not as a refusal. The shared `LISTING_ROW` schema catches
+  a wrong *shape* on all four at once, and says nothing about a wrong *meaning*.
 - `sellerName` is defended by no live check at all (D-028) — only the offline
   suite and human eyes.
 - This repository has no remote: the history exists, a copy does not.

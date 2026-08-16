@@ -63,6 +63,7 @@ export async function webSocketUrlFromHttp(browserUrl, timeoutSeconds = COMMAND_
       `no Chrome DevTools endpoint at ${browserUrl} (${error instanceof Error ? error.message : String(error)}). `
       + 'Start the browser with --remote-debugging-port and point AVITO_BROWSER_URL at it, or set '
       + 'AVITO_BROWSER_PROFILE to the profile directory of a browser where chrome://inspect debugging is on.',
+      { cause: error },
     );
   }
   if (response.status === 404) {

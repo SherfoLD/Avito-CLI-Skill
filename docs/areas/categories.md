@@ -69,7 +69,7 @@ without losing the query.
   actually common is one thing: `type` 0 is an expanded branch, 1 an option that
   carries a route, 2 the current category. That is Avito's vocabulary, it must
   not exist in two copies with two opinions, and it now lives in
-  `src/browser/rubricator.mjs` — where an unknown type returns `null` so each
+  `src/browser/prelude/rubricator.mjs` — where an unknown type returns `null` so each
   caller refuses it in its own terms. The walk stayed in both files: they
   validate different things (`get-categories` checks node IDs, the three state
   booleans and their agreement with the type, and names the ID in every message;

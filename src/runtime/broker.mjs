@@ -6,11 +6,9 @@
  * — so connecting per invocation turns a ten-command chain into ten modals.
  * This process holds the connection and the commands talk to it instead.
  *
- * It speaks plain HTTP rather than relaying CDP. Node has no built-in WebSocket
- * server, and a faithful relay would have to multiplex message ids and route
- * events per session; the four operations a command may perform are also a far
- * smaller contract than CDP, which keeps this process incapable of doing more
- * to the browser than a command could.
+ * It speaks plain HTTP and exposes the four operations a command may perform,
+ * which keeps it incapable of doing more to the browser than a command could
+ * (D-045).
  *
  * It knows nothing about Avito. No URL, no decoder, no header belongs here.
  *

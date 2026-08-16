@@ -14,6 +14,7 @@ import * as path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import { ArgumentError, CliError, EXIT_CODES, exitCodeFor } from '../src/runtime/errors.mjs';
+import { parseRows } from '../src/runtime/schema.mjs';
 import { brokerEnabled, openBrowserContext } from '../src/runtime/cdp.mjs';
 import { liveBroker, stopBroker } from '../src/runtime/broker-client.mjs';
 
@@ -253,12 +254,15 @@ async function main() {
     ...(options.browserProfile ? { browserProfile: options.browserProfile } : {}),
     ...(options.browserWs ? { browserWs: options.browserWs } : {}),
   });
-  let rows;
+  let returned;
   try {
-    rows = await descriptor.run(context.page, args);
+    returned = await descriptor.run(context.page, args);
   } finally {
     await context.release();
   }
+
+  // The only gate that sees the row a caller actually gets.
+  const rows = parseRows(descriptor.row, returned, descriptor.name);
 
   if (options.format === 'table') console.log(renderTable(rows, descriptor.columns));
   else console.log(JSON.stringify(rows, null, 2));

@@ -16,12 +16,9 @@
  * `searchCore`, so the state has to be read by a separate same-origin fetch
  * anyway.
  *
- * Two backends sit under the same surface. The default goes through the session
- * broker, which holds one connection for as long as the session lasts: a
- * browser with `chrome://inspect` debugging on asks the person to approve every
- * new client, so connecting per command would mean a modal per command.
- * `AVITO_BROKER=off` connects directly, which is right for a browser started
- * with `--remote-debugging-port`, where nothing ever asks.
+ * Two backends sit under the same surface: the session broker by default, and
+ * a direct connection under `AVITO_BROKER=off`, which is right for a browser
+ * started with `--remote-debugging-port`, where nothing ever asks (D-045).
  *
  * Nothing here retries. A refusal is returned to the caller as it arrived.
  */

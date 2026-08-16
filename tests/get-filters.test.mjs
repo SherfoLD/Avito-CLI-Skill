@@ -4,7 +4,7 @@
 // Everything the command returns must be actionable: one row is one filter `apply-filters`
 // can set, `currentValue` is written in the same syntax the caller would pass back, and the
 // route state Avito keeps for its own rendering is resolved here instead (D-037).
-import { assertDeclaredColumns, loadCommand, runner } from './harness.mjs';
+import { assertRows, loadCommand, runner } from './harness.mjs';
 
 const { COMMAND } = await loadCommand('get-filters');
 const { check, assert, run } = runner();
@@ -417,7 +417,7 @@ check('the unit Avito measures the filter in stays with the filter', async () =>
 
 check('the row fills exactly the declared columns', async () => {
   const { rows } = await readFilters();
-  for (const row of rows) assertDeclaredColumns(COMMAND, row);
+  assertRows(COMMAND, rows);
 });
 
 // Dropping what cannot be applied is not the same as tolerating drift: a filter that is

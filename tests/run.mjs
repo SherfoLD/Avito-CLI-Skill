@@ -11,12 +11,15 @@ import { fileURLToPath } from 'node:url';
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 
 const suites = [
-  './browser-prelude.test.mjs',
-  './search.flow.test.mjs',
-  './search.context.test.mjs',
-  './item.decoder.test.mjs',
-  './get-page.context.test.mjs',
-  './apply-filters.context.test.mjs',
+  './schema.test.mjs',
+  './lint-rules.test.mjs',
+  './verify-fixtures.test.mjs',
+  './prelude.test.mjs',
+  './search.test.mjs',
+  './search.page.test.mjs',
+  './get-item.test.mjs',
+  './get-page.test.mjs',
+  './apply-filters.test.mjs',
   './get-filters.test.mjs',
   './get-categories.test.mjs',
   './move-category.test.mjs',

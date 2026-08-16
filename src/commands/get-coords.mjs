@@ -16,8 +16,15 @@ import {
   TimeoutError,
 } from '../runtime/errors.mjs';
 import { defineCommand } from '../runtime/command.mjs';
+import {
+  decode,
+  optionalText,
+  requiredText,
+  text,
+  z,
+} from '../runtime/schema.mjs';
 import { AVITO_BASE_URL } from '../site/geo.mjs';
-import { readCoords } from '../decoders/get-coords.mjs';
+import { readCoords } from '../browser/commands/get-coords.mjs';
 
 const ORIGIN_BOOTSTRAP_URL = 'https://www.avito.ru/robots.txt';
 const COORDS_ENDPOINT = '/web/1/coords/by_address';
@@ -46,48 +53,39 @@ function normalizeAddress(value) {
   return address;
 }
 
-function finiteNumber(value) {
-  return typeof value === 'number' && Number.isFinite(value);
-}
+const LATITUDE = z.number().min(-90).max(90);
+const LONGITUDE = z.number().min(-180).max(180);
+
+/**
+ * What `by_address` answers. The address components are Avito's own vocabulary
+ * of place kinds — `locality` is the one this command reads, and an unknown one
+ * is simply not it, rather than a shape to refuse.
+ */
+const COORDS_PAYLOAD = z.object({
+  point: z.object({ latitude: LATITUDE, longitude: LONGITUDE }),
+  normalizedAddress: requiredText(),
+  kind: requiredText(),
+  components: z.array(z.object({ kind: optionalText(), name: optionalText() })).default([]),
+  postalCode: optionalText(),
+});
 
 function decodeCoords(payload) {
-  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
-    throw new CommandExecutionError('Avito coords response has an unexpected shape');
-  }
+  const decoded = decode(COORDS_PAYLOAD, payload, 'Avito coords response');
+  // Avito orders components from the widest to the narrowest, so the last
+  // named locality is the one this address is in.
+  const locality = decoded.components
+    .filter((component) => component.kind === 'locality' && component.name)
+    .map((component) => component.name)
+    .at(-1) ?? null;
 
-  const point = payload.point;
-  if (!point || typeof point !== 'object' || Array.isArray(point)) {
-    throw new CommandExecutionError('Avito coords response has no point');
-  }
-  const { latitude, longitude } = point;
-  if (!finiteNumber(latitude) || !finiteNumber(longitude)) {
-    throw new CommandExecutionError('Avito coords response has malformed coordinates');
-  }
-  if (latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) {
-    throw new CommandExecutionError('Avito coords response has out-of-range coordinates');
-  }
-
-  const address = cleanText(payload.normalizedAddress);
-  if (!address) {
-    throw new CommandExecutionError('Avito coords response has no normalized address');
-  }
-  const kind = cleanText(payload.kind);
-  if (!kind) {
-    throw new CommandExecutionError('Avito coords response has no address kind');
-  }
-
-  const components = Array.isArray(payload.components) ? payload.components : [];
-  let locality = null;
-  for (const component of components) {
-    if (cleanText(component?.kind) === 'locality') {
-      const name = cleanText(component?.name);
-      if (name) locality = name;
-    }
-  }
-
-  const postalCode = cleanText(payload.postalCode) || null;
-
-  return { address, kind, locality, latitude, longitude, postalCode };
+  return {
+    address: decoded.normalizedAddress,
+    kind: decoded.kind,
+    locality,
+    latitude: decoded.point.latitude,
+    longitude: decoded.point.longitude,
+    postalCode: decoded.postalCode,
+  };
 }
 
 export default defineCommand({
@@ -105,7 +103,14 @@ export default defineCommand({
       help: 'Address as a person would type it, for example "Тверь, Советская улица, 11"',
     },
   ],
-  columns: ['address', 'kind', 'locality', 'latitude', 'longitude', 'postalCode'],
+  row: z.strictObject({
+    address: text(),
+    kind: text(),
+    locality: text().nullable(),
+    latitude: LATITUDE,
+    longitude: LONGITUDE,
+    postalCode: text().nullable(),
+  }),
   run: async (page, args) => {
     const address = normalizeAddress(args.address);
 

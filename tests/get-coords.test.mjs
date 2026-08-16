@@ -1,8 +1,8 @@
 // Offline checks for get-coords: the node flow plus the real browser half, against a
 // stubbed geocoder response.
-import { loadCommand, readCommandSource, readDecoderSource, runner } from './harness.mjs';
+import { loadCommand, readCommandSource, readPageSource, runner } from './harness.mjs';
 import { evaluateRunner } from './carrier.mjs';
-import { readCoords } from '../src/decoders/get-coords.mjs';
+import { readCoords } from '../src/browser/commands/get-coords.mjs';
 
 const { COMMAND } = await loadCommand('get-coords');
 const { check, assert, run } = runner();
@@ -98,11 +98,11 @@ check('an unknown address is a typed empty result, never a city centre', async (
 
 check('malformed, out-of-range and non-JSON responses fail closed', async () => {
   const cases = [
-    { observed: ok({ ...HOUSE, point: { latitude: '55.7', longitude: 37.6 } }), expect: /malformed coordinates/ },
-    { observed: ok({ ...HOUSE, point: { latitude: 95.1, longitude: 37.6 } }), expect: /out-of-range/ },
-    { observed: ok({ ...HOUSE, normalizedAddress: '   ' }), expect: /no normalized address/ },
-    { observed: ok({ ...HOUSE, kind: '' }), expect: /no address kind/ },
-    { observed: ok({ kind: 'house', normalizedAddress: 'x' }), expect: /no point/ },
+    { observed: ok({ ...HOUSE, point: { latitude: '55.7', longitude: 37.6 } }), expect: /point\.latitude: .*expected number/ },
+    { observed: ok({ ...HOUSE, point: { latitude: 95.1, longitude: 37.6 } }), expect: /point\.latitude: Too big/ },
+    { observed: ok({ ...HOUSE, normalizedAddress: '   ' }), expect: /normalizedAddress: must not be empty/ },
+    { observed: ok({ ...HOUSE, kind: '' }), expect: /kind: must not be empty/ },
+    { observed: ok({ kind: 'house', normalizedAddress: 'x' }), expect: /point: .*expected object/ },
     { observed: { ...ok(null), responseContentType: 'text/html', responseParseError: true }, expect: /did not return JSON/ },
     { observed: { ...ok(null), responseStatus: 503 }, expect: /HTTP 503/ },
     { observed: { ...ok(null), accessChallenge: true, responseStatus: 429 }, expect: /human verification|cooldown/ },
@@ -164,7 +164,7 @@ check('the browser half reports status, challenge and not-found from the real re
 });
 
 check('the primed origin is never text-scanned for a challenge', () => {
-  const source = readCommandSource('get-coords') + readDecoderSource('get-coords');
+  const source = readCommandSource('get-coords') + readPageSource('get-coords');
   assert(!/document\.body\.innerText/.test(source), 'coords text-scans a page for a challenge (F-044)');
   assert(/robots\.txt/.test(readCommandSource('get-coords')), 'coords no longer primes a lightweight origin');
 });

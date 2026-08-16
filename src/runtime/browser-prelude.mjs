@@ -19,17 +19,16 @@
  *      from `toString()`, so anything of that kind has to live inside a
  *      function.
  *
- * The whole prelude is shipped on every call rather than selected per command.
- * Choosing would mean maintaining a dependency list by hand, and forgetting an
- * entry fails only in the browser; a few kilobytes of expression is not worth
- * that class of bug.
+ * The whole prelude is shipped on every call. A per-command selection would be a
+ * dependency list maintained by hand, and a forgotten entry fails only in the
+ * browser.
  */
 
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
-const BROWSER_DIR = path.join(path.dirname(path.dirname(fileURLToPath(import.meta.url))), 'browser');
+const PRELUDE_DIR = path.join(path.dirname(path.dirname(fileURLToPath(import.meta.url))), 'browser', 'prelude');
 const UNEXPORTED_TOP_LEVEL = /^(?:const|let|var|function|async function|class)\s/;
 
 let cached = null;
@@ -77,9 +76,9 @@ function emit(file, name, value) {
 export async function browserPreludeSource() {
   if (cached != null) return cached;
   const parts = [];
-  for (const entry of fs.readdirSync(BROWSER_DIR).sort()) {
+  for (const entry of fs.readdirSync(PRELUDE_DIR).sort()) {
     if (!entry.endsWith('.mjs')) continue;
-    const filePath = path.join(BROWSER_DIR, entry);
+    const filePath = path.join(PRELUDE_DIR, entry);
     assertOnlyExportedDeclarations(entry, fs.readFileSync(filePath, 'utf-8'));
     const module = await import(pathToFileURL(filePath).href);
     for (const [name, value] of Object.entries(module)) {

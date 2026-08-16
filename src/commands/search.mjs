@@ -14,7 +14,8 @@ import {
   TimeoutError,
 } from '../runtime/errors.mjs';
 import { defineCommand } from '../runtime/command.mjs';
-import { searchContext } from '../decoders/search.mjs';
+import { searchContext } from '../browser/commands/search.mjs';
+import { LISTING_ROW, applyReservedFilter, listingRows } from '../site/listing.mjs';
 import {
   AVITO_BASE_URL,
   capabilityParameter,
@@ -107,26 +108,6 @@ function normalizeBoolean(value, label) {
   if (value == null || value === false || value === 'false') return false;
   if (value === true || value === 'true') return true;
   throw new ArgumentError(`${label} must be a boolean flag`);
-}
-
-// Avito offers no reservation filter, so this is a local predicate over the page it
-// returned: the page is only shortened, never refilled from the next one (F-048, D-024).
-function applyReservedFilter(rows, removeReserved, command) {
-  if (!removeReserved) return rows;
-  if (rows.some((row) => typeof row.apiReserved !== 'boolean')) {
-    throw new CommandExecutionError(
-      'Avito stopped reporting the reservation flag for part of the page; '
-      + 'remove-reserved is refused rather than applied to a guess',
-    );
-  }
-  const available = rows.filter((row) => row.apiReserved === false);
-  if (available.length === 0) {
-    throw new EmptyResultError(
-      command,
-      `every listing Avito returned on this page (${rows.length}) is reserved`,
-    );
-  }
-  return available;
 }
 
 function asExecutionError(error, action) {
@@ -340,20 +321,7 @@ export default defineCommand({
     { name: 'radius', type: 'int', help: 'Radius in km around --coords, limited to the values Avito offers for the location' },
     { name: 'remove-reserved', type: 'bool', default: false, help: 'Drop the listings Avito marks as reserved; Avito has no server-side filter for them, so the page comes back shorter' },
   ],
-  columns: [
-    'itemId',
-    'title',
-    'price',
-    'location',
-    'descriptionPreview',
-    'published',
-    'sellerName',
-    'sellerRating',
-    'sellerReviewsCount',
-    'imagesPreviews',
-    'url',
-    'searchUrl',
-  ],
+  row: LISTING_ROW,
   run: async (page, args) => {
     const query = String(args.query ?? '').trim();
     if (!query) {
@@ -476,19 +444,6 @@ export default defineCommand({
 
     const resultRows = applyReservedFilter(observedContext.resultRows, removeReserved, 'avito search');
 
-    return resultRows.map((row) => ({
-      itemId: row.apiItemId,
-      title: row.apiTitle,
-      price: row.apiPrice,
-      location: row.apiLocation,
-      descriptionPreview: row.apiDescriptionPreview,
-      published: row.apiPublished,
-      sellerName: row.apiSeller.name,
-      sellerRating: row.apiSeller.rating,
-      sellerReviewsCount: row.apiSeller.reviewsCount,
-      imagesPreviews: row.apiImages,
-      url: row.apiUrl,
-      searchUrl,
-    }));
+    return listingRows(resultRows, searchUrl);
   },
 });

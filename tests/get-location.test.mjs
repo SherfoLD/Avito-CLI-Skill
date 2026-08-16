@@ -4,7 +4,7 @@
 // than an obvious one — an exact-match requirement that keeps `--geo` from
 // listing the metro of a neighbouring city, and a refusal to truncate that
 // keeps 347 of Moscow's 357 stations from disappearing in silence.
-import { assertDeclaredColumns, loadCommand, runner } from './harness.mjs';
+import { assertRow, assertRows, loadCommand, runner } from './harness.mjs';
 
 const { COMMAND } = await loadCommand('get-location');
 const { check, assert, run } = runner();
@@ -108,7 +108,7 @@ check('resolver mode costs one directory read and returns the suggestions', asyn
   for (const row of rows) {
     assert(row.geoMode === null && row.geoId === null && row.geoName === null && row.geoGroup === null,
       'the geo columns must be empty in resolver mode');
-    assertDeclaredColumns(COMMAND, row);
+    assertRow(COMMAND, row);
   }
   assert(page.calls.goto.length === 1 && page.calls.goto[0] === HOMEPAGE,
     `expected one homepage navigation, got ${JSON.stringify(page.calls.goto)}`);
@@ -149,7 +149,7 @@ check('metro rows carry the line names as their group', async () => {
   assert(rows[0].geoGroup === 'Сокольническая', 'a single line is the group');
   assert(rows[2].geoGroup === 'Сокольническая, Замоскворецкая', 'an interchange lists both lines');
   assert(rows.every((row) => row.locationName === 'Москва'), 'locationName stays the city in geo mode');
-  for (const row of rows) assertDeclaredColumns(COMMAND, row);
+  assertRows(COMMAND, rows);
   assert(page.calls.fetchJson.length === 3, `geo mode costs three reads, got ${page.calls.fetchJson.length}`);
 });
 
@@ -228,13 +228,13 @@ check('a challenge on the homepage stops before any directory is read', async ()
 check('a drifted directory response fails closed instead of returning fewer rows', async () => {
   const cases = [
     [{ '/web/1/slocations': { result: {} } }, /unexpected shape/],
-    [{ '/web/1/slocations': { result: { locations: [{ id: 0, names: { 1: 'Москва' } }] } } }, /malformed row at index 0/],
+    [{ '/web/1/slocations': { result: { locations: [{ id: 0, names: { 1: 'Москва' } }] } } }, /result\.locations\.0\.id: Too small/],
     [{ '/web/1/search/locations': { result: { params: [] } } }, /unexpected shape/],
     [{ '/web/1/search/locations': capabilities({ id: 999 }) }, /capabilities for a different location/],
-    [{ '/web/1/search/locations': { result: { params: [{ parameters: [{ id: 'locationId', value: { id: 637640 } }] }] } } }, /missing metro\/district flags/],
+    [{ '/web/1/search/locations': { result: { params: [{ parameters: [{ id: 'locationId', value: { id: 637640 } }] }] } } }, /hasMetro: .*expected boolean/],
     [{ '/web/2/locations/metro': { stations: METRO.stations } }, /metro response has an unexpected shape/],
-    [{ '/web/2/locations/metro': { ...METRO, lines: [{ id: 1 }] } }, /malformed line/],
-    [{ '/web/2/locations/metro': { ...METRO, stations: [{ id: 100 }] } }, /malformed station at index 0/],
+    [{ '/web/2/locations/metro': { ...METRO, lines: [{ id: 1 }] } }, /lines\.0\.name: must not be empty/],
+    [{ '/web/2/locations/metro': { ...METRO, stations: [{ id: 100 }] } }, /stations\.0\.name: must not be empty/],
     [{ '/web/2/locations/metro': { ...METRO, stations: [METRO.stations[0], METRO.stations[0]] } }, /duplicate ID 100/],
   ];
   for (const [override, pattern] of cases) {

@@ -53,19 +53,22 @@ The visible fields are **not** in the flat item object:
 
 The flat fields remain as a fallback, and that is exactly why carrier drift is
 dangerous: the command will not fail, it will quietly return different
-semantics. The only automatic defence is the mandatory non-empty
+semantics. Nothing about the *shape* catches it — a fallback value is the right
+type — so the only automatic defence is the mandatory non-empty
 `descriptionPreview` in the strict fixtures, and that one does not catch price.
 
 ## Output shape
 
 The listing row is exactly 12 keys: `itemId`, `title`, `price`, `location`,
 `descriptionPreview`, `published`, `sellerName`, `sellerRating`,
-`sellerReviewsCount`, `imagesPreviews`, `url`, `searchUrl`. It is returned by
-`search`, `get-page`, `apply-filters` and `move-category`.
+`sellerReviewsCount`, `imagesPreviews`, `url`, `searchUrl`. It is one schema,
+`LISTING_ROW` in `src/site/listing.mjs`, imported by `search`, `get-page`,
+`apply-filters` and `move-category` (D-048).
 
-- 12 keys is the ceiling, and a column nests no deeper than 1. The slot freed by
-  D-038 is occupied by `published` (D-039); a new column is again possible only
-  in place of an existing one.
+- 12 keys is the ceiling, and a column nests no deeper than 1. Both are checked
+  against the schema when the module is imported. The slot freed by D-038 is
+  occupied by `published` (D-039); a new column is again possible only in place
+  of an existing one.
 - `searchUrl` repeats in every row: the output is an array of rows with no
   metadata envelope.
 - Page size belongs to Avito (50 listings, 25 reviews). No command has a count
@@ -134,8 +137,8 @@ The listing row is exactly 12 keys: `itemId`, `title`, `price`, `location`,
   the call.
 - **D-026 — the evidence layer is versioned.** What lives there is not draft
   reconnaissance but `verify/` — the only value-level check there is — and the
-  anonymised response samples in `fixtures/`, which is what makes "Avito changed"
-  demonstrable rather than assumed. Excluded by `.gitignore`: `fixtures/traces/`
+  anonymised response samples in `evidence/`, which is what makes "Avito changed"
+  demonstrable rather than assumed. Excluded by `.gitignore`: `evidence/traces/`
   (416 MB, and they may carry session headers), HTML dumps, logs, `.env`, `*.har`.
 - **D-044 — attach to a browser the user already runs, never launch one.** The
   transport takes a profile directory (`--browser-profile`, or
@@ -178,6 +181,89 @@ The listing row is exactly 12 keys: `itemId`, `title`, `price`, `location`,
   purpose — `search --district` because it builds `district[<n>]`,
   `get-location --geo districts` because it lists them — so the shared lookup
   accepts both spellings and says so.
+
+- **D-048 — the row contract is a schema, checked where a row exists.** It used
+  to be written in three places and enforced in none of them at the moment a row
+  was produced: the `columns` array named the keys, `verify/<command>.json`
+  repeated them with their types and formats, and a 563-line static audit read
+  source text through a hand-written tokenizer to guess which object literal was
+  a row. Now each descriptor carries `row: z.strictObject({...})`, `columns` is
+  derived from it, and `bin/avito.mjs` and `tests/harness.mjs` parse every row
+  through it. What that changed, beyond deleting three scripts and both
+  baselines:
+  - an undeclared key is a failure instead of a value that appears in `-f json`
+    and disappears in `-f table`;
+  - a column present with the value `undefined` is a failure, where the old
+    key-count check counted it as present — two synthetic carriers were doing
+    exactly that with `published`, and `JSON.stringify` would have dropped the
+    column;
+  - the four listing commands share one `LISTING_ROW` in `src/site/listing.mjs`,
+    along with the `api*` mapping and the reservation filter that had been
+    copy-pasted into all four;
+  - `verify/*.json` keeps only what is true of *its own request* — the address
+    `get-coords` resolved, the page number in `get-page`'s `searchUrl` — because
+    everything general is now checked on every run rather than on a live one;
+  - Avito's own payloads are read with the same schemas through `decode`, so
+    drift names the path (`point.latitude: expected number, received string`)
+    instead of saying "has an unexpected shape".
+  What a schema cannot say stayed code: an echo is still not an application, so
+  every postcondition is still an explicit comparison against the carrier that
+  proves the value took effect. And what could be neither — an argument bent into
+  range, `return []` in a catch, `?? 'unknown'`, an Avito identifier pinned in
+  source — moved from regular expressions over source text to four ESLint rules
+  over a real AST, where a comment is not a node and a catch block is a scope.
+
+- **D-049 — a verify fixture is a schema over the whole returned array.** The
+  fixtures were JSON in a small dialect — `rowCount`, `patterns`, `notEmpty`,
+  `mustNotContain`, `mustBeTruthy` — applied by a matcher written by hand. Every
+  rule it could express was a rule about one column of every row, which left the
+  questions a live check exists to ask unaskable: is exactly one sidebar row the
+  current category, are these 25 reviews 25 different reviews, is the count the
+  count this route has. A fixture now exports `args` and `rows`, a
+  `z.array(...)` over what the command returned:
+
+  ```js
+  export const rows = z.array(z.looseObject({ kind: z.literal('house') }))
+    .length(1);
+  ```
+
+  The element is a `looseObject` because the row already satisfied the command's
+  `row` schema: naming a column here adds a constraint rather than restating one,
+  and the columns left unnamed stay visible to a `.refine` over the set.
+
+  Two things this costs. A fixture is executable now, so it can be vacuous in
+  ways JSON could not — `check-verify-fixtures` answers that by refusing a
+  fixture that names no column and carries neither an exact count nor a rule over
+  the set, which is what a plausible `.min(1).max(50)` range amounts to. And
+  `verify/` is no longer readable as data; `tests/verify-fixtures.test.mjs`
+  compensates by loading every fixture offline and proving the matcher reports a
+  violation rather than passing it.
+
+  Three claims that were already vacuous went out with the dialect: `mustBeTruthy`
+  on `rank`, on `reviewId` and `notEmpty` on `authorName` restated what the row
+  schema makes impossible. `notEmpty` on `attributes` was worse than vacuous —
+  it compared `String({})`, which is never empty — and is now a real check that
+  the listing carries at least one attribute.
+
+- **D-050 — three names were describing something else.** Renamed, with nothing
+  else changed:
+  - `src/decoders/` → `src/browser/commands/`. Nothing in it was a decoder in the
+    sense the name promised: eight of the nine files fetch, and the authoring
+    skill said three times that a decoder is a pure function with no network.
+    They are the page half of one command, so they now sit beside the shared page
+    code under `src/browser/`, and `src/browser/prelude/` names the other half by
+    what makes it different — every file in it is inlined into every call.
+  - `fixtures/` → `evidence/`. Two directories were called fixtures in prose, and
+    a section of the authoring skill existed only to say they are different
+    things. `verify/` holds expectations, maintained forever; `evidence/` holds
+    dated anonymised samples that are never edited.
+  - `cdp-command-author` / `cdp-command-repair` → `write-command` / `fix-command`.
+    The prefix named the transport, which is the one thing those skills are not
+    about.
+
+  The offline suites follow the same rule they always did — one per command,
+  named after it. `search` keeps two, split by which side of the CDP boundary
+  they exercise: `search.test.mjs` and `search.page.test.mjs`.
 
 ## Facts
 

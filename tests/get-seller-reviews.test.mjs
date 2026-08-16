@@ -7,9 +7,9 @@
 import { loadCommand, runner } from './harness.mjs';
 import { evaluateRunner } from './carrier.mjs';
 // The browser half of this command is the shared JSON read: it has no decoding of
-// its own, so there is nothing in src/decoders/ for it and the suite covers the
+// its own, so there is nothing in src/browser/commands/ for it and the suite covers the
 // shared function directly.
-import { readJsonResponse } from '../src/browser/json.mjs';
+import { readJsonResponse } from '../src/browser/prelude/json.mjs';
 
 const { COMMAND } = await loadCommand('get-seller-reviews');
 const { check, assert, run } = runner();
@@ -314,7 +314,7 @@ check('the whole server page is returned, never a local slice of it', async () =
 });
 
 check('a foreign item, a malformed entry and a challenge all stop the command', async () => {
-  const foreignItem = makePage((url) => ok(itemPayload({ id: '1234567890' })));
+  const foreignItem = makePage(() => ok(itemPayload({ id: '1234567890' })));
   const idError = await failure(COMMAND.run(foreignItem, { itemUrl: ITEM_URL }));
   assert(idError.code === 'COMMAND_EXEC' && idError.message.includes(ITEM_ID), 'a foreign item must fail closed');
 
@@ -322,7 +322,7 @@ check('a foreign item, a malformed entry and a challenge all stop the command', 
   const entryError = await failure(COMMAND.run(malformed, { itemUrl: ITEM_URL }));
   assert(entryError.code === 'COMMAND_EXEC', `a malformed entry produced ${entryError.code}`);
 
-  const blocked = makePage((url) => ({
+  const blocked = makePage(() => ({
     responseStatus: 429, responseContentType: 'text/html', responseParseError: true, accessChallenge: true, payload: null,
   }));
   const blockedError = await failure(COMMAND.run(blocked, { itemUrl: ITEM_URL }));
