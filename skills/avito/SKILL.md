@@ -12,6 +12,33 @@ command already does that, with the guards that make its answer trustworthy.
 
 Add `-f json` when you need to read fields programmatically.
 
+## Before the first command
+
+Every read happens inside a browser the user already owns, so the CLI has to be
+told which one. It remembers the answer in a file, which is the only thing that
+survives between your shells — an `export` in the user's terminal never reaches
+you. This is once per machine.
+
+Run `avito browser`. It prints which browser will be used, whether that endpoint
+is actually there, and every browser on this machine offering a connection right
+now.
+
+- **Reachable already** — nothing to do.
+- **Candidates listed, none remembered** — do not choose for the user. Show them
+  the list, ask which browser they want Avito read through, and then run
+  `avito browser use --profile <dir>` with their answer.
+- **Nothing listed** — no browser here has debugging on. Ask the user to open
+  `chrome://inspect/#remote-debugging` in the browser they actually use and turn
+  it on there, then run `avito browser` again.
+
+Never launch a browser yourself, and never point this at a fresh profile. Avito
+refuses a profile with no history outright, and the page it answers with blames
+the IP, which sends you to debug the wrong thing.
+
+The first command of a session opens the connection and the browser asks the
+person in front of it to approve it — one prompt per session, and until they
+click it the connection simply waits.
+
 ## The chain
 
 State travels in one carrier: the canonical `searchUrl`, which every listing row
@@ -113,6 +140,13 @@ them.
 
 A CAPTCHA or a rate limit is a full stop. Do not interact with it, do not repeat
 the request, do not try a different route to the same data.
+
+One refusal is not about Avito at all: **`could not reach the browser: …`** means
+the CLI never got as far as the site. The message names the endpoint it tried.
+Run `avito session status` to see which browser is configured and whether it is
+there, then take it to the user — a browser that is closed, or has debugging
+switched off, or an approval prompt nobody clicked, is theirs to fix, not
+something to retry around.
 
 Two known rough edges: `get-page` past the last page of results reports a
 CAPTCHA or rate-limit cooldown when it usually means "there is no such page", and

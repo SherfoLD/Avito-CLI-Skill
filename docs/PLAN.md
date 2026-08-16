@@ -113,12 +113,8 @@ in between (F-061).
 ## Phase 21 — What the schemas left behind
 
 D-048 moved the row contract into the descriptors and D-049 the fixtures.
-Three things they exposed rather than solved:
+Two things they exposed rather than solved:
 
-- [ ] Re-run `npm run verify` for all ten commands. Every fixture was rewritten
-      to drop what the schema now owns, and none of them has been run live since.
-      Until that happens "all ten pass" describes the previous shape of the
-      fixtures, not these.
 - [ ] Tighten what the fixtures claim, now that they can claim it. Each was
       converted faithfully (D-049), so most still say only what the JSON dialect
       could. Reading one live run per command would answer, for example: is the

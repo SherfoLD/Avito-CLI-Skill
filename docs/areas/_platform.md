@@ -166,6 +166,8 @@ The listing row is exactly 12 keys: `itemId`, `title`, `price`, `location`,
   an open door onto a logged-in session for every process on the machine.
   `AVITO_BROKER=off` restores per-command connections, which is right for a
   browser started with `--remote-debugging-port`, where nothing ever asks.
+  That tab is created `hidden`, so a chain of commands costs the person in front
+  of the browser nothing at all (F-073).
 
 - **D-047 — there is a third kind of shared code, and it needed its own place.**
   `src/browser/` is what runs inside the page; `src/runtime/` is scaffolding
@@ -264,6 +266,28 @@ The listing row is exactly 12 keys: `itemId`, `title`, `price`, `location`,
   The offline suites follow the same rule they always did — one per command,
   named after it. `search` keeps two, split by which side of the CDP boundary
   they exercise: `search.test.mjs` and `search.page.test.mjs`.
+
+- **D-051 — the browser choice is a file, because an agent has no shell to keep
+  it in.** `browser.json` in the state directory, written by `avito browser use`
+  and read by every later run. The transports were reachable only through a flag
+  or an environment variable, and both are per-invocation: the consumer agent
+  starts a new shell for every command, so the only setting a person could make
+  was one it would never see (F-074). Resolution is by layer — command line,
+  environment, file, default — and a layer that names any transport decides it
+  outright. Field-by-field merging would let a remembered profile beat a
+  `--browser-url` passed on the spot, since the profile is consulted first
+  within a layer. `resolveBrowserOptions` is the only place that collapses the
+  four, so what a command connects to and what `avito session status` prints
+  cannot disagree.
+
+- **D-052 — `avito browser` finds the candidates instead of describing where to
+  look.** Debugging leaves `DevToolsActivePort` in the profile root, so the
+  browsers offering a connection can be listed rather than explained: one scan
+  of the platform's application-support root, three levels deep. This is what
+  makes the choice askable — the agent has a list to put in front of the person
+  instead of a path to guess at, and the empty result is itself the answer
+  "nothing here has debugging on". The README used to name a Chrome path that
+  was wrong on the machine it was written on.
 
 ## Facts
 
@@ -373,6 +397,37 @@ The listing row is exactly 12 keys: `itemId`, `title`, `price`, `location`,
   only remedy is to ask for the click, never to reconnect in a loop. Confirmed
   both ways in one session: the same endpoint, the same profile and the same
   code timed out unapproved and connected on the first try once approved.
+
+- **F-073 — a tab has three ways to be born and only one of them is free.**
+  Measured on Chromium 151, macOS, `Target.createTarget` with the frontmost
+  application recorded before and after. Plain: the browser takes the screen
+  (`ghostty → Helium`) and the tab joins the strip. `background: true`: no
+  application switch, a tab in the strip, and a document that reports
+  `visibilityState: 'hidden'` — Chromium throttles it, and the protocol
+  documents the flag as unsupported on macOS. `hidden: true`: no application
+  switch, no tab in the strip, absent even from `Target.getTargets`, and the
+  page still reports `visible`, keeps the profile's cookies (the geo directory
+  answered with the profile's own search history) and renders — all ten fixtures
+  pass on hidden tabs, `get-item` and its rendered-page fallback included. What
+  remains is the approval prompt of F-071, once per connection rather than once
+  per command.
+
+- **F-074 — the broker was reporting itself instead of the browser.** Found by
+  running the consumer skill from a different agent on this machine, 2026-08-16.
+  Nothing had told the CLI which browser to use — the skill never mentioned one,
+  and the only ways to say it were a flag and an environment variable, neither
+  of which survives the fresh shell an agent opens per command. So the default
+  port was tried, nothing was listening, and what the caller got was `the
+  session broker did not start` after 20 seconds. The true message existed and
+  was actionable (`no Chrome DevTools endpoint at http://127.0.0.1:9222`), but
+  the broker is spawned detached with `stdio: 'ignore'`, so it died in the
+  child. `avito session status` then answered `not running — the next command
+  will start one`, which describes a healthy idle machine; it consulted its own
+  state file and never looked at a browser. Three layers, each naming the wrong
+  subject. The child now writes its startup cause where the parent reads it,
+  which also ends the wait at 0.2s instead of 20, and `session status` resolves
+  and probes the endpoint it would use. Same species as F-061 and F-069: the
+  data was never wrong, the diagnosis was.
 
 ## Risks
 

@@ -22,8 +22,9 @@ import * as http from 'node:http';
 import * as path from 'node:path';
 import { randomUUID } from 'node:crypto';
 
-import { connectToBrowser } from './cdp-connection.mjs';
-import { BROKER_STATE_FILE, brokerStateDir } from './broker-client.mjs';
+import { HIDDEN_TAB, connectToBrowser } from './cdp-connection.mjs';
+import { BROKER_STATE_FILE, writeBrokerStartError } from './broker-client.mjs';
+import { resolveBrowserOptions, stateDir } from './browser-config.mjs';
 
 const DEFAULT_IDLE_SECONDS = 300;
 const MAX_BODY_BYTES = 4 * 1024 * 1024;
@@ -119,7 +120,7 @@ export async function startBroker({
         return;
       }
       if (url.pathname === '/page/open') {
-        const { targetId } = await connection.send('Target.createTarget', { url: 'about:blank' });
+        const { targetId } = await connection.send('Target.createTarget', HIDDEN_TAB);
         const { sessionId } = await connection.send('Target.attachToTarget', { targetId, flatten: true });
         await connection.send('Page.enable', {}, sessionId);
         await connection.send('Runtime.enable', {}, sessionId);
@@ -169,7 +170,7 @@ export async function startBroker({
   await new Promise((resolve) => { server.listen(0, '127.0.0.1', resolve); });
   const { port } = server.address();
 
-  fs.mkdirSync(brokerStateDir(), { recursive: true });
+  fs.mkdirSync(stateDir(), { recursive: true });
   fs.writeFileSync(
     BROKER_STATE_FILE,
     `${JSON.stringify({ port, token, pid: process.pid, endpoint }, null, 2)}\n`,
@@ -187,10 +188,15 @@ export async function startBroker({
 
 // Started as its own process by the CLI. Options arrive through the environment
 // because this process is detached and has no argv of its own worth parsing.
+//
+// It also has no stderr anyone reads, so a startup failure is written where the
+// process that spawned it will look for it. Without that, the only thing the
+// caller ever learns is that no broker appeared (F-074).
 if (process.argv[1] && path.resolve(process.argv[1]) === path.resolve(new URL(import.meta.url).pathname)) {
-  await startBroker({
-    browserWs: process.env.AVITO_BROWSER_WS,
-    browserProfile: process.env.AVITO_BROWSER_PROFILE,
-    browserUrl: process.env.AVITO_BROWSER_URL,
-  });
+  try {
+    await startBroker(resolveBrowserOptions());
+  } catch (error) {
+    writeBrokerStartError(error instanceof Error ? error.message : String(error));
+    process.exit(1);
+  }
 }

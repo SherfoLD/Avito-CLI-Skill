@@ -23,9 +23,10 @@
  * Nothing here retries. A refusal is returned to the caller as it arrived.
  */
 
-import { COMMAND_TIMEOUT_SECONDS, connectToBrowser } from './cdp-connection.mjs';
+import { COMMAND_TIMEOUT_SECONDS, HIDDEN_TAB, connectToBrowser } from './cdp-connection.mjs';
 import { browserPreludeSource } from './browser-prelude.mjs';
 import { callBroker, ensureBroker } from './broker-client.mjs';
+import { resolveBrowserOptions } from './browser-config.mjs';
 
 const NAVIGATION_TIMEOUT_SECONDS = 30;
 
@@ -108,7 +109,7 @@ return await __command(${JSON.stringify(args ?? {})}, ${BROWSER_ENV_SOURCE});
 /** One connection for this process only. Used when the broker is turned off. */
 async function directBackend(options) {
   const { connection } = await connectToBrowser(options);
-  const { targetId } = await connection.send('Target.createTarget', { url: 'about:blank' });
+  const { targetId } = await connection.send('Target.createTarget', HIDDEN_TAB);
   const { sessionId } = await connection.send('Target.attachToTarget', { targetId, flatten: true });
   await connection.send('Page.enable', {}, sessionId);
   await connection.send('Runtime.enable', {}, sessionId);
@@ -174,9 +175,13 @@ export function brokerEnabled() {
 /**
  * A tab is created per call rather than reused, so no command inherits another's
  * page. The connection is what survives a command, not the tab.
+ *
+ * Which browser gets talked to is settled here, once, before either backend
+ * sees it: both would otherwise resolve it separately and could disagree.
  */
 export async function openBrowserContext(options = {}) {
-  const backend = brokerEnabled() ? await brokerBackend(options) : await directBackend(options);
+  const target = resolveBrowserOptions(options);
+  const backend = brokerEnabled() ? await brokerBackend(target) : await directBackend(target);
   return {
     page: new PageContext(backend),
     release: () => backend.release(),

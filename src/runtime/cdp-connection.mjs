@@ -14,6 +14,18 @@ export const DEFAULT_BROWSER_URL = 'http://127.0.0.1:9222';
 export const COMMAND_TIMEOUT_SECONDS = 30;
 
 /**
+ * `Target.createTarget` arguments for the tab a command works in.
+ *
+ * A target created plainly is a foreground tab: the browser takes the screen
+ * away from whatever the person was doing, and does it once per command. A
+ * `hidden` one is in no tab strip and in no `Target.getTargets` listing, while
+ * the page still reports `visibilityState: 'visible'` and carries the profile's
+ * cookies (F-073). Its life is bounded by the connection that created it, so
+ * the broker's tabs go when the broker does.
+ */
+export const HIDDEN_TAB = { url: 'about:blank', hidden: true };
+
+/**
  * There are two ways a Chromium exposes the protocol, and they are not
  * interchangeable.
  *
@@ -42,7 +54,7 @@ export function webSocketUrlFromProfile(profileDir) {
   } catch {
     throw new Error(
       `${portFile} does not exist, so that profile has no debugging session. `
-      + 'Turn it on at chrome://inspect/#remote-debugging in that browser.',
+      + 'Turn it on at chrome://inspect/#remote-debugging in that browser, then run `avito browser` to check.',
     );
   }
   const [port, socketPath] = contents.split('\n');
@@ -61,15 +73,15 @@ export async function webSocketUrlFromHttp(browserUrl, timeoutSeconds = COMMAND_
   } catch (error) {
     throw new Error(
       `no Chrome DevTools endpoint at ${browserUrl} (${error instanceof Error ? error.message : String(error)}). `
-      + 'Start the browser with --remote-debugging-port and point AVITO_BROWSER_URL at it, or set '
-      + 'AVITO_BROWSER_PROFILE to the profile directory of a browser where chrome://inspect debugging is on.',
+      + 'Run `avito browser` to see which browsers on this machine have debugging on, and '
+      + '`avito browser use --profile <dir>` to pick one.',
       { cause: error },
     );
   }
   if (response.status === 404) {
     throw new Error(
       `${browserUrl} answered 404: that browser serves the WebSocket only, which is what `
-      + 'chrome://inspect debugging does. Set AVITO_BROWSER_PROFILE to its profile directory instead.',
+      + 'chrome://inspect debugging does. Run `avito browser use --profile <its profile directory>` instead.',
     );
   }
   if (!response.ok) throw new Error(`Chrome DevTools endpoint answered ${response.status}`);
@@ -81,10 +93,15 @@ export async function webSocketUrlFromHttp(browserUrl, timeoutSeconds = COMMAND_
   return webSocketUrl;
 }
 
+/**
+ * Options arrive already resolved: which flag, variable or remembered choice
+ * won is decided once, in `browser-config.mjs`. Reading the environment again
+ * here would let a profile from one layer beat a URL from a higher one.
+ */
 export async function resolveWebSocketUrl({
-  browserWs = process.env.AVITO_BROWSER_WS,
-  browserProfile = process.env.AVITO_BROWSER_PROFILE,
-  browserUrl = process.env.AVITO_BROWSER_URL || DEFAULT_BROWSER_URL,
+  browserWs,
+  browserProfile,
+  browserUrl = DEFAULT_BROWSER_URL,
 } = {}) {
   if (browserWs) return browserWs;
   if (browserProfile) return webSocketUrlFromProfile(browserProfile);

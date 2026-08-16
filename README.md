@@ -1,75 +1,194 @@
-# avito-cdp
+# Avito CDP skill
 
-A private, read-only Avito CLI driving the user's own Chrome over the DevTools
-Protocol. Ten commands: search, page, filters, categories, listing detail, seller
-reviews, and the resolvers those need.
+CLI + skill позволяющий ИИ агентам взаимодействовать с Avito. Присутвует весь необходимый 
+функционал для выбора необходимых товаром - поиск, фильтры, карточки, информация о продавце.
 
-Nothing here works around access control. Anonymous requests from Node are
-refused by the site (`429`, `server: QRATOR`, a CAPTCHA), so every read happens
-inside a browser the user is already logged into, and a challenge is a full stop
-rather than something to get past.
+Работа CLI ведется через ваш браузер с помощью Chrome Devtools MCP, который поддерживает любой агент.
+Личный браузер, в котором выполнен вход в авито, позволяет безопастно искать необходимую информацию с уменьшеным риском блокировоки запросов.
 
-## State
+## Что умеет
 
-All ten commands run, and each passes a strict live verify against its fixture.
-Two Avito categories out of twelve currently refuse entirely and two more have
-never been checked — the refusal arrives on the call rather than being visible
-in advance. `docs/STATUS.md` carries the register and the standing blockers.
+- **Искать и листать.** Запрос, гео (город, метро, район, координаты с радиусом),
+  вторая и следующие страницы выдачи.
+- **Сужать выдачу.** Прочитать все фильтры категории вместе со значениями и тем,
+  что уже применено, и применить свой набор.
+- **Ходить по дереву категорий.** Увидеть, куда можно перейти с текущей выдачи.
+- **Открывать объявление целиком.** Полный текст описания и фотографии в
+  оригинальном размере.
+- **Читать отзывы продавца** по ссылке на его объявление.
+- **Отдавать данные как данные.** `--format json` для машины, `--format table`
+  для человека; у каждой команды строгая схема строки, и строка либо проходит её,
+  либо команда падает с типизированной ошибкой. Правдоподобных, но неверных
+  данных не бывает.
 
-The browser has to be one you already use, with debugging enabled at
-`chrome://inspect/#remote-debugging`. A browser launched for automation carries
-an empty profile, and Avito refuses an empty profile outright.
-
-## Layout
+Всё состояние переносится одним значением — канонический `searchUrl`, который
+возвращает каждая команда выдачи:
 
 ```
-bin/avito.mjs             CLI entry — argument parsing, --help, exit codes
-src/runtime/              the CDP client, the broker, the descriptor and row contract, typed errors
-src/commands/             the Node half of each command: arguments, guards, postconditions
-src/browser/commands/     the page half of each command, shipped into the page and run there
-src/browser/prelude/      page-side code shared by all of them, inlined into every call
-src/site/                 shared Avito knowledge that runs in Node
-tests/                    the offline suite — no network, no browser
-scripts/                  the static checks, and the live verify runner
-verify/                   one fixture per command: what a live run must answer with
-evidence/                 anonymised response samples, dated, never edited
-docs/                     project memory — state, plan, one file per command domain
-skills/avito/             the consumer skill: how an agent uses the finished CLI
-.agents/skills/           the development skills: write-command, fix-command
+get-location "Тверь"                → locationId
+search "ddr5 32gb" --location-id …  → строки + searchUrl
+get-filters <searchUrl>             → ключи, значения, что уже применено
+apply-filters <searchUrl> --set …   → суженная выдача + новый searchUrl
+get-page <searchUrl> --page 2       → следующая страница
+get-item <url>                      → полный текст и оригиналы фото
 ```
 
-## Checks
+## Команды
+
+| Команда | Что делает |
+|---|---|
+| `search` | начинает поиск: первая страница выдачи и `searchUrl` для всего остального |
+| `get-page` | другая страница той же выдачи |
+| `get-filters` | все фильтры, применимые к этому `searchUrl`, с их значениями |
+| `apply-filters` | применяет фильтры и возвращает суженную выдачу |
+| `get-categories` | категория, которую Avito определил, и куда из неё можно перейти |
+| `move-category` | переносит выдачу в другую категорию |
+| `get-item` | одно объявление целиком: описание и оригиналы фотографий |
+| `get-seller-reviews` | лента отзывов продавца по ссылке на объявление |
+| `get-location` | город или регион → `locationId`, а также ID метро и районов |
+| `get-coords` | адрес → пара координат для `--coords` |
+
+Плюс два служебных набора, которые ничего не читают с сайта: `avito browser`
+(какой браузер используется, какие доступны, запомнить или забыть выбор) и
+`avito session` (состояние живого соединения, `stop`). Аргументы каждой команды —
+в `avito <command> --help`.
+
+## Установка
+
+### 1. Репозиторий
+
+```sh
+git clone <repo> avito-cdp && cd avito-cdp
+npm install
+npm link          # кладёт `avito` в PATH
+```
+
+Нужен Node 20+. Проверка: `avito --help`.
+
+### 2. Скилл для вашего агента
+
+В [skills/avito/](skills/avito/) лежит consumer-скилл — он объясняет агенту, как
+пользоваться готовым CLI. Попросите своего агента перенести его в глобальный
+конфиг, например:
+
+> Скопируй `skills/avito/` из этого репозитория в мои глобальные скиллы
+> (`~/.claude/skills/avito/`) и проверь, что `avito --help` работает.
+
+После этого агент видит скилл в любом проекте, а не только здесь. Скилл сам
+объясняет агенту, что выполнять дальше.
+
+### 3. Браузер
+
+CLI не запускает браузер, он подключается к вашему.
+
+#### Вариант A (рекомендуется)
+
+Chrome 144+ умеет включать отладку в уже запущенном браузере, без перезапуска и
+без потери профиля.
+
+1. Поставьте `chrome-devtools-mcp` — проще всего поручить агенту:
+
+   > Добавь мне MCP-сервер chrome-devtools: `npx -y chrome-devtools-mcp@latest
+   > --autoConnect`.
+
+   Флаг `--autoConnect` как раз и означает «подключайся к уже запущенному
+   браузеру», а не «запусти новый».
+
+2. В браузере откройте `chrome://inspect/#remote-debugging` и включите отладку.
+   Браузер запишет сокет в файл `DevToolsActivePort` в корне каталога профиля.
+
+3. Скажите CLI, какой браузер нужно испол. Искать каталог руками не нужно — `avito
+   browser` показывает все браузеры, которые прямо сейчас предлагают соединение:
+
+   ```sh
+   $ avito browser
+   browser: debugging port http://127.0.0.1:9222
+   chosen by: the default
+   reachable: no — nothing is listening on that debugging port
+
+   Offering a connection right now (1):
+     /Users/bat/Library/Application Support/net.imput.helium
+
+   Remember one with `avito browser use --profile <dir>`.
+
+   $ avito browser use --profile "/Users/bat/Library/Application Support/net.imput.helium"
+   remembered: profile /Users/bat/Library/Application Support/net.imput.helium
+   written to: /Users/bat/.avito-cdp/browser.json
+   ```
+
+   Выбор запоминается в `~/.avito-cdp/browser.json`.
+
+При первом подключении браузер покажет модальное окно с разрешением на использование CDP.
+Далее соединение держит брокер, а команды выполняются через скрытые от человек вкладки Avito.
+
+#### Вариант B
+
+Работает, но требует внимания к профилю. Полностью закройте Chrome и запустите
+его заново со своим обычным профилем и открытым портом:
+
+```sh
+open -a "Google Chrome" --args --remote-debugging-port=9222
+avito browser use --url http://127.0.0.1:9222
+export AVITO_BROKER=off        # здесь никто не спрашивает разрешения
+avito search "ddr5 32gb"
+```
+
+Не подставляйте сюда `--user-data-dir` со свежим пустым каталогом.
+Помните, что открытый порт отладки на профиле с вашей сессией доступен любому
+локальному процессу — DevTools об этом предупреждает;
+
+### Если что-то не подключается
+
+`avito session status` печатает и состояние соединения, и то, к какому браузеру
+CLI собирается идти, откуда он это взял и есть ли там вообще endpoint.
+
+---
+
+# Разработка
+
+## Раскладка
+
+```
+bin/avito.mjs             точка входа CLI — разбор аргументов, --help, коды выхода
+src/runtime/              CDP-клиент, брокер, контракт дескриптора и строки, типизированные ошибки
+src/commands/             Node-половина каждой команды: аргументы, guard'ы, постусловия
+src/browser/commands/     страничная половина, уезжает в страницу и выполняется там
+src/browser/prelude/      общий страничный код, инлайнится в каждый вызов
+src/site/                 общее знание об Avito, выполняется в Node
+tests/                    офлайн-набор — без сети и без браузера
+scripts/                  статические проверки и раннер live-верификации
+verify/                   по фикстуре на команду: чем обязан ответить живой запуск
+evidence/                 анонимизированные образцы ответов, датированные, не редактируются
+docs/                     память проекта — состояние, план, файл на домен
+skills/avito/             consumer-скилл: как агент пользуется готовым CLI
+.agents/skills/           скиллы разработки: write-command, fix-command
+```
+
+## Проверки
 
 ```sh
 npm install
-npm run check      # lint, every gate, and the offline suite
-npm run lint       # eslint, including the four rules in scripts/lib/eslint-rules.mjs
-npm test           # the offline suite alone
-npm run verify     # live: a command against its verify fixture (needs Chrome)
+npm run check      # линт, все гейты и офлайн-набор
+npm run lint       # eslint, включая четыре правила из scripts/lib/eslint-rules.mjs
+npm test           # только офлайн-набор
+npm run verify     # live: команда против своей фикстуры (нужен браузер)
 ```
 
-`scripts/README.md` explains what each gate defends. In short: a command declares
-its output as a schema and every row is parsed through it before the caller sees
-it, so a row cannot carry a key the descriptor does not; arguments are refused
-rather than clamped; missing data never becomes a fallback value; Avito's
-identifiers are never hardcoded; nothing session-bound is committed; and every
-command has a verify fixture saying what its own request must come back with.
+## Как здесь работать
 
-## Working here
+Сначала [AGENTS.md](AGENTS.md), затем [docs/STATUS.md](docs/STATUS.md) и файл
+домена того, что вы трогаете.
 
-Read [AGENTS.md](AGENTS.md) first, then [docs/STATUS.md](docs/STATUS.md) and the
-domain file for whatever you are touching.
+- Пишете или меняете команду → [.agents/skills/write-command/SKILL.md](.agents/skills/write-command/SKILL.md)
+- Команда сломалась → [.agents/skills/fix-command/SKILL.md](.agents/skills/fix-command/SKILL.md)
+- Пользуетесь готовым CLI → [skills/avito/SKILL.md](skills/avito/SKILL.md)
 
-- Writing or changing a command → [.agents/skills/write-command/SKILL.md](.agents/skills/write-command/SKILL.md)
-- A command that broke → [.agents/skills/fix-command/SKILL.md](.agents/skills/fix-command/SKILL.md)
-- Using the finished CLI → [skills/avito/SKILL.md](skills/avito/SKILL.md)
+Разработка водит браузер через Chrome DevTools MCP. Поставляемый код — нет: он
+говорит с Chrome через `src/runtime/cdp.mjs`.
 
-Development drives Chrome through the Chrome DevTools MCP tools. The shipped code
-does not: it talks to Chrome through `src/runtime/cdp.mjs`.
+## Правило, из которого следует остальное
 
-## The rule the rest follow from
-
-A command returns correct data or it throws a typed error. There is no third
-outcome — no fallback value, no sentinel row, no empty array standing in for a
-failed fetch. A command that returns plausible, wrong data is worse than one that
-fails, because nobody goes looking.
+Команда возвращает корректные данные или бросает типизированную ошибку. Третьего
+исхода нет — ни значения по умолчанию, ни строки-заглушки, ни пустого массива
+вместо неудавшегося запроса. Команда, вернувшая правдоподобные неверные данные,
+хуже упавшей, потому что проверять никто не пойдёт.

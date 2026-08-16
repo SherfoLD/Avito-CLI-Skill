@@ -7,9 +7,9 @@ How each command is built is in its domain file, [docs/areas/](areas/).
 
 ## Commands
 
-Ten commands, all read-only. `npm run check` is green; the offline suite is 199
-checks across fifteen suites. No fixture has been run live since the row contract
-moved into the descriptor schemas (D-048, D-049) — phase 21 opens with that.
+Ten commands, all read-only. `npm run check` is green; the offline suite is 206
+checks across sixteen suites. All ten fixtures pass live against the descriptor
+schemas (D-048, D-049).
 
 The row contract is a `z.strictObject` in each descriptor: `columns` is derived
 from it, the CLI parses every row through it before printing, and the offline
@@ -19,9 +19,14 @@ can express is four ESLint rules over the AST (`npm run lint`).
 
 The browser has to be one the user already runs, with debugging on at
 `chrome://inspect/#remote-debugging` — a purpose-launched empty profile is
-refused by Avito outright (D-044, F-068). The connection is held for the session
-by a broker; `avito session status` and `avito session stop` make it visible
-(D-045).
+refused by Avito outright (D-044, F-068). Which browser that is gets chosen once
+and remembered in `browser.json`: `avito browser` lists the ones offering a
+connection, `avito browser use` writes the answer down, and a file is the only
+form of this setting an agent can see, since it opens a new shell per command
+(D-051, D-052, F-074). The connection is held for the session by a broker;
+`avito session status` reports it and the browser it would use (D-045). A
+command's tab is hidden — no tab strip entry, no application switch, so the only
+interruption left is the one approval prompt per connection (F-071, F-073).
 
 | Command | Domain | Strict live verify |
 |---|---|---|

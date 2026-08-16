@@ -13,6 +13,7 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 const suites = [
   './schema.test.mjs',
   './lint-rules.test.mjs',
+  './browser-config.test.mjs',
   './verify-fixtures.test.mjs',
   './prelude.test.mjs',
   './search.test.mjs',

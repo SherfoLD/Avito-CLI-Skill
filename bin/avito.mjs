@@ -17,6 +17,15 @@ import { ArgumentError, CliError, EXIT_CODES, exitCodeFor } from '../src/runtime
 import { parseRows } from '../src/runtime/schema.mjs';
 import { brokerEnabled, openBrowserContext } from '../src/runtime/cdp.mjs';
 import { liveBroker, stopBroker } from '../src/runtime/broker-client.mjs';
+import {
+  browserConfigFile,
+  clearBrowserConfig,
+  describeBrowserTarget,
+  discoverBrowsers,
+  probeBrowserTarget,
+  resolveBrowserOptions,
+  writeBrowserConfig,
+} from '../src/runtime/browser-config.mjs';
 
 const PROJECT_ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const COMMANDS_DIR = path.join(PROJECT_ROOT, 'src', 'commands');
@@ -48,6 +57,9 @@ function usage(commands) {
   lines.push('  --browser-url <url>      a browser started with --remote-debugging-port');
   lines.push('  --browser-ws <ws://…>    the browser socket directly');
   lines.push('AVITO_BROWSER_PROFILE, AVITO_BROWSER_URL and AVITO_BROWSER_WS do the same.');
+  lines.push('');
+  lines.push('`avito browser` lists the browsers offering a connection right now, and');
+  lines.push('`avito browser use --profile <dir>` remembers one, so later runs need no flag.');
   lines.push('');
   lines.push('The connection is held by a session broker, so the browser is approached once');
   lines.push('rather than once per command: `avito session status`, `avito session stop`.');
@@ -165,6 +177,84 @@ function renderTable(rows, columns) {
   ].join('\n');
 }
 
+/**
+ * What this machine would connect to, and whether that endpoint is there.
+ *
+ * Printed by both `session status` and `browser`, because "not running" said
+ * nothing about the browser and that was the whole failure: the report has to
+ * name the endpoint and go look at it (F-074).
+ */
+async function reportBrowserTarget() {
+  const target = resolveBrowserOptions();
+  console.log(`browser: ${describeBrowserTarget(target)}`);
+  console.log(`chosen by: ${target.source}`);
+  const { reachable, detail } = await probeBrowserTarget(target);
+  if (reachable === null) console.log(`reachable: unknown — ${detail}`);
+  else console.log(`reachable: ${reachable ? 'yes' : 'no'} — ${detail}`);
+  return reachable;
+}
+
+async function runBrowserSubcommand(rest) {
+  const [subcommand, ...flags] = rest;
+
+  if (subcommand === 'forget') {
+    const removed = clearBrowserConfig();
+    console.log(removed
+      ? `forgotten — ${browserConfigFile()} removed`
+      : 'no browser was remembered');
+    return EXIT_CODES.SUCCESS;
+  }
+
+  if (subcommand === 'use') {
+    const choice = {};
+    for (let index = 0; index < flags.length; index += 1) {
+      if (flags[index] === '--profile') choice.browserProfile = flags[++index];
+      else if (flags[index] === '--url') choice.browserUrl = flags[++index];
+      else if (flags[index] === '--ws') choice.browserWs = flags[++index];
+      else throw new ArgumentError(`unknown option "${flags[index]}" — expected --profile, --url or --ws`);
+    }
+    const named = Object.keys(choice).length;
+    if (named === 0) throw new ArgumentError('name one of --profile <dir>, --url <url> or --ws <ws://…>');
+    if (named > 1) {
+      throw new ArgumentError('name exactly one of --profile, --url or --ws: a browser is reached one way');
+    }
+    let remembered;
+    try {
+      remembered = writeBrowserConfig(choice);
+    } catch (error) {
+      throw new ArgumentError(error.message);
+    }
+    console.log(`remembered: ${describeBrowserTarget(remembered)}`);
+    console.log(`written to: ${browserConfigFile()}`);
+    const { reachable, detail } = await probeBrowserTarget(remembered);
+    if (reachable === false) {
+      console.log(`not reachable yet — ${detail}`);
+      console.log('Turn debugging on at chrome://inspect/#remote-debugging in that browser.');
+    }
+    return EXIT_CODES.SUCCESS;
+  }
+
+  if (subcommand === undefined || subcommand === 'list') {
+    await reportBrowserTarget();
+    const browsers = discoverBrowsers();
+    console.log('');
+    if (browsers.length === 0) {
+      console.log('No browser on this machine is offering a debugging connection.');
+      console.log('Open chrome://inspect/#remote-debugging in the browser you actually use, turn it');
+      console.log('on there, then run `avito browser` again.');
+      return EXIT_CODES.SUCCESS;
+    }
+    console.log(`Offering a connection right now (${browsers.length}):`);
+    for (const browser of browsers) console.log(`  ${browser.profileDir}`);
+    console.log('');
+    console.log('Remember one with `avito browser use --profile <dir>`.');
+    return EXIT_CODES.SUCCESS;
+  }
+
+  console.error(`unknown browser subcommand "${subcommand}" — expected list, use or forget`);
+  return EXIT_CODES.USAGE_ERROR;
+}
+
 async function runSessionSubcommand(subcommand) {
   if (subcommand === 'stop') {
     const stopped = await stopBroker();
@@ -174,15 +264,16 @@ async function runSessionSubcommand(subcommand) {
   if (subcommand === undefined || subcommand === 'status') {
     if (!brokerEnabled()) {
       console.log('session broker: off (AVITO_BROKER=off) — every command connects on its own');
-      return EXIT_CODES.SUCCESS;
-    }
-    const state = await liveBroker();
-    if (!state) {
+    } else {
+      const state = await liveBroker();
+      if (state) {
+        console.log(`session broker: running (pid ${state.pid}, port ${state.port})`);
+        console.log(`connected to: ${state.endpoint}`);
+        return EXIT_CODES.SUCCESS;
+      }
       console.log('session broker: not running — the next command will start one');
-      return EXIT_CODES.SUCCESS;
     }
-    console.log(`session broker: running (pid ${state.pid}, port ${state.port})`);
-    console.log(`browser: ${state.endpoint}`);
+    await reportBrowserTarget();
     return EXIT_CODES.SUCCESS;
   }
   console.error(`unknown session subcommand "${subcommand}" — expected status or stop`);
@@ -205,9 +296,23 @@ async function main() {
     return wantsHelp ? EXIT_CODES.SUCCESS : EXIT_CODES.USAGE_ERROR;
   }
 
-  // `session` is not a command: it has no rows, touches no site, and exists to
-  // make the one long-lived thing in this CLI visible and stoppable.
-  if (name === 'session') return runSessionSubcommand(argv[argv.indexOf(name) + 1]);
+  // `session` and `browser` are not commands: they have no rows and touch no
+  // site. One makes the long-lived connection visible and stoppable, the other
+  // settles which browser that connection is made to.
+  if (name === 'session' || name === 'browser') {
+    if (wantsHelp) {
+      console.log(name === 'session'
+        ? 'avito session [status]        the connection this session holds, and the browser it would use\navito session stop            close it'
+        : 'avito browser [list]                  which browser will be used, and which ones offer a connection now\n'
+          + 'avito browser use --profile <dir>     remember a running browser with chrome://inspect debugging on\n'
+          + 'avito browser use --url <url>         remember a browser started with --remote-debugging-port\n'
+          + 'avito browser use --ws <ws://…>       remember a browser socket directly\n'
+          + 'avito browser forget                  stop remembering one');
+      return EXIT_CODES.SUCCESS;
+    }
+    const rest = argv.slice(argv.indexOf(name) + 1);
+    return name === 'session' ? runSessionSubcommand(rest[0]) : runBrowserSubcommand(rest);
+  }
 
   const descriptor = commands.get(name);
   if (!descriptor) {

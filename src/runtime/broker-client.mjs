@@ -8,19 +8,64 @@
  */
 
 import * as fs from 'node:fs';
-import * as os from 'node:os';
 import * as path from 'node:path';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
-export function brokerStateDir() {
-  return process.env.AVITO_BROKER_DIR || path.join(os.homedir(), '.avito-cdp');
-}
+import { describeBrowserTarget, stateDir } from './browser-config.mjs';
 
-export const BROKER_STATE_FILE = path.join(brokerStateDir(), 'broker.json');
-const BROKER_LOCK_FILE = path.join(brokerStateDir(), 'broker.lock');
+export const BROKER_STATE_FILE = path.join(stateDir(), 'broker.json');
+const BROKER_LOCK_FILE = path.join(stateDir(), 'broker.lock');
+
+/**
+ * Where the broker leaves the reason it could not start.
+ *
+ * The broker is detached with no stdio, so a failure to reach the browser used
+ * to die inside the child: the parent waited out its whole timeout and reported
+ * "the broker did not start", naming the broker instead of the browser (F-074).
+ * The child writes its own cause here and the parent reads it back.
+ */
+export const BROKER_ERROR_FILE = path.join(stateDir(), 'broker-error.json');
 const BROKER_ENTRY = path.join(path.dirname(fileURLToPath(import.meta.url)), 'broker.mjs');
 const START_TIMEOUT_MS = 20000;
+
+export function writeBrokerStartError(message) {
+  try {
+    fs.mkdirSync(stateDir(), { recursive: true });
+    fs.writeFileSync(
+      BROKER_ERROR_FILE,
+      `${JSON.stringify({ message, pid: process.pid }, null, 2)}\n`,
+      { mode: 0o600 },
+    );
+  } catch {
+    // Nowhere to write the cause. The parent's timeout still reports a failure,
+    // which is worse but not wrong.
+  }
+}
+
+/**
+ * `notBefore` is what keeps a failure from a previous run being reported as
+ * this one's. Only the process that created the lock clears the file, so a
+ * second command waiting on that same start can otherwise read whatever an
+ * earlier attempt left there.
+ */
+export function readBrokerStartError(notBefore = 0) {
+  try {
+    if (fs.statSync(BROKER_ERROR_FILE).mtimeMs < notBefore) return null;
+    const { message } = JSON.parse(fs.readFileSync(BROKER_ERROR_FILE, 'utf-8'));
+    return typeof message === 'string' && message ? message : null;
+  } catch {
+    return null;
+  }
+}
+
+function clearBrokerStartError() {
+  try {
+    fs.rmSync(BROKER_ERROR_FILE);
+  } catch {
+    // There was none, which is the state we wanted.
+  }
+}
 
 export function readBrokerState() {
   try {
@@ -95,7 +140,7 @@ export async function ensureBroker(options = {}) {
   const existing = await liveBroker();
   if (existing) return existing;
 
-  fs.mkdirSync(brokerStateDir(), { recursive: true });
+  fs.mkdirSync(stateDir(), { recursive: true });
   let owner = false;
   try {
     fs.writeFileSync(BROKER_LOCK_FILE, String(process.pid), { flag: 'wx' });
@@ -114,17 +159,26 @@ export async function ensureBroker(options = {}) {
     }
   }
 
+  const startedAt = Date.now();
   try {
-    if (owner) spawnBroker(options);
-    const deadline = Date.now() + START_TIMEOUT_MS;
+    if (owner) {
+      clearBrokerStartError();
+      spawnBroker(options);
+    }
+    const deadline = startedAt + START_TIMEOUT_MS;
     while (Date.now() < deadline) {
       const state = await liveBroker();
       if (state) return state;
+      // The cause the child recorded arrives long before the deadline does, and
+      // waiting the rest of it out would only delay the same answer.
+      const cause = readBrokerStartError(startedAt);
+      if (cause) throw new Error(`could not reach the browser: ${cause}`);
       await new Promise((resolve) => { setTimeout(resolve, 150); });
     }
     throw new Error(
-      'the session broker did not start. Run `avito session status` for what it reports, '
-      + 'or set AVITO_BROKER=off to connect directly on every command.',
+      `the session broker did not start within ${START_TIMEOUT_MS / 1000}s and recorded no reason. `
+      + `It was told to use ${describeBrowserTarget(options)}. `
+      + 'Run `avito session status` for what that endpoint looks like from here.',
     );
   } finally {
     if (owner) {
