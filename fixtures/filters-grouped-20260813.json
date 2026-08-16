@@ -1,0 +1,795 @@
+[
+  {
+    "section": "main",
+    "parentKey": null,
+    "key": "params[192369]",
+    "attrId": "192369",
+    "name": "Акции",
+    "type": "multi_enum",
+    "unit": null,
+    "currentValue": [],
+    "options": {
+      "1": "Распродажа"
+    },
+    "optionsComplete": true,
+    "metadata": {
+      "depth": 0,
+      "apiType": "multiselect",
+      "hasSuggest": false,
+      "updatesForm": false
+    }
+  },
+  {
+    "section": "main",
+    "parentKey": null,
+    "key": "price",
+    "attrId": "100003",
+    "name": "Цена",
+    "type": "range",
+    "unit": "₽",
+    "currentValue": {
+      "from": null,
+      "to": null
+    },
+    "options": {},
+    "optionsComplete": true,
+    "metadata": {
+      "depth": 0,
+      "apiType": "numericRange",
+      "hasSuggest": false,
+      "updatesForm": false
+    }
+  },
+  {
+    "section": "main",
+    "parentKey": null,
+    "key": "params[126430]",
+    "attrId": "126430",
+    "name": "Форма",
+    "type": "multi_enum",
+    "unit": null,
+    "currentValue": [],
+    "options": {
+      "3045624": "Прямой",
+      "3045625": "Угловой",
+      "3045626": "П-образный",
+      "3045627": "Полукруглый",
+      "3045628": "Круглый"
+    },
+    "optionsComplete": true,
+    "metadata": {
+      "depth": 0,
+      "apiType": "multiselect",
+      "hasSuggest": false,
+      "updatesForm": true
+    }
+  },
+  {
+    "section": "main",
+    "parentKey": null,
+    "key": "params[185762]",
+    "attrId": "185762",
+    "name": "Модульный",
+    "type": "multi_enum",
+    "unit": null,
+    "currentValue": [],
+    "options": {
+      "3344049": "Да",
+      "3344050": "Нет"
+    },
+    "optionsComplete": true,
+    "metadata": {
+      "depth": 0,
+      "apiType": "multiselect",
+      "hasSuggest": false,
+      "updatesForm": false
+    }
+  },
+  {
+    "section": "main",
+    "parentKey": null,
+    "key": "params[126424]",
+    "attrId": "126424",
+    "name": "Раскладной механизм",
+    "type": "multi_enum",
+    "unit": null,
+    "currentValue": [],
+    "options": {
+      "3045601": "Есть",
+      "3045602": "Нет"
+    },
+    "optionsComplete": true,
+    "metadata": {
+      "depth": 0,
+      "apiType": "multiselect",
+      "hasSuggest": false,
+      "updatesForm": true
+    }
+  },
+  {
+    "section": "main",
+    "parentKey": null,
+    "key": "params[185763]",
+    "attrId": "185763",
+    "name": "Тип раскладного механизма",
+    "type": "multi_enum",
+    "unit": null,
+    "currentValue": [],
+    "options": {
+      "3344051": "Книжка",
+      "3344052": "Еврокнижка",
+      "3344053": "Пантограф",
+      "3344054": "Дельфин",
+      "3344055": "Аккордеон",
+      "3344056": "Выкатной",
+      "3344057": "Клик-кляк",
+      "3344058": "Реклайнер",
+      "3344059": "Эльф",
+      "3344060": "Бумеранг",
+      "3344061": "Поворотный",
+      "3344062": "Конрад",
+      "3344063": "Французская раскладушка",
+      "3344064": "Американская раскладушка",
+      "3344065": "Итальянская раскладушка",
+      "3344066": "Улитка"
+    },
+    "optionsComplete": true,
+    "metadata": {
+      "depth": 0,
+      "apiType": "multiselect",
+      "hasSuggest": false,
+      "updatesForm": false
+    }
+  },
+  {
+    "section": "main",
+    "parentKey": null,
+    "key": "params[126432]",
+    "attrId": "126432",
+    "name": "Цвет",
+    "type": "multi_enum",
+    "unit": null,
+    "currentValue": [],
+    "options": {
+      "3045629": "Бежевый",
+      "3045630": "Белый",
+      "3045631": "Бирюзовый",
+      "3045632": "Бордовый",
+      "3045633": "Голубой",
+      "3045634": "Жёлтый",
+      "3045635": "Зелёный",
+      "3045636": "Золотой",
+      "3045637": "Коричневый",
+      "3045638": "Красный",
+      "3045639": "Оранжевый",
+      "3045640": "Розовый",
+      "3045641": "Серебристый",
+      "3045642": "Серый",
+      "3045643": "Синий",
+      "3045644": "Фиолетовый",
+      "3045645": "Чёрный",
+      "3045646": "Разноцветный",
+      "3344634": "Прозрачный"
+    },
+    "optionsComplete": true,
+    "metadata": {
+      "depth": 0,
+      "apiType": "multiselect",
+      "hasSuggest": false,
+      "updatesForm": false
+    }
+  },
+  {
+    "section": "main",
+    "parentKey": null,
+    "key": "params[126435]",
+    "attrId": "126435",
+    "name": "Материал обивки",
+    "type": "multi_enum",
+    "unit": null,
+    "currentValue": [],
+    "options": {
+      "3045651": "Без обивки",
+      "3045652": "Ткань",
+      "3045653": "Кожа",
+      "3045654": "Экокожа",
+      "3045655": "Замша",
+      "3345146": "Велюр",
+      "3345147": "Рогожка",
+      "3345148": "Вельвет",
+      "3345149": "Микровелюр",
+      "3345150": "Микровельвет",
+      "3345151": "Шенилл",
+      "3345152": "Букле",
+      "3345153": "Гобелен",
+      "3345154": "Жаккард",
+      "3345155": "Флок"
+    },
+    "optionsComplete": true,
+    "metadata": {
+      "depth": 0,
+      "apiType": "multiselect",
+      "hasSuggest": false,
+      "updatesForm": false
+    }
+  },
+  {
+    "section": "main",
+    "parentKey": null,
+    "key": "params[126438]",
+    "attrId": "126438",
+    "name": "Ширина",
+    "type": "range",
+    "unit": null,
+    "currentValue": {
+      "from": null,
+      "to": null
+    },
+    "options": {},
+    "optionsComplete": true,
+    "metadata": {
+      "depth": 0,
+      "apiType": "numericRange",
+      "hasSuggest": false,
+      "updatesForm": false
+    }
+  },
+  {
+    "section": "main",
+    "parentKey": null,
+    "key": "params[126431]",
+    "attrId": "126431",
+    "name": "Высота",
+    "type": "range",
+    "unit": null,
+    "currentValue": {
+      "from": null,
+      "to": null
+    },
+    "options": {},
+    "optionsComplete": true,
+    "metadata": {
+      "depth": 0,
+      "apiType": "numericRange",
+      "hasSuggest": false,
+      "updatesForm": false
+    }
+  },
+  {
+    "section": "main",
+    "parentKey": null,
+    "key": "params[126433]",
+    "attrId": "126433",
+    "name": "Глубина",
+    "type": "range",
+    "unit": null,
+    "currentValue": {
+      "from": null,
+      "to": null
+    },
+    "options": {},
+    "optionsComplete": true,
+    "metadata": {
+      "depth": 0,
+      "apiType": "numericRange",
+      "hasSuggest": false,
+      "updatesForm": false
+    }
+  },
+  {
+    "section": "main",
+    "parentKey": null,
+    "key": "params[126413]",
+    "attrId": "126413",
+    "name": "Спальное место",
+    "type": "multi_enum",
+    "unit": null,
+    "currentValue": [],
+    "options": {
+      "3045560": "Есть",
+      "3045561": "Нет"
+    },
+    "optionsComplete": true,
+    "metadata": {
+      "depth": 0,
+      "apiType": "multiselect",
+      "hasSuggest": false,
+      "updatesForm": true
+    }
+  },
+  {
+    "section": "main",
+    "parentKey": null,
+    "key": "params[126428]",
+    "attrId": "126428",
+    "name": "Ширина спального места",
+    "type": "range",
+    "unit": null,
+    "currentValue": {
+      "from": null,
+      "to": null
+    },
+    "options": {},
+    "optionsComplete": true,
+    "metadata": {
+      "depth": 0,
+      "apiType": "numericRange",
+      "hasSuggest": false,
+      "updatesForm": false
+    }
+  },
+  {
+    "section": "main",
+    "parentKey": null,
+    "key": "params[126426]",
+    "attrId": "126426",
+    "name": "Длина спального места",
+    "type": "range",
+    "unit": null,
+    "currentValue": {
+      "from": null,
+      "to": null
+    },
+    "options": {},
+    "optionsComplete": true,
+    "metadata": {
+      "depth": 0,
+      "apiType": "numericRange",
+      "hasSuggest": false,
+      "updatesForm": false
+    }
+  },
+  {
+    "section": "main",
+    "parentKey": null,
+    "key": "params[126427]",
+    "attrId": "126427",
+    "name": "Особенности",
+    "type": "multi_enum",
+    "unit": null,
+    "currentValue": [],
+    "options": {
+      "3045611": "Ящик для белья",
+      "3045612": "Подлокотники",
+      "3045613": "Подушки",
+      "3045614": "Съёмный чехол"
+    },
+    "optionsComplete": true,
+    "metadata": {
+      "depth": 0,
+      "apiType": "multiselect",
+      "hasSuggest": false,
+      "updatesForm": false
+    }
+  },
+  {
+    "section": "main",
+    "parentKey": null,
+    "key": "params[126415]",
+    "attrId": "126415",
+    "name": "Для чего подойдет",
+    "type": "multi_enum",
+    "unit": null,
+    "currentValue": [],
+    "options": {
+      "3045565": "Гостиная",
+      "3045566": "Спальня",
+      "3045567": "Детская",
+      "3045568": "Кухня",
+      "3045569": "Рабочий кабинет",
+      "3045570": "Прихожая",
+      "3045571": "Дача и сад",
+      "3045572": "Офис",
+      "3045573": "Кафе и ресторан"
+    },
+    "optionsComplete": true,
+    "metadata": {
+      "depth": 0,
+      "apiType": "multiselect",
+      "hasSuggest": false,
+      "updatesForm": false
+    }
+  },
+  {
+    "section": "main",
+    "parentKey": null,
+    "key": "params[110405]",
+    "attrId": "110405",
+    "name": "Состояние",
+    "type": "multi_enum",
+    "unit": null,
+    "currentValue": [],
+    "options": {
+      "431261": "Новое",
+      "431262": "Б/у"
+    },
+    "optionsComplete": true,
+    "metadata": {
+      "depth": 0,
+      "apiType": "multiselect",
+      "hasSuggest": false,
+      "updatesForm": false
+    }
+  },
+  {
+    "section": "main",
+    "parentKey": null,
+    "key": "user",
+    "attrId": "108245050000",
+    "name": "Продавцы",
+    "type": "enum",
+    "unit": null,
+    "currentValue": "0",
+    "options": {
+      "0": "Все",
+      "1": "Частные",
+      "2": "Компании"
+    },
+    "optionsComplete": true,
+    "metadata": {
+      "depth": 0,
+      "apiType": "radioGroup",
+      "hasSuggest": false,
+      "updatesForm": false
+    }
+  },
+  {
+    "section": "main",
+    "parentKey": "user",
+    "key": "params[196498]",
+    "attrId": "196498",
+    "name": "Рейтинг от ★ 4,7",
+    "type": "multi_enum",
+    "unit": null,
+    "currentValue": [],
+    "options": {
+      "3370585": "Рейтинг от ★ 4,7"
+    },
+    "optionsComplete": true,
+    "metadata": {
+      "depth": 1,
+      "apiType": "multiselect",
+      "hasSuggest": false,
+      "updatesForm": false
+    }
+  },
+  {
+    "section": "main",
+    "parentKey": null,
+    "key": "params[174533]",
+    "attrId": "174533",
+    "name": "Способы связи",
+    "type": "multi_enum",
+    "unit": null,
+    "currentValue": [],
+    "options": {
+      "3295066": "Сообщения",
+      "3295067": "Звонки"
+    },
+    "optionsComplete": true,
+    "metadata": {
+      "depth": 0,
+      "apiType": "multiselect",
+      "hasSuggest": false,
+      "updatesForm": false
+    }
+  },
+  {
+    "section": "main",
+    "parentKey": null,
+    "key": "d",
+    "attrId": "108245070000",
+    "name": "Дополнительно",
+    "type": "multi_enum",
+    "unit": null,
+    "currentValue": false,
+    "options": {
+      "1": "С Авито Доставкой"
+    },
+    "optionsComplete": true,
+    "metadata": {
+      "depth": 0,
+      "apiType": "checkboxGroup",
+      "hasSuggest": false,
+      "updatesForm": false
+    }
+  },
+  {
+    "section": "main",
+    "parentKey": "d",
+    "key": "params[174605]",
+    "attrId": "174605",
+    "name": "Товары из-за рубежа",
+    "type": "multi_enum",
+    "unit": null,
+    "currentValue": [],
+    "options": {
+      "1": "Товары из-за рубежа"
+    },
+    "optionsComplete": true,
+    "metadata": {
+      "depth": 1,
+      "apiType": "multiselect",
+      "hasSuggest": false,
+      "updatesForm": false
+    }
+  },
+  {
+    "section": "main",
+    "parentKey": "d",
+    "key": "params[149578]",
+    "attrId": "149578",
+    "name": "Есть возврат",
+    "type": "multi_enum",
+    "unit": null,
+    "currentValue": [],
+    "options": {
+      "1": "Есть возврат"
+    },
+    "optionsComplete": true,
+    "metadata": {
+      "depth": 1,
+      "apiType": "multiselect",
+      "hasSuggest": false,
+      "updatesForm": false
+    }
+  },
+  {
+    "section": "main",
+    "parentKey": "d",
+    "key": "params[165549]",
+    "attrId": "165549",
+    "name": "Рассрочка",
+    "type": "multi_enum",
+    "unit": null,
+    "currentValue": [],
+    "options": {
+      "1": "Рассрочка"
+    },
+    "optionsComplete": true,
+    "metadata": {
+      "depth": 1,
+      "apiType": "multiselect",
+      "hasSuggest": false,
+      "updatesForm": false
+    }
+  },
+  {
+    "section": "main",
+    "parentKey": "d",
+    "key": "params[197010]",
+    "attrId": "197010",
+    "name": "Уценка",
+    "type": "multi_enum",
+    "unit": null,
+    "currentValue": [],
+    "options": {
+      "1": "Уценка"
+    },
+    "optionsComplete": true,
+    "metadata": {
+      "depth": 1,
+      "apiType": "multiselect",
+      "hasSuggest": false,
+      "updatesForm": false
+    }
+  },
+  {
+    "section": "main",
+    "parentKey": null,
+    "key": "params[149569]",
+    "attrId": "149569",
+    "name": "Слова в описании",
+    "type": "text",
+    "unit": null,
+    "currentValue": null,
+    "options": {},
+    "optionsComplete": true,
+    "metadata": {
+      "depth": 0,
+      "apiType": "keywords",
+      "hasSuggest": false,
+      "updatesForm": true
+    }
+  },
+  {
+    "section": "main",
+    "parentKey": null,
+    "key": "params[45]",
+    "attrId": "45",
+    "name": "Вид товара",
+    "type": "hidden",
+    "unit": null,
+    "currentValue": 149,
+    "options": {},
+    "optionsComplete": true,
+    "metadata": {
+      "depth": 0,
+      "apiType": "hidden",
+      "hasSuggest": false,
+      "updatesForm": true
+    }
+  },
+  {
+    "section": "main",
+    "parentKey": null,
+    "key": "params[156912]",
+    "attrId": "156912",
+    "name": "Открытие в сегменте",
+    "type": "hidden",
+    "unit": null,
+    "currentValue": null,
+    "options": {},
+    "optionsComplete": true,
+    "metadata": {
+      "depth": 0,
+      "apiType": "hidden",
+      "hasSuggest": false,
+      "updatesForm": false
+    }
+  },
+  {
+    "section": "main",
+    "parentKey": null,
+    "key": "params[110470]",
+    "attrId": "110470",
+    "name": "Подвид товара",
+    "type": "hidden",
+    "unit": null,
+    "currentValue": 437120,
+    "options": {},
+    "optionsComplete": true,
+    "metadata": {
+      "depth": 0,
+      "apiType": "hidden",
+      "hasSuggest": false,
+      "updatesForm": true
+    }
+  },
+  {
+    "section": "main",
+    "parentKey": null,
+    "key": "params[112770]",
+    "attrId": "112770",
+    "name": "Доступность",
+    "type": "multi_enum",
+    "unit": null,
+    "currentValue": [],
+    "options": {
+      "770305": "В наличии",
+      "770306": "Под заказ"
+    },
+    "optionsComplete": true,
+    "metadata": {
+      "depth": 0,
+      "apiType": "multiselect",
+      "hasSuggest": false,
+      "updatesForm": false
+    }
+  },
+  {
+    "section": "main",
+    "parentKey": null,
+    "key": "params[187159270000]",
+    "attrId": "187159270000",
+    "name": "Условия продажи",
+    "type": "multi_enum",
+    "unit": null,
+    "currentValue": null,
+    "options": {},
+    "optionsComplete": true,
+    "metadata": {
+      "depth": 0,
+      "apiType": "checkboxGroup",
+      "hasSuggest": false,
+      "updatesForm": false
+    }
+  },
+  {
+    "section": "main",
+    "parentKey": "params[187159270000]",
+    "key": "params[198219]",
+    "attrId": "198219",
+    "name": "Можно оптом",
+    "type": "multi_enum",
+    "unit": null,
+    "currentValue": [],
+    "options": {
+      "1": "Можно оптом"
+    },
+    "optionsComplete": true,
+    "metadata": {
+      "depth": 1,
+      "apiType": "multiselect",
+      "hasSuggest": false,
+      "updatesForm": false
+    }
+  },
+  {
+    "section": "main",
+    "parentKey": "params[187159270000]",
+    "key": "params[198220]",
+    "attrId": "198220",
+    "name": "Оптовая скидка",
+    "type": "multi_enum",
+    "unit": null,
+    "currentValue": [],
+    "options": {
+      "1": "Оптовая скидка"
+    },
+    "optionsComplete": true,
+    "metadata": {
+      "depth": 1,
+      "apiType": "multiselect",
+      "hasSuggest": false,
+      "updatesForm": false
+    }
+  },
+  {
+    "section": "locationGroup",
+    "parentKey": null,
+    "key": "footWalkingMetro",
+    "attrId": "108245200000",
+    "name": "Пешком до метро, мин.",
+    "type": "enum",
+    "unit": null,
+    "currentValue": "0",
+    "options": {
+      "0": "Неважно",
+      "5": "5",
+      "10": "10",
+      "15": "15",
+      "20": "20",
+      "30": "30"
+    },
+    "optionsComplete": true,
+    "metadata": {
+      "depth": 0,
+      "apiType": "radioGroup",
+      "hasSuggest": false,
+      "updatesForm": false
+    }
+  },
+  {
+    "section": "checkboxes",
+    "parentKey": null,
+    "key": "localPriority",
+    "attrId": "108245220000",
+    "name": "Сначала из Москвы",
+    "type": "boolean",
+    "unit": null,
+    "currentValue": false,
+    "options": {},
+    "optionsComplete": true,
+    "metadata": {
+      "depth": 0,
+      "apiType": "boolean",
+      "hasSuggest": false,
+      "updatesForm": false
+    }
+  },
+  {
+    "section": "displayOptions",
+    "parentKey": null,
+    "key": "sort",
+    "attrId": "108245240000",
+    "name": "Сортировать",
+    "type": "enum",
+    "unit": null,
+    "currentValue": "default",
+    "options": {
+      "1": "Дешевле",
+      "2": "Дороже",
+      "101": "По умолчанию",
+      "104": "По дате",
+      "172297_desc": "По размеру скидки"
+    },
+    "optionsComplete": true,
+    "metadata": {
+      "depth": 0,
+      "apiType": "select",
+      "hasSuggest": false,
+      "updatesForm": false
+    }
+  }
+]

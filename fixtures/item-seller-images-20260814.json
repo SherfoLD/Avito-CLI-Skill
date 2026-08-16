@@ -1,0 +1,35 @@
+{
+  "captured_at": "2026-08-14T13:18:35+03:00",
+  "source": "normalized public seller/gallery fields from item-page hydration; cookies, contacts and unrelated session state omitted",
+  "privateItem": {
+    "itemId": "8030214066",
+    "sellerId": "f98f19dc46c2123b1e439ef0262ffc72",
+    "sellerName": "Любовь",
+    "sellerRating": 5,
+    "sellerReviewsCount": 2,
+    "imageCount": 1,
+    "preferredImageVariant": "1280x960",
+    "images": [
+      "https://50.img.avito.st/image/1/1._NAk_La4UDkSS9I0ULvsiBxcUj-aXdIvElBSO5RVWDOS.BLpu-9K9pckxhduTFVaIlKRzwcv_RPv5Rw3SHja3e-s"
+    ]
+  },
+  "companyItem": {
+    "itemId": "8199746677",
+    "sellerId": "msc777",
+    "sellerName": "MIRAPHONE - Центр Скупки",
+    "sellerRating": 5,
+    "sellerReviewsCount": 1500,
+    "activeReviewsCountNotUsed": 1519,
+    "imageCount": 2,
+    "preferredImageVariant": "1280x960",
+    "images": [
+      "https://20.img.avito.st/image/1/1.SodKpra45m58EWRjUs8bplgG5Gj0B2R4fArkbPoP7mT8.YI8RdRA3SVXjl3GauODVwJKKOYgVAS1e56vjtpE0lSQ?cqp=2.YN7dHnrK-mhyvtTBpyubvaFoUVdTM3W7BFy5YaeXzZ_Q2glMrBb_s4irqaJhHlfJPgeDGUqVXQ==",
+      "https://20.img.avito.st/image/1/1.gBusULa4LPKa567_oDq5Ob7wLvQS8a7kmvwu8Bz5JPga.Pe4s_y34lzKYH9DTAU3vtbopSxNo3HeYJsoiCxiCKUg?cqp=2.YN7dHnrK-mhyvtTBpyubvaFoUVdTM3W7BFy5YaeXzZ_Q2glMrBb_s4irqaJhHlfJPgeDGUqVXQ=="
+    ]
+  },
+  "notes": [
+    "sellerId comes from the public /user/<id>/profile or /brands/<id> route, not seller.hashId",
+    "sellerReviewsCount follows rating.summary to match search-visible semantics",
+    "expanded gallery loaded the exact preferred URL for both photos of the company item"
+  ]
+}

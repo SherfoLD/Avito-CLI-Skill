@@ -1,0 +1,63 @@
+{
+  "verifiedAt": "2026-08-14",
+  "command": "avito/search",
+  "publicArgs": {
+    "price": ["price-min", "price-max"],
+    "seller": ["all", "private", "company"],
+    "deliveryOnly": true,
+    "localPriority": true,
+    "sort": ["default", "price_asc", "price_desc", "date"]
+  },
+  "freshSchema": {
+    "context": "canonical RAM ddr5 32gb",
+    "keys": {
+      "price": { "type": "numericRange", "serialization": ["pmin", "pmax"] },
+      "user": { "type": "radioGroup", "values": { "0": "Все", "1": "Частные", "2": "Компании" }, "serialization": ["user"] },
+      "d": { "type": "checkboxGroup", "values": { "1": "С Авито Доставкой" }, "serialization": ["d"] },
+      "localPriority": { "type": "boolean", "serialization": ["localPriority"] },
+      "sort": { "type": "select", "values": { "1": "Дешевле", "2": "Дороже", "101": "По умолчанию", "104": "По дате" }, "serialization": ["s"] }
+    }
+  },
+  "offlineEndToEnd": {
+    "combinedShortKeysPassed": true,
+    "defaultPathItemsApiCalls": 0,
+    "combinedPathItemsApiCalls": 1,
+    "preservedParamsPassed": true,
+    "searchCorePostconditionsPassed": true,
+    "sourceFiltersV2VocabularyPassed": true,
+    "staleOrOmittedResultFacetsRegressionPassed": true,
+    "serverUrlPassed": true,
+    "boundedMissingKeySsrRecoveryPassed": true,
+    "rateLimitStopsWithoutApiRetry": true
+  },
+  "liveAttemptsBeforeFinalOriginPriming": {
+    "count": 3,
+    "queries": ["iphone 15", "ddr5 32gb", "ddr5 32gb"],
+    "result": "ARGUMENT before items API: filter user is unavailable or ambiguous",
+    "itemsApiCallCount": 0,
+    "http429Count": 0,
+    "accessChallengeDetected": false,
+    "retryBudgetExhausted": true
+  },
+  "independentSchemaRead": {
+    "strategy": "lightweight origin priming plus canonical SSR read",
+    "completeFiveKeySetReturned": true,
+    "http429": false,
+    "accessChallengeDetected": false
+  },
+  "finalBuild": {
+    "explicitRefinementUsesOriginPriming": true,
+    "hardLoadsCanonicalCatalog": true,
+    "robotsBodyConsumed": false,
+    "maximumItemsApiAttempts": 1,
+    "requestGapSeconds": 2,
+    "requestGapBasis": "provisional user choice; not inferred from Avito rate-limit evidence; may be reduced or removed",
+    "liveStrictVerifyPassed": true,
+    "traceId": "20260813232655-31ab6757",
+    "rows": 3,
+    "itemsApiStatus": 200,
+    "http429Count": 0,
+    "accessChallengeDetected": false
+  },
+  "sensitiveDataPersisted": false
+}

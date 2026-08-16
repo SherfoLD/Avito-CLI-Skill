@@ -1,0 +1,36 @@
+{
+  "args": [
+    "https://www.avito.ru/moskva/mebel_i_interer/myagkaya-mebel/divany-ASgBAgICAkRaqgKMvg2ArjU"
+  ],
+  "expect": {
+    "rowCount": {
+      "min": 31,
+      "max": 31
+    },
+    "columns": [
+      "key",
+      "name",
+      "unit",
+      "valueSyntax",
+      "currentValue",
+      "options"
+    ],
+    "types": {
+      "key": "string",
+      "name": "string",
+      "unit": "null|string",
+      "valueSyntax": "string",
+      "currentValue": "null|string",
+      "options": "object"
+    },
+    "patterns": {
+      "key": "^(?:params\\[\\d+\\]|[A-Za-z][A-Za-z0-9]{0,80})$",
+      "valueSyntax": "^(?:<value>|<value>\\[,<value>\\]|<text>\\[,<text>\\]|<from>\\.\\.<to>|1)$"
+    },
+    "notEmpty": [
+      "key",
+      "name",
+      "valueSyntax"
+    ]
+  }
+}

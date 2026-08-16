@@ -1,0 +1,191 @@
+{
+  "itemDetails": {
+    "url": "https://www.avito.ru/items/ads/<full-item-pathname>",
+    "method": "GET",
+    "params": {
+      "required": [
+        "the full item pathname including region, category, alias and numeric item ID"
+      ],
+      "optional": []
+    },
+    "response": "{analytics,buyerItem,redirectCode,redirectUrl}; buyerItem.item plus paramsDto/paramsBlock, item.conditionParams, seller/rating/public profile data and item.imageUrls/galleryInfo.media",
+    "verified_at": "2026-08-14",
+    "notes": "Undocumented internal endpoint. Use only through the current same-origin browser session with Accept: application/json; strip query/context and never synthesize the route from a bare ID. Validate response ID and schema. On HTTP/network/schema drift, fall back to item-page window.__staticRouterHydrationData loaderData['catalog-or-main-or-item'].buyerItem, then the visible DOM. For WYSIWYG prefer non-empty descriptionHtml and convert HTML to text; otherwise use description. Preserve displayed formattedPrice.string and city-level item.location.name output semantics. Seller ID comes from public /user/<id>/profile or /brands/<id> routes, reviews follow rating.summary, and ordered photos prefer 1280x960 with 640x480 fallback. Preserve full HTTPS *.img.avito.st URLs including query. Final raw DOM fallback returns nullable seller fields and images=[] without gallery interaction."
+  },
+  "locationSuggestions": {
+    "url": "https://www.avito.ru/web/1/slocations",
+    "method": "GET",
+    "params": {
+      "required": [
+        "q"
+      ],
+      "optional": [
+        "limit"
+      ]
+    },
+    "response": "result.locations[] with numeric id and names['1']",
+    "verified_at": "2026-08-12",
+    "notes": "Undocumented internal endpoint; verified only through the current same-origin browser context. locationId is not required and must not be hardcoded. Fail closed on schema drift or access challenge."
+  },
+  "locationCapabilities": {
+    "url": "https://www.avito.ru/web/1/search/locations",
+    "method": "GET",
+    "params": {
+      "required": [
+        "locationId"
+      ],
+      "optional": [
+        "categoryId"
+      ]
+    },
+    "response": "result.params[0].parameters[]; the locationId parameter carries value.{hasMetro,hasDistricts,hasChildren,hasDirections}, smallRadius carries visible km options, and metroId/districtId/localPriority appear as separate parameters",
+    "verified_at": "2026-08-14",
+    "notes": "Undocumented internal endpoint; verified only through the current same-origin browser context. categoryId is optional and was omitted. Use it to decide whether a location offers metro or districts before requesting either directory; never cache the answer across locations. No route slug is exposed, so a city can never be applied by editing a URL. Fail closed on schema drift or access challenge."
+  },
+  "locationMetro": {
+    "url": "https://www.avito.ru/web/2/locations/metro",
+    "method": "GET",
+    "params": {
+      "required": [
+        "locationId"
+      ],
+      "optional": []
+    },
+    "response": "flat {stations:[{id,name,lineIds}], lines:[{id,name,color,stationIds}], presets, filters} with no result wrapper",
+    "verified_at": "2026-08-14",
+    "notes": "Undocumented internal endpoint; verified only through the current same-origin browser context. Station IDs are meaningful only inside their own location: Avito accepts a foreign station ID without any error, so the adapter must check membership in this fresh list. Scale varies widely (Kazan 11 stations/1 line, Moscow 357 stations/19 lines/5 presets), so listing output needs grouping and a limit. Fail closed on schema drift or access challenge."
+  },
+  "locationDistricts": {
+    "url": "https://www.avito.ru/web/2/locations/districts",
+    "method": "GET",
+    "params": {
+      "required": [
+        "locationId"
+      ],
+      "optional": []
+    },
+    "response": "{districts:[{id,name,altName}], regions:[{id,shortName,fullName,districtIds}]}",
+    "verified_at": "2026-08-14",
+    "notes": "Undocumented internal endpoint; verified only through the current same-origin browser context. regions is an optional okrug grouping and was absent for Kazan and present with 12 entries for Moscow. District IDs are location-scoped exactly like station IDs and get the same membership validation. Fail closed on schema drift or access challenge."
+  },
+  "categoryTree": {
+    "url": "https://www.avito.ru/web/3/category/tree",
+    "method": "GET",
+    "params": {
+      "required": [],
+      "optional": [
+        "locationId"
+      ]
+    },
+    "response": "success.items[] with id, parentId, categoryId, microcategoryId, name, nodeType and url",
+    "verified_at": "2026-08-12",
+    "notes": "Superseded historical evidence only. The runtime categories command no longer calls this undocumented endpoint or exposes global node/category IDs; it reads current search navigation from the public SSR document instead."
+  },
+  "categoryNavigationBootstrap": {
+    "url": "https://www.avito.ru/<canonical-search-route>",
+    "method": "GET",
+    "params": {
+      "required": [
+        "the immutable canonical search URL returned by search, filter, or page"
+      ],
+      "optional": []
+    },
+    "response": "200 text/html; loaderData.data contains rubricators.side.nodes, seoNavigation.breadcrumbs.links, searchCore and canonical url",
+    "verified_at": "2026-08-14",
+    "notes": "Current avito/categories source. Use through the same-origin browser context after lightweight origin priming. Sidebar type 0 is an expanded non-link, type 1 is navigable, and type 2 is current/non-navigable. Only type 1 and real breadcrumbs may expose absolute searchUrl output; preservesQuery compares their q with searchCore.query."
+  },
+  "catalogFilterBootstrap": {
+    "url": "https://www.avito.ru/<catalog-or-search-route>",
+    "method": "GET",
+    "params": {
+      "required": [],
+      "optional": [
+        "the catalog/search query already present in the user URL"
+      ]
+    },
+    "response": "200 text/html with exactly one script[type='mime/invalid'][data-mfe-state='true']; JSON loaderData.data contains filtersV2.Sections, searchCore, canonical url and searchHash",
+    "verified_at": "2026-08-13",
+    "notes": "Use only through the current same-origin browser session. Filters parse the inert SSR bootstrap JSON and recursively traverse Sections[].Filters[].content. Stateless pagination changes only p on an immutable canonical URL and validates response pathname/query plus searchCore.page before decoding loaderData.data.catalog. Pagination uses one target SSR GET after a provisional user-chosen 2000 ms gap and never falls back to /web/1/js/items. The gap is not evidence-based Avito rate-limit policy and may later be reduced or removed. Do not store raw HTML because it contains unrelated user/session state. Fail closed on access challenge, missing bootstrap or schema drift."
+  },
+  "catalogRefinement": {
+    "url": "https://www.avito.ru/web/1/js/items",
+    "method": "GET",
+    "params": {
+      "required": [
+        "fresh searchCore category/location/query/params context",
+        "useReload=true",
+        "spaFlow=true",
+        "one validated params[id][0] selection or an allowlisted search short-key refinement",
+        "opaque context copied from the current SSR state"
+      ],
+      "optional": [
+        "current subscription/proprofile state",
+        "current or requested price/seller/delivery/local-priority/sort values"
+      ]
+    },
+    "response": "200 application/json with searchCore, catalog, filtersV2 and server-generated url",
+    "verified_at": "2026-08-14",
+    "notes": "Undocumented internal endpoint. Generic params refinement and combined search short-key refinement are live-verified. Runtime validates every requested key/type/value against fresh source filtersV2, preserves page-1 context and params, accepts only the server URL, stops on 429/CAPTCHA, and never retries the API or persists opaque context. Response searchCore is authoritative for short-key application because result filtersV2 currentValue may be omitted or stale. Generic filter accepts params[id] keys only; search owns price/user/d/localPriority/sort. This is also the only way to change the city: locationId sent here is honored and returns a server URL on the new region pathname, while the same parameter on an SSR document route is silently ignored. Geo selections travel as indexed metro[n]/district[n] and come back dash-joined in the server URL; locationId stops being an unconditionally preserved field exactly when the caller requested a new one. No page-size parameter exists: the catalog page is fixed at 50 rows and the Avito UI varies only p, so the adapter returns the whole page and never sends a count of its own."
+  },
+  "querySearchEntry": {
+    "url": "https://www.avito.ru/?q=<query>",
+    "method": "GET",
+    "params": {
+      "required": [
+        "q"
+      ],
+      "optional": []
+    },
+    "response": "HTTP 200 with a pure redirect payload: loaderData.redirect equals data.url (the canonical route) and data.redirected is true, while searchCore, filtersV2 and catalog are absent and response.url stays on /?q=",
+    "verified_at": "2026-08-14",
+    "notes": "Public route, not an internal endpoint. avito/search reads it as the whole initial submit through the current same-origin browser context after lightweight /robots.txt priming: it works from the bare origin, keeps the session region and needs no region slug. `q` survives for some queries (`ddr5 32gb`) and is absorbed into a category or model route for others (`iphone`), where searchCore.query is empty too; both are accepted, while a homepage target and a foreign `q` are rejected before the next request. The canonical target is then read as a second document fetch, and its loaderData.data.catalog.items supplies the returned rows, so no catalog page is ever rendered."
+  },
+  "catalogSearchBootstrap": {
+    "url": "https://www.avito.ru/<canonical-search-route>",
+    "method": "GET",
+    "params": {
+      "required": [],
+      "optional": [
+        "q",
+        "context",
+        "localPriority",
+        "geo and short-key parameters"
+      ]
+    },
+    "response": "script[type=mime/invalid][data-mfe-state=true] → loaderData.data with searchCore, filtersV2.Sections, catalog.items[] and the opaque context",
+    "verified_at": "2026-08-14",
+    "notes": "Same document that avito/page and avito/filters read; avito/search now decodes its rows from catalog.items instead of scraping the rendered page. Visible card fields are not the flat item fields: item.description is empty and the card text is in iva.DescriptionStep[].payload.description; the card's primary price is iva.PriceStep[].payload.priceDetailed (bonus price, discountType item_bonus, valueOld holds the base price) while item.priceDetailed keeps the base price; the visible location line is geo.geoReferences[0].content plus afterWithIcon.text and item.location.name was null on 39 of 50 rows. The items API response shares this shape, so one decoder serves both. Fail closed on schema drift. No page-size parameter exists: the catalog page is fixed at 50 rows and the Avito UI varies only p, so the adapter returns the whole page and never sends a count of its own."
+  },
+  "coordsByAddress": {
+    "url": "https://www.avito.ru/web/1/coords/by_address",
+    "method": "GET",
+    "params": {
+      "required": [
+        "address"
+      ],
+      "optional": []
+    },
+    "response": "{components:[{kind,name}],kind,normalizedAddress,point:{latitude,longitude},postalCode?}; HTTP 404 with {result:{message},status:'not-found'} when nothing matches",
+    "verified_at": "2026-08-14",
+    "notes": "Undocumented internal endpoint; verified only through the current same-origin browser context. It needs no jwt, categoryId, locationId or preceding suggest call: /web/3/location/suggest/by_query carries no coordinates at all. It silently rewrites the request - a missing house number snaps to a neighbour and an address existing in several cities resolves to one of them with no ambiguity signal - so normalizedAddress, kind and the locality component must be returned to the caller instead of being consumed silently. A 404 is a typed empty result and must never fall back to a city centre. The related /js/v2/geo/position is a session write (GET answers 405) and stays out of read-only use. Fail closed on schema drift or access challenge."
+  },
+  "sellerReviews": {
+    "url": "https://www.avito.ru/web/7/user/<ratingUserKey>/ratings",
+    "method": "GET",
+    "params": {
+      "required": [
+        "offset",
+        "photoOnly"
+      ],
+      "optional": [
+        "fromItem",
+        "limit",
+        "sortRating",
+        "requiredFilters[]"
+      ]
+    },
+    "response": "{entries[], nextPage?}; entries is an ordered feed of score / photoGalleryPlaceHolder / searchParametersV2 / info / rating blocks. A rating value carries {id,title,titleCaption,rated,stageTitle,itemTitle,textSections[],score?,images[]?,answer?,deliveryTitle?,avatar}",
+    "verified_at": "2026-08-14",
+    "notes": "Undocumented internal endpoint; use only through the current same-origin browser session with Accept: application/json. ratingUserKey is buyerItem.rating.userKey from itemDetails and is neither seller.hashId nor the /user|brands route segment; never accept it as user input, because an unknown key returns HTTP 200 with an empty entries array. Avito ignores limit and always serves 25 entries, so the adapter returns the whole page and paginates by page number, sending offset (page - 1) * 25 and reading the server-generated nextPage. Unknown sortRating is silently served as date_desc, and goods_relevant_desc is silently downgraded without fromItem; validate against searchParametersV2 options and verify searchParametersV2.selectedOption, falling back to the sortRating echoed in nextPage on deep pages, which carry no schema block. A review without a score field is an unscored review (stageTitle 'Не договорились'), not a zero. reviewCount/rating.summary count scored reviews only; activeReviewsCount counts every entry. Fail closed on schema drift; the write action ratingAction.uri and /web/1/reviews/photogallery/user/<key> are out of scope."
+  }
+}

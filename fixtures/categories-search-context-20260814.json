@@ -1,0 +1,52 @@
+{
+  "verifiedAt": "2026-08-14",
+  "command": "avito/categories",
+  "strategy": "DOM_STATE from same-origin SSR bootstrap",
+  "sourcePaths": [
+    "loaderData.data.rubricators.side.nodes",
+    "loaderData.data.seoNavigation.breadcrumbs.links",
+    "loaderData.data.searchCore"
+  ],
+  "sidebarTypes": {
+    "0": "expanded non-navigable row",
+    "1": "clickable navigation option",
+    "2": "current non-navigable category"
+  },
+  "contexts": {
+    "ddr5 32gb": {
+      "selectedPath": [
+        "Электроника",
+        "Товары для компьютера",
+        "Комплектующие",
+        "Оперативная память"
+      ],
+      "rowCount": 14,
+      "breadcrumbCount": 5,
+      "queryPreservingSidebarTargets": 5,
+      "strictFixturePassed": true
+    },
+    "Rm650x": {
+      "selectedPath": [
+        "Электроника"
+      ],
+      "rowCount": 6,
+      "narrowerQueryPreservingTargets": [
+        "Товары для компьютера",
+        "Настольные компьютеры"
+      ]
+    }
+  },
+  "breadcrumbClickCrossCheck": {
+    "target": "Комплектующие",
+    "queryPreserved": false
+  },
+  "finalStrictTraceId": "20260814084847-787ab635",
+  "networkPerRun": {
+    "originPrimerStatus": 200,
+    "searchSsrStatus": 200,
+    "failedNetworkCount": 0,
+    "http429Count": 0,
+    "accessChallengeDetected": false
+  },
+  "sensitiveDataPersisted": false
+}

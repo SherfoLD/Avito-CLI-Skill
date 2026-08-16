@@ -1,0 +1,63 @@
+{
+  "args": [
+    "ddr5 32gb",
+    "--location-id",
+    "637640"
+  ],
+  "expect": {
+    "rowCount": {
+      "min": 1,
+      "max": 50
+    },
+    "columns": [
+      "itemId",
+      "title",
+      "price",
+      "location",
+      "descriptionPreview",
+      "published",
+      "sellerName",
+      "sellerRating",
+      "sellerReviewsCount",
+      "imagesPreviews",
+      "url",
+      "searchUrl"
+    ],
+    "types": {
+      "itemId": "string",
+      "title": "string",
+      "price": "number|null",
+      "location": "string|null",
+      "descriptionPreview": "string|null",
+      "published": "string|null",
+      "sellerName": "string|null",
+      "sellerRating": "number|null",
+      "sellerReviewsCount": "number|null",
+      "imagesPreviews": "array",
+      "url": "string",
+      "searchUrl": "string"
+    },
+    "patterns": {
+      "itemId": "^\\d+$",
+      "published": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}Z$",
+      "url": "^https://www\\.avito\\.ru/[^?]+_\\d+$",
+      "searchUrl": "^https://www\\.avito\\.ru/"
+    },
+    "notEmpty": [
+      "itemId",
+      "title",
+      "descriptionPreview",
+      "url",
+      "searchUrl"
+    ],
+    "mustNotContain": {
+      "url": [
+        "?",
+        "context="
+      ]
+    },
+    "mustBeTruthy": [
+      "price"
+    ]
+  }
+}

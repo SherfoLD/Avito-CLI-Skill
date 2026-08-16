@@ -1,0 +1,13 @@
+[
+  {"rank":1,"nodeId":"25984","parentId":null,"categoryId":"1","microcategoryId":"2","name":"Транспорт","depth":0,"hasChildren":true},
+  {"rank":2,"nodeId":"26113","parentId":null,"categoryId":"4","microcategoryId":"5","name":"Недвижимость","depth":0,"hasChildren":true},
+  {"rank":3,"nodeId":"26400","parentId":null,"categoryId":"110","microcategoryId":"10","name":"Работа","depth":0,"hasChildren":true},
+  {"rank":4,"nodeId":"26486","parentId":null,"categoryId":"114","microcategoryId":"63","name":"Услуги","depth":0,"hasChildren":true},
+  {"rank":5,"nodeId":"26127","parentId":null,"categoryId":"5","microcategoryId":"6","name":"Личные вещи","depth":0,"hasChildren":true},
+  {"rank":6,"nodeId":"26047","parentId":null,"categoryId":"2","microcategoryId":"3","name":"Для дома и дачи","depth":0,"hasChildren":true},
+  {"rank":7,"nodeId":"30757","parentId":null,"categoryId":"10","microcategoryId":"17","name":"Запчасти и аксессуары","depth":0,"hasChildren":true},
+  {"rank":8,"nodeId":"26195","parentId":null,"categoryId":"6","microcategoryId":"7","name":"Электроника","depth":0,"hasChildren":true},
+  {"rank":9,"nodeId":"26315","parentId":null,"categoryId":"7","microcategoryId":"8","name":"Хобби и отдых","depth":0,"hasChildren":true},
+  {"rank":10,"nodeId":"26098","parentId":null,"categoryId":"35","microcategoryId":"4","name":"Животные","depth":0,"hasChildren":true},
+  {"rank":11,"nodeId":"26382","parentId":null,"categoryId":"8","microcategoryId":"9","name":"Бизнес и оборудование","depth":0,"hasChildren":true}
+]

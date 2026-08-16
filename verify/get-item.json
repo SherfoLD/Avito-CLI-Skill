@@ -1,0 +1,72 @@
+{
+  "args": [
+    "https://www.avito.ru/moskva/mebel_i_interer/divan_pryamoy_dlya_kuhni_8030214066?context=verify-stripped"
+  ],
+  "expect": {
+    "rowCount": {
+      "min": 1,
+      "max": 1
+    },
+    "columns": [
+      "itemId",
+      "title",
+      "price",
+      "location",
+      "description",
+      "attributes",
+      "publishedText",
+      "sellerName",
+      "sellerRating",
+      "sellerReviewsCount",
+      "images",
+      "url"
+    ],
+    "types": {
+      "itemId": "string",
+      "title": "string",
+      "price": "number|null",
+      "location": "string|null",
+      "description": "string|null",
+      "attributes": "object",
+      "publishedText": "string|null",
+      "sellerName": "string|null",
+      "sellerRating": "number|null",
+      "sellerReviewsCount": "number|null",
+      "images": "array",
+      "url": "string"
+    },
+    "patterns": {
+      "itemId": "^\\d+$",
+      "url": "^https://www\\.avito\\.ru/[^?]+_8030214066$"
+    },
+    "notEmpty": [
+      "itemId",
+      "title",
+      "location",
+      "description",
+      "attributes",
+      "images",
+      "url"
+    ],
+    "mustNotContain": {
+      "description": [
+        "Местоположение",
+        "Характеристики",
+        "Узнать больше"
+      ],
+      "location": [
+        "Узнать больше",
+        "Яндекс"
+      ],
+      "url": [
+        "?",
+        "context="
+      ]
+    },
+    "mustBeTruthy": [
+      "price",
+      "sellerRating",
+      "sellerReviewsCount"
+    ]
+  }
+}

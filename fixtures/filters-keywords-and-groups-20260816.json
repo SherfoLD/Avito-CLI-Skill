@@ -1,0 +1,215 @@
+{
+  "capturedAt": "2026-08-16",
+  "what": "keywords: носитель, сериализация и сохранность текста; пустой словарь у checkboxGroup оказался заголовком группы",
+  "method": "SSR-фетч примененного владельцем URL; items API тем же снимком состояния, что строит apply-filters; видимая форма читалась в реальной вкладке",
+  "keywords": {
+    "ownerUrlState": {
+      "coreKeys": [
+        "locationId=637640",
+        "verticalCategoryId=4",
+        "rootCategoryId=6",
+        "categoryId=101",
+        "showElements=[\"smallRadius\",\"metro\",\"districts\"]",
+        "activeTab=\"smallRadius\"",
+        "locationName=\"Москва\"",
+        "query=\"ddr5 32gb\"",
+        "correctorMode=1",
+        "page=1",
+        "params={\"483\":6581,\"631\":6636,\"149569\":[\"6000\",\"6200\"]}",
+        "localPriority=0",
+        "geoCoords=[55.755814,37.617635]"
+      ],
+      "count": 15,
+      "emptyVocabulary": [],
+      "keywordFilters": [
+        "{\"id\":\"params[149569]\",\"type\":\"keywords\",\"title\":\"Слова в описании\",\"currentValue\":[\"6000\",\"6200\"],\"keys\":[\"id\",\"attrId\",\"type\",\"currentValue\",\"displaying\",\"defaultTitle\",\"updatesForm\",\"hasSuggest\",\"isDisabled\"]}",
+        "{\"id\":\"params[164865]\",\"type\":\"keywords\",\"title\":\"Скрыть объявления\\\\nсо словами\",\"currentValue\":null,\"keys\":[\"id\",\"attrId\",\"type\",\"currentValue\",\"displaying\",\"defaultTitle\",\"hasSuggest\",\"isDisabled\"]}"
+      ],
+      "status": 200
+    },
+    "roundTrip": {
+      "baseCount": 2874,
+      "baseParams": "{\"483\":6581,\"631\":6636}",
+      "results": [
+        {
+          "body": null,
+          "count": 284,
+          "label": "keywords two values",
+          "params": "{\"483\":6581,\"631\":6636,\"149569\":[\"kingston\",\"новая\"]}",
+          "resultUrl": "/moskva/tovary_dlya_kompyutera/komplektuyuschie/operativnaya_pamyat-ASgBAgICAkTGB~pm7gnYZw?cd=1&context=H4sIAAAAAAAA_wEmANn_YToxOntzOjE6InkiO3M6MTY6Ik1ZRVBOWEo4ZzRKZHdydXciO30bvzkUJgAAAA&f=ASgBAQICAkTGB~pm7gnYZwFAgqESJQhraW5nc3RvbgrQvdC~0LLQsNGP&localPriority=0&q=ddr5+32gb",
+          "schema": "params[149569]=[\"kingston\",\"новая\"]/n=none",
+          "sent": "params[149569][0]=kingston&params[149569][1]=новая",
+          "status": 200
+        },
+        {
+          "body": null,
+          "count": 2274,
+          "label": "hide words",
+          "params": "{\"483\":6581,\"631\":6636,\"164865\":[\"kingston\"]}",
+          "resultUrl": "/moskva/tovary_dlya_kompyutera/komplektuyuschie/operativnaya_pamyat-ASgBAgICAkTGB~pm7gnYZw?cd=1&context=H4sIAAAAAAAA_wEmANn_YToxOntzOjE6InkiO3M6MTY6Ik1ZRVBOWEo4ZzRKZHdydXciO30bvzkUJgAAAA&f=ASgBAQICAkTGB~pm7gnYZwFAgpAUFQhraW5nc3Rvbg&localPriority=0&q=ddr5+32gb",
+          "schema": "params[164865]=[\"kingston\"]/n=none",
+          "sent": "params[164865][0]=kingston",
+          "status": 200
+        }
+      ]
+    },
+    "caseAndSpaces": {
+      "baseCount": 2874,
+      "baseParams": "{\"483\":6581,\"631\":6636}",
+      "results": [
+        {
+          "body": null,
+          "count": 46,
+          "label": "keywords mixed case and spaces",
+          "params": "{\"483\":6581,\"631\":6636,\"149569\":[\"Kingston HyperX\"]}",
+          "resultUrl": "/moskva/tovary_dlya_kompyutera/komplektuyuschie/operativnaya_pamyat-ASgBAgICAkTGB~pm7gnYZw?cd=1&context=H4sIAAAAAAAA_wEmANn_YToxOntzOjE6InkiO3M6MTY6IlQ5U1k3QUZZQ1NXYWJWQ0YiO33xCFYdJgAAAA&f=ASgBAQICAkTGB~pm7gnYZwFAgqESFQ9LaW5nc3RvbiBIeXBlclg&localPriority=0&q=ddr5+32gb",
+          "schema": "params[149569]=[\"Kingston HyperX\"]/n=none",
+          "sent": "params[149569][0]=Kingston HyperX",
+          "status": 200
+        }
+      ]
+    }
+  },
+  "emptyVocabulary": {
+    "divansUiAndSchema": {
+      "emptyVocabulary": [
+        {
+          "id": "params[187159270000]",
+          "inUi": false,
+          "title": "Условия продажи",
+          "titleVisible": true,
+          "type": "checkboxGroup",
+          "values": 0
+        }
+      ],
+      "hidden": [
+        {
+          "id": "params[45]",
+          "inUi": true,
+          "title": "Вид товара",
+          "titleVisible": false,
+          "type": "hidden",
+          "values": null
+        },
+        {
+          "id": "params[156912]",
+          "inUi": true,
+          "title": "Открытие в сегменте",
+          "titleVisible": false,
+          "type": "hidden",
+          "values": null
+        },
+        {
+          "id": "params[110470]",
+          "inUi": true,
+          "title": "Подвид товара",
+          "titleVisible": false,
+          "type": "hidden",
+          "values": null
+        }
+      ],
+      "keywords": [
+        {
+          "id": "params[149569]",
+          "inUi": true,
+          "title": "Слова в описании",
+          "titleVisible": true,
+          "type": "keywords",
+          "values": null
+        }
+      ],
+      "ranges": [
+        {
+          "id": "price",
+          "inUi": false,
+          "title": "Цена",
+          "titleVisible": true,
+          "type": "numericRange",
+          "values": null
+        },
+        {
+          "id": "params[126438]",
+          "inUi": false,
+          "title": "Ширина",
+          "titleVisible": true,
+          "type": "numericRange",
+          "values": null
+        },
+        {
+          "id": "params[126431]",
+          "inUi": false,
+          "title": "Высота",
+          "titleVisible": true,
+          "type": "numericRange",
+          "values": null
+        },
+        {
+          "id": "params[126433]",
+          "inUi": false,
+          "title": "Глубина",
+          "titleVisible": true,
+          "type": "numericRange",
+          "values": null
+        },
+        {
+          "id": "params[126428]",
+          "inUi": false,
+          "title": "Ширина спального места",
+          "titleVisible": true,
+          "type": "numericRange",
+          "values": null
+        },
+        {
+          "id": "params[126426]",
+          "inUi": false,
+          "title": "Длина спального места",
+          "titleVisible": true,
+          "type": "numericRange",
+          "values": null
+        }
+      ],
+      "url": "https://www.avito.ru/moskva/mebel_i_interer/myagkaya-mebel/divany-ASgBAgICAkRaqgKMvg2ArjU"
+    },
+    "tree": [
+      {
+        "lines": [
+          "localPriority [boolean] n=0 kids=0 \"Сначала из Москвы\"",
+          "params[716] [hidden] n=0 kids=0 \"Вид услуги\"",
+          "params[162160] [hidden] n=0 kids=0 \"Тип услуги\"",
+          "params[156272960000] [checkboxGroup] n=0 kids=1 \"Статус исполнителя\"",
+          "  params[191434] [bannerCheckBoxWithImage] n=0 kids=0 \"Надёжный исполнитель\"",
+          "  params[196498] [multiselect] n=1 kids=0 \"null\"",
+          "price [numericRange] n=0 kids=0 \"Стоимость\"",
+          "params[149569] [keywords] n=0 kids=0 \"Слова в описании\"",
+          "params[156912] [hidden] n=0 kids=0 \"Открытие в сегменте\""
+        ],
+        "url": "kva/predlozheniya_uslug/gruzchiki_skladskie_us"
+      },
+      {
+        "lines": [
+          "price [numericRange] n=0 kids=0 \"Цена\"",
+          "params[126438] [numericRange] n=0 kids=0 \"Ширина\"",
+          "params[126431] [numericRange] n=0 kids=0 \"Высота\"",
+          "params[126433] [numericRange] n=0 kids=0 \"Глубина\"",
+          "params[126428] [numericRange] n=0 kids=0 \"Ширина спального места\"",
+          "params[126426] [numericRange] n=0 kids=0 \"Длина спального места\"",
+          "  params[196498] [multiselect] n=1 kids=0 \"null\"",
+          "  params[174605] [multiselect] n=1 kids=0 \"null\"",
+          "  params[149578] [multiselect] n=1 kids=0 \"null\"",
+          "  params[165549] [multiselect] n=1 kids=0 \"null\"",
+          "  params[197010] [multiselect] n=1 kids=0 \"null\"",
+          "params[149569] [keywords] n=0 kids=0 \"Слова в описании\"",
+          "params[45] [hidden] n=0 kids=0 \"Вид товара\"",
+          "params[156912] [hidden] n=0 kids=0 \"Открытие в сегменте\"",
+          "params[110470] [hidden] n=0 kids=0 \"Подвид товара\"",
+          "params[187159270000] [checkboxGroup] n=0 kids=2 \"Условия продажи\"",
+          "  params[198219] [multiselect] n=1 kids=0 \"null\"",
+          "  params[198220] [multiselect] n=1 kids=0 \"null\"",
+          "localPriority [boolean] n=0 kids=0 \"Сначала из Москвы\""
+        ],
+        "url": "kva/mebel_i_interer/myagkaya-mebel/divany-ASgB"
+      }
+    ],
+    "note": "ID группы синтетический и нестабильный между чтениями одного маршрута: 156269380000 и 156272960000 на грузчиках"
+  }
+}

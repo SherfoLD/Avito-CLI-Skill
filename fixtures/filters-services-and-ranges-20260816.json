@@ -1,0 +1,235 @@
+{
+  "capturedAt": "2026-08-16",
+  "what": "Услуги: единственный незнакомый тип и его round-trip; форма диапазона внутри params[...]",
+  "method": "один same-origin SSR-фетч на маршрут из прогретой вкладки; items API вызывался тем же снимком состояния, что строит apply-filters",
+  "services": {
+    "rubricRoot": "https://www.avito.ru/moskva/predlozheniya_uslug",
+    "routesProbed": [
+      {
+        "route": "~/gruzchiki_skladskie_uslugi/gruzchiki-ASgBAgICAkSYC8KIjgPg5RPSiI4D",
+        "filters": 19,
+        "count": 1166,
+        "types": "boolean=1 select=3 hidden=3 multiselect=6 checkboxGroup=1 bannerCheckBoxWithImage=1 radioGroup=2 numericRange=1 keywords=1",
+        "unknown": [
+          "params[191434]:bannerCheckBoxWithImage:n=0:Надёжный исполнитель"
+        ],
+        "sectioned": []
+      },
+      {
+        "route": "~/transport_perevozki/arenda_spetstekhniki-ASgBAgICAkSYC8SfAZoL3J8B",
+        "filters": 13,
+        "count": 2117,
+        "types": "hidden=1 multiselect=4 checkboxGroup=1 bannerCheckBoxWithImage=1 numericRange=1 radioGroup=2 keywords=1 boolean=1 select=1",
+        "unknown": [
+          "params[191434]:bannerCheckBoxWithImage:n=0:Надёжный исполнитель"
+        ],
+        "sectioned": []
+      },
+      {
+        "route": "~/transport_perevozki/avtoservisy_dlya_avtomobiley-ASgBAgICAkSYC8SfAZoL2p8B",
+        "filters": 17,
+        "count": 65657,
+        "types": "hidden=4 checkboxGroup=1 bannerCheckBoxWithImage=1 multiselect=5 radioGroup=2 numericRange=1 keywords=1 boolean=1 select=1",
+        "unknown": [
+          "params[191434]:bannerCheckBoxWithImage:n=0:Надёжный исполнитель"
+        ],
+        "sectioned": []
+      },
+      {
+        "route": "~/remont_i_otdelka/santekhnika-ASgBAgICAkSYC8CfAcQVsvUB",
+        "filters": 20,
+        "count": 4188,
+        "types": "select=2 hidden=3 multiselect=8 checkboxGroup=2 bannerCheckBoxWithImage=1 numericRange=1 keywords=1 radioGroup=1 boolean=1",
+        "unknown": [
+          "params[191434]:bannerCheckBoxWithImage:n=0:Надёжный исполнитель"
+        ],
+        "sectioned": []
+      },
+      {
+        "route": "~/stroitelstvo/krovelnye_raboty-ASgBAgICAkSYC6Cf8QLejw_0nYsD",
+        "filters": 22,
+        "count": 941,
+        "types": "select=1 hidden=3 multiselect=12 numericRange=1 checkboxGroup=1 bannerCheckBoxWithImage=1 keywords=1 radioGroup=1 boolean=1",
+        "unknown": [
+          "params[191434]:bannerCheckBoxWithImage:n=0:Надёжный исполнитель"
+        ],
+        "sectioned": []
+      },
+      {
+        "route": "~/uborka_klining-ASgBAgICAUSYC7L3AQ",
+        "filters": 13,
+        "count": 2572,
+        "types": "radioGroup=2 boolean=1 select=1 hidden=1 multiselect=4 checkboxGroup=1 bannerCheckBoxWithImage=1 numericRange=1 keywords=1",
+        "unknown": [
+          "params[191434]:bannerCheckBoxWithImage:n=0:Надёжный исполнитель"
+        ],
+        "sectioned": []
+      },
+      {
+        "route": "~/zdorove-ASgBAgICAUSYC_CylQM",
+        "filters": 13,
+        "count": 11423,
+        "types": "select=1 hidden=2 numericRange=1 multiselect=4 checkboxGroup=1 bannerCheckBoxWithImage=1 keywords=1 radioGroup=1 boolean=1",
+        "unknown": [
+          "params[191434]:bannerCheckBoxWithImage:n=0:Надёжный исполнитель"
+        ],
+        "sectioned": []
+      },
+      {
+        "route": "~/remont_i_obsluzhivanie_tehniki-ASgBAgICAUSYC7T3AQ",
+        "filters": 13,
+        "count": 29386,
+        "types": "radioGroup=2 boolean=1 select=1 hidden=1 multiselect=4 checkboxGroup=1 bannerCheckBoxWithImage=1 numericRange=1 keywords=1",
+        "unknown": [
+          "params[191434]:bannerCheckBoxWithImage:n=0:Надёжный исполнитель"
+        ],
+        "sectioned": []
+      },
+      {
+        "route": "~/komp%27yuternaya_pomoshch%27-ASgBAgICAUSYC_78jQM",
+        "filters": 15,
+        "count": 8385,
+        "types": "select=1 hidden=3 multiselect=7 checkboxGroup=1 bannerCheckBoxWithImage=1 radioGroup=1 boolean=1",
+        "unknown": [
+          "params[191434]:bannerCheckBoxWithImage:n=0:Надёжный исполнитель"
+        ],
+        "sectioned": []
+      },
+      {
+        "route": "~/vyvoz_musora_i_priyom_vtorsyrya-ASgBAgICAUSYC5zLjQM",
+        "filters": 19,
+        "count": 9885,
+        "types": "select=2 hidden=2 multiselect=8 radioGroup=2 checkboxGroup=1 bannerCheckBoxWithImage=1 numericRange=1 keywords=1 boolean=1",
+        "unknown": [
+          "params[191434]:bannerCheckBoxWithImage:n=0:Надёжный исполнитель"
+        ],
+        "sectioned": []
+      },
+      {
+        "route": "~/obuchenie_kursy-ASgBAgICAUSYC7afAQ",
+        "filters": 17,
+        "count": 49089,
+        "types": "select=2 hidden=3 multiselect=6 checkboxGroup=1 bannerCheckBoxWithImage=1 numericRange=1 keywords=1 radioGroup=1 boolean=1",
+        "unknown": [
+          "params[191434]:bannerCheckBoxWithImage:n=0:Надёжный исполнитель"
+        ],
+        "sectioned": []
+      },
+      {
+        "route": "~/krasota-ASgBAgICAUSYC6qfAQ",
+        "filters": 13,
+        "count": 31332,
+        "types": "hidden=1 multiselect=4 checkboxGroup=1 bannerCheckBoxWithImage=1 numericRange=1 radioGroup=2 keywords=1 boolean=1 select=1",
+        "unknown": [
+          "params[191434]:bannerCheckBoxWithImage:n=0:Надёжный исполнитель"
+        ],
+        "sectioned": []
+      }
+    ],
+    "unknownTypeShape": [
+      "{\"id\":\"params[191434]\",\"attrId\":191434,\"type\":\"bannerCheckBoxWithImage\",\"currentValue\":null,\"displayingKeys\":[\"label\",\"subtitle\",\"tooltip\",\"universalImage\"],\"defaultTitle\":\"Надёжный исполнитель\",\"hasSuggest\":false}"
+    ],
+    "checkboxRoundTrip": {
+      "baseCount": 1166,
+      "baseParams": "{\"716\":3260961,\"162160\":3260969}",
+      "results": [
+        {
+          "body": null,
+          "count": 165,
+          "label": "banner=1",
+          "params": "{\"716\":3260961,\"162160\":3260969,\"191434\":1}",
+          "resultUrl": "/moskva/predlozheniya_uslug/gruzchiki_skladskie_uslugi/gruzchiki-ASgBAgICAkSYC8KIjgPg5RPSiI4D?context=H4sIAAAAAAAA_wEmANn_YToxOntzOjE6InkiO3M6MTY6IjdOVjRIUFF2RUZVUVdOVVMiO32ivWcsJgAAAA&f=ASgBAgICA0SYC8KIjgPg5RPSiI4DlK8XAg&localPriority=0",
+          "schema": "params[191434]=1/n=none",
+          "sent": "params[191434]=1",
+          "status": 200
+        },
+        {
+          "body": null,
+          "count": 1166,
+          "label": "status checkbox=1",
+          "params": "{\"716\":3260961,\"162160\":3260969,\"156269380000\":1}",
+          "resultUrl": "/moskva/predlozheniya_uslug/gruzchiki_skladskie_uslugi/gruzchiki-ASgBAgICAkSYC8KIjgPg5RPSiI4D?context=H4sIAAAAAAAA_wEmANn_YToxOntzOjE6InkiO3M6MTY6IjdOVjRIUFF2RUZVUVdOVVMiO32ivWcsJgAAAA&f=ASgBAgICA0SYC8KIjgPg5RPSiI4DwIaMpgwC&localPriority=0",
+          "schema": "params[156269380000]=null/n=none",
+          "sent": "params[156269380000]=1",
+          "status": 200
+        }
+      ]
+    }
+  },
+  "ranges": {
+    "inventory": [
+      {
+        "ranges": [
+          "{\"id\":\"price\",\"type\":\"numericRange\",\"title\":\"Цена\",\"dim\":\"₽\",\"n\":0,\"v0\":null,\"v1\":null,\"vLast\":null,\"inputs\":{\"from\":{\"currentValue\":null,\"defaultTitle\":\"От\",\"hideThousandDelimiter\":false,\"id\":\"pmin\",\"maxLength\":15,\"type\":\"numeric\"},\"to\":{\"defaultTitle\":\"до\",\"hideThousandDelimiter\":false,\"id\":\"pmax\",\"maxLength\":15,\"type\":\"numeric\",\"currentValue\":null}},\"currentValue\":{\"from\":null,\"to\":null}}",
+          "{\"id\":\"params[164669]\",\"type\":\"numericRange\",\"title\":\"Год выпуска\",\"dim\":null,\"n\":0,\"v0\":null,\"v1\":null,\"vLast\":null,\"inputs\":{\"from\":{\"defaultTitle\":\"От\",\"hideThousandDelimiter\":true,\"id\":\"params[164669][from]\",\"maxLength\":4,\"type\":\"numeric\",\"currentValue\":null},\"to\":{\"id\":\"params[164669][to]\",\"maxLength\":4,\"type\":\"numeric\",\"currentValue\":null,\"defaultTitle\":\"до\",\"hideThousandDelimiter\":true}},\"currentValue\":{\"from\":null,\"to\":null}}",
+          "{\"id\":\"params[2687]\",\"type\":\"numericRange\",\"title\":\"Пробег\",\"dim\":\"км\",\"n\":0,\"v0\":null,\"v1\":null,\"vLast\":null,\"inputs\":{\"from\":{\"currentValue\":null,\"defaultTitle\":\"От\",\"hideThousandDelimiter\":false,\"id\":\"params[2687][from]\",\"maxLength\":7,\"type\":\"numeric\"},\"to\":{\"maxLength\":7,\"type\":\"numeric\",\"currentValue\":null,\"defaultTitle\":\"до\",\"hideThousandDelimiter\":false,\"id\":\"params[2687][to]\"}},\"currentValue\":{\"from\":null,\"to\":null}}",
+          "{\"id\":\"params[162396]\",\"type\":\"slider\",\"title\":\"Объём двигателя\",\"dim\":\"л\",\"n\":39,\"v0\":{\"name\":\"0.2 л\",\"value\":\"3261702\"},\"v1\":{\"name\":\"0.3 л\",\"value\":\"3261703\"},\"vLast\":{\"name\":\"10.0 л\",\"value\":\"3261740\"},\"inputs\":{\"from\":{\"defaultTitle\":\"От\",\"id\":\"params[162396][from]\"},\"to\":{\"defaultTitle\":\"до\",\"id\":\"params[162396][to]\"}},\"currentValue\":{\"from\":\"\",\"to\":\"\"}}",
+          "{\"id\":\"params[110011]\",\"type\":\"numericRange\",\"title\":\"Мощность\",\"dim\":\"л.с.\",\"n\":0,\"v0\":null,\"v1\":null,\"vLast\":null,\"inputs\":{\"from\":{\"id\":\"params[110011][from]\",\"maxLength\":4,\"type\":\"numeric\",\"currentValue\":null,\"defaultTitle\":\"От\",\"hideThousandDelimiter\":false},\"to\":{\"maxLength\":4,\"type\":\"numeric\",\"currentValue\":null,\"defaultTitle\":\"до\",\"hideThousandDelimiter\":false,\"id\":\"params[110011][to]\"}},\"currentValue\":{\"from\":null,\"to\":null}}",
+          "{\"id\":\"params[129003]\",\"type\":\"numericRange\",\"title\":\"Расход топлива на 100 км\",\"dim\":\"л/100 км\",\"n\":0,\"v0\":null,\"v1\":null,\"vLast\":null,\"inputs\":{\"from\":{\"defaultTitle\":\"От\",\"hideThousandDelimiter\":false,\"id\":\"params[129003][from]\",\"maxLength\":4,\"type\":\"numeric\",\"currentValue\":null},\"to\":{\"maxLength\":4,\"type\":\"numeric\",\"currentValue\":null,\"defaultTitle\":\"до\",\"hideThousandDelimiter\":false,\"id\":\"params[129003][to]\"}},\"currentValue\":{\"from\":null,\"to\":null}}",
+          "{\"id\":\"params[129000]\",\"type\":\"numericRange\",\"title\":\"Разгон до 100 км/ч\",\"dim\":null,\"n\":0,\"v0\":null,\"v1\":null,\"vLast\":null,\"inputs\":{\"from\":{\"currentValue\":null,\"defaultTitle\":\"От\",\"hideThousandDelimiter\":false,\"id\":\"params[129000][from]\",\"maxLength\":4,\"type\":\"numeric\"},\"to\":{\"currentValue\":null,\"defaultTitle\":\"до\",\"hideThousandDelimiter\":false,\"id\":\"params[129000][to]\",\"maxLength\":4,\"type\":\"numeric\"}},\"currentValue\":{\"from\":null,\"to\":null}}",
+          "{\"id\":\"params[128996]\",\"type\":\"numericRange\",\"title\":\"Объём багажника\",\"dim\":null,\"n\":0,\"v0\":null,\"v1\":null,\"vLast\":null,\"inputs\":{\"from\":{\"currentValue\":null,\"defaultTitle\":\"От\",\"hideThousandDelimiter\":false,\"id\":\"params[128996][from]\",\"maxLength\":4,\"type\":\"numeric\"},\"to\":{\"currentValue\":null,\"defaultTitle\":\"до\",\"hideThousandDelimiter\":false,\"id\":\"params[128996][to]\",\"maxLength\":4,\"type\":\"numeric\"}},\"currentValue\":{\"from\":null,\"to\":null}}",
+          "{\"id\":\"params[128992]\",\"type\":\"numericRange\",\"title\":\"Клиренс\",\"dim\":null,\"n\":0,\"v0\":null,\"v1\":null,\"vLast\":null,\"inputs\":{\"from\":{\"currentValue\":null,\"defaultTitle\":\"От\",\"hideThousandDelimiter\":false,\"id\":\"params[128992][from]\",\"maxLength\":4,\"type\":\"numeric\"},\"to\":{\"type\":\"numeric\",\"currentValue\":null,\"defaultTitle\":\"до\",\"hideThousandDelimiter\":false,\"id\":\"params[128992][to]\",\"maxLength\":4}},\"currentValue\":{\"from\":null,\"to\":null}}"
+        ],
+        "url": "https://www.avito.ru/moskva/avtomobili"
+      },
+      {
+        "ranges": [],
+        "url": "https://www.avito.ru/moskva/mebel_i_interer/divany_i_kresla-ASgBAgICAUSUA9IQ"
+      }
+    ],
+    "bothBounds": {
+      "baseCount": 80329,
+      "results": [
+        {
+          "body": null,
+          "count": 9997,
+          "label": "numericRange year",
+          "params": "{\"164669\":{\"from\":2015,\"to\":2018}}",
+          "resultUrl": "/moskva/avtomobili?context=H4sIAAAAAAAA_wEmANn_YToxOntzOjE6InkiO3M6MTY6IktxWmRrOGY4c0xpY0xFNXMiO30zMNEHJgAAAA&f=ASgCAgECAUX6jBQXeyJmcm9tIjoyMDE1LCJ0byI6MjAxOH0&localPriority=0&radius=0&searchRadius=0",
+          "schema": "params[164669]={\"to\":\"2018\",\"from\":\"2015\"}",
+          "sent": "params[164669][from]=2015&params[164669][to]=2018",
+          "status": 200
+        },
+        {
+          "body": null,
+          "count": 39437,
+          "label": "slider volume by option id",
+          "params": "{\"162396\":{\"to\":3261730,\"from\":3261720}}",
+          "resultUrl": "/moskva/avtomobili?context=H4sIAAAAAAAA_wEmANn_YToxOntzOjE6InkiO3M6MTY6IktxWmRrOGY4c0xpY0xFNXMiO30zMNEHJgAAAA&f=ASgCAgECAUW46RMdeyJmcm9tIjozMjYxNzIwLCJ0byI6MzI2MTczMH0&localPriority=0&radius=0&searchRadius=0",
+          "schema": "params[162396]={\"from\":\"3261720\",\"to\":\"3261730\"}",
+          "sent": "params[162396][from]=3261720&params[162396][to]=3261730",
+          "status": 200
+        }
+      ],
+      "sliderFrom": "3261720",
+      "sliderTo": "3261730"
+    },
+    "oneBound": {
+      "baseCount": 80329,
+      "results": [
+        {
+          "body": null,
+          "count": 48356,
+          "label": "year from only",
+          "params": "{\"164669\":{\"to\":0,\"from\":2018}}",
+          "resultUrl": "/moskva/avtomobili?context=H4sIAAAAAAAA_wEmANn_YToxOntzOjE6InkiO3M6MTY6Ild5UzNPM1BMYkVhY0loZUsiO33kXX-2JgAAAA&f=ASgCAgECAUX6jBQXeyJmcm9tIjoyMDE4LCJ0byI6bnVsbH0&localPriority=0&radius=0&searchRadius=0",
+          "schema": "params[164669]={\"from\":\"2018\",\"to\":null}",
+          "sent": "params[164669][from]=2018",
+          "status": 200
+        },
+        {
+          "body": null,
+          "count": 73232,
+          "label": "slider to only",
+          "params": "{\"162396\":{\"from\":0,\"to\":3261730}}",
+          "resultUrl": "/moskva/avtomobili?context=H4sIAAAAAAAA_wEmANn_YToxOntzOjE6InkiO3M6MTY6Ild5UzNPM1BMYkVhY0loZUsiO33kXX-2JgAAAA&f=ASgCAgECAUW46RMaeyJmcm9tIjpudWxsLCJ0byI6MzI2MTczMH0&localPriority=0&radius=0&searchRadius=0",
+          "schema": "params[162396]={\"from\":\"\",\"to\":\"3261730\"}",
+          "sent": "params[162396][to]=3261730",
+          "status": 200
+        }
+      ],
+      "sliderFrom": "3261720",
+      "sliderTo": "3261730"
+    }
+  }
+}

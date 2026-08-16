@@ -1,0 +1,99 @@
+# Designing the output
+
+A row is the API. It is read by an agent that will see the column names and the
+`description` and nothing else, so the names carry the whole contract.
+
+## The ceiling
+
+12 top-level keys, nesting depth at most 1. Both are enforced.
+
+The ceiling is the reason column design is a decision rather than a habit: there
+is no free slot. A new column exists only in place of an existing one, and the
+argument for the trade has to be made out loud. When `sellerId` was removed, the
+slot it freed went to `published` — and the case for `sellerId` leaving was that
+no command grouped by it, built a URL from it, or checked a postcondition with it
+(D-038).
+
+Depth 1 means a map is allowed and an array of objects is not. That is why filter
+options are `{"<value>": "<name>"}` rather than `[{value, name}]`: the map keeps
+the grouping inside the allowed depth, while the flat alternative turned a
+26-filter schema into 498 repeating rows (D-010).
+
+## Naming
+
+- camelCase. Checked by `npm run check:conventions`.
+- Align with the neighbouring commands before inventing anything. If four
+  commands already return `sellerReviewsCount`, the fifth does not get
+  `reviewCount`.
+- **One name means one thing.** `images` and `imagesPreviews` are separate
+  columns because a catalog preview (`636x636`) and a gallery original
+  (`1280x960`) are different things, and one name over both let a consumer
+  believe they had the original (D-029). The same reasoning produced `published`
+  and `publishedText`: an exact instant and a rendered string are two quantities,
+  not two formats of one.
+- A name should survive being read alone. `price` is the number the card prints
+  large; if you also carried the base price it would not be `price2`, it would be
+  `basePrice` — and it would cost a slot.
+
+## Order
+
+Identity → the business numbers → metadata.
+
+```
+itemId, title, price, location, descriptionPreview, published,
+sellerName, sellerRating, sellerReviewsCount, imagesPreviews, url, searchUrl
+```
+
+For the four listing commands this exact list and this exact order are fixed.
+They are pinned by `expect.columns` in the verify fixtures and cross-checked
+against the descriptor by `npm run check:fixtures`, so changing one means
+changing both deliberately.
+
+## Types
+
+- Declare nullable columns as nullable, and mean it. `sellerName` is
+  `string|null` because Avito withholds private-seller identity from an anonymous
+  session — the `null` is information, not a gap.
+- A number stays a number. Do not format it into a string for display; the
+  consumer formats.
+- A unit that is not obvious belongs in the field map with the unit named:
+  "premium as a 0–1 fraction, NOT already multiplied by 100" is a useful entry,
+  "premium" is not.
+- An array column is always an array, never `null`. Empty means empty.
+
+## What does not become a column
+
+- **Anything constant.** `optionsComplete` was the constant `true` from birth and
+  was deleted. A column that always says the same thing costs a slot and teaches
+  the caller nothing.
+- **Anything that describes our implementation.** `currentValueSource` named
+  which carrier we chose to read; that is our business, not the caller's.
+- **Anything that restates another column.** `attrId` was the same number already
+  inside `key`; `type` duplicated `valueSyntax`.
+- **Anything the caller cannot act on.** The test that removed six columns from
+  `get-filters` was exactly this: for each one, name the action it enables. If
+  there is none, it goes (D-037).
+
+## Row-shaped rules worth stealing
+
+- **A resting value is not a choice.** `owner=0`, `localPriority=0` and an empty
+  range read as `null` rather than being reported as an applied filter. Handing
+  back a default dressed as a selection makes the caller act on nothing.
+- **Absence is a signal, if you say so.** In `get-filters` the rule is "a row
+  exists ⇔ the filter is applicable". There is no separate applicability flag,
+  and there does not need to be — but that only works because it is stated in the
+  command description, where the caller reads it.
+- **One syntax field beats a type field.** `valueSyntax` tells the caller what to
+  write after `key=`. It is derived from what the applying command accepts, not
+  from the source type, which is why a caller never needs to know that a
+  `numericRange` and a `slider` are different things.
+
+## Where the contract lives
+
+In the descriptor, printed by `--help`. Not in markdown.
+
+Documentation says only what the descriptor cannot: why a flag is mutually
+exclusive with another, what happens when it is omitted, which column is
+deliberately partial. A markdown copy of the flag list is a copy that rots, and
+`npm run check:docs` deliberately checks only that a command has a domain file —
+never that the file lists its flags.

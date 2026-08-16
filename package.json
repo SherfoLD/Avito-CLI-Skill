@@ -1,0 +1,28 @@
+{
+  "name": "avito-cdp",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Private read-only Avito CLI driving a user-owned Chrome over the DevTools Protocol.",
+  "bin": {
+    "avito": "bin/avito.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "test": "node tests/run.mjs",
+    "check": "npm run check:conventions && npm run check:typed-errors && npm run check:column-drop && npm run check:fixtures && npm run check:secrets && npm run check:docs && npm test",
+    "check:conventions": "node scripts/check-conventions.mjs",
+    "check:typed-errors": "node scripts/check-typed-error-lint.mjs",
+    "check:column-drop": "node scripts/check-silent-column-drop.mjs",
+    "check:fixtures": "node scripts/check-verify-fixtures.mjs",
+    "check:secrets": "node scripts/check-no-secrets.mjs",
+    "check:docs": "node scripts/check-doc-coverage.mjs",
+    "advise:id-pairing": "node scripts/advise-listing-id-pairing.mjs",
+    "verify": "node scripts/verify.mjs"
+  },
+  "devDependencies": {
+    "linkedom": "^0.18.0"
+  }
+}

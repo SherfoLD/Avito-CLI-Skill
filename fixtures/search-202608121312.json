@@ -1,0 +1,32 @@
+{
+  "captured_at": "2026-08-12T13:12:35+03:00",
+  "source": "visible Avito result DOM; normalized and stripped of query/context parameters",
+  "query": "iphone 15",
+  "page_heading": "Apple iPhone 15 в Москве",
+  "rows": [
+    {
+      "rank": 1,
+      "itemId": "8199746677",
+      "title": "iPhone 15, 128 ГБ, SIM + eSIM",
+      "price": 49990,
+      "location": "Багратионовская, до 5 мин.",
+      "url": "https://www.avito.ru/moskva/telefony/iphone_15_128_gb_sim_esim_8199746677"
+    },
+    {
+      "rank": 2,
+      "itemId": "7940669274",
+      "title": "iPhone 15, 256 ГБ, SIM + eSIM",
+      "price": 39990,
+      "location": "Озёрная, 6–10 мин.",
+      "url": "https://www.avito.ru/moskva/telefony/iphone_15_256_gb_sim_esim_7940669274"
+    },
+    {
+      "rank": 3,
+      "itemId": "8135287450",
+      "title": "iPhone 15, 256 ГБ, 1 SIM",
+      "price": 30990,
+      "location": "Багратионовская, до 5 мин.",
+      "url": "https://www.avito.ru/moskva/telefony/iphone_15_256_gb_1_sim_8135287450"
+    }
+  ]
+}

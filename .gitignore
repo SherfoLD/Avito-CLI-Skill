@@ -1,0 +1,12 @@
+.DS_Store
+node_modules/
+
+# Session material never enters the repository (D-005).
+.env
+.env.*
+*.har
+*.log
+*.html
+traces/
+fixtures/traces/
+last-probe.log

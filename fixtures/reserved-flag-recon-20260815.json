@@ -1,0 +1,82 @@
+{
+  "recordedAt": "2026-08-15",
+  "purpose": "Recon evidence for `avito search --remove-reserved`: where Avito reports the reservation state of a listing and whether it can be filtered server-side. No cookies, tokens, opaque search context or full response bodies are stored.",
+  "context": {
+    "query": "iphone 11",
+    "region": "Москва (session region, not changed by the recon)",
+    "canonicalRoute": "/moskva/telefony/mobilnye_telefony/apple/iphone_11-ASgBAgICA0SywA2kmzm0wA3OqzmwwQ2I_Dc",
+    "requests": "two SSR document reads of the canonical route, one rendered listing page, one same-origin item API call",
+    "access": "no CAPTCHA and no HTTP 429 during the recon"
+  },
+  "carrier": {
+    "path": "loaderData.data.catalog.items[].isReserved",
+    "type": "boolean",
+    "coverage": "present on 50 of 50 rows; typeof over the whole page yielded only \"boolean\"",
+    "trueCount": [
+      10,
+      9
+    ],
+    "alsoInApi": "the /web/1/js/items catalog carries the same key: a refined call (--price-max 30000 --sort date) succeeded with --remove-reserved, which requires a boolean on every row"
+  },
+  "notTheSource": {
+    "badges": "reserved cards carry ordinary Авито Гарантия / Рыночная цена / Рассрочка in iva.BadgeBarStep; no iva step contains the word Забронировано",
+    "rendering": "the catalog bundle passes isReserved into the snippet badge component, which prints Забронировано itself",
+    "conclusion": "reservation must never be inferred from badges, card text or UI styling"
+  },
+  "semanticsCrossCheck": {
+    "itemId": "8329291056",
+    "catalog": "isReserved: true",
+    "itemApi": "item.deliveryInfo.isReserved: true",
+    "visiblePage": "the rendered listing page shows the control \"Товар зарезервирован\"",
+    "reservationInfo": "null on every item inspected; not taken into any contract"
+  },
+  "serverSideFilter": {
+    "searched": "full filtersV2 JSON of the canonical route (30746 chars) plus the stored full schemas for Divans and RAM",
+    "patterns": [
+      "reserv",
+      "заброн",
+      "зарезерв"
+    ],
+    "hits": 0,
+    "conclusion": "Avito offers no reservation filter, so removing reserved listings can only be a declared local predicate over the page it returned"
+  },
+  "liveVerification": {
+    "defaultBranch": {
+      "command": "avito search \"iphone 11\" --remove-reserved",
+      "returnedRows": 42,
+      "freshPageRead": {
+        "total": 50,
+        "reserved": 8,
+        "free": 42
+      },
+      "returnedIntersectReserved": 0,
+      "churn": "two IDs differed between the two requests in both directions; both belong to the non-reserved set"
+    },
+    "apiBranch": {
+      "command": "avito search \"iphone 11\" --price-max 30000 --sort date [--remove-reserved]",
+      "controlRows": 50,
+      "filteredRows": 43,
+      "droppedIds": 7
+    },
+    "regression": "strict verify of avito/search, avito/page and avito/filter all passed over full 50-row pages; columns and fixtures unchanged",
+    "note": "one earlier refined call failed with a typed TIMEOUT from the items API after 20 s and was repeated once after a pause, without weakening validation",
+    "pageCommand": {
+      "command": "avito page \"<iphone 11 canonical>\" --page 2 --remove-reserved",
+      "returnedRows": 44,
+      "freshPageRead": {
+        "total": 50,
+        "reserved": 6,
+        "free": 44
+      },
+      "returnedIntersectReserved": 0,
+      "churn": "one ID differed between the two requests"
+    },
+    "filterCommand": {
+      "command": "avito filter \"<iphone 11 canonical>\" --set params[112691]=757883 [--remove-reserved]",
+      "controlRows": 50,
+      "filteredRows": 43,
+      "droppedIds": 7,
+      "churn": "none; the filtered set is a strict subset of the control set"
+    }
+  }
+}

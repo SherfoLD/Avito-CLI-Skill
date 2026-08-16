@@ -1,0 +1,40 @@
+{
+  "verifiedAt": "2026-08-13",
+  "canonicalSearchUrl": "https://www.avito.ru/moskva/tovary_dlya_kompyutera/komplektuyuschie/operativnaya_pamyat-ASgBAgICAkTGB~pm7gnYZw?q=ddr5+32gb",
+  "schema": {
+    "filterCount": 26,
+    "selection": {
+      "key": "params[159478]",
+      "value": "18629557",
+      "name": "DDR5",
+      "type": "multi_enum",
+      "currentValueBefore": []
+    }
+  },
+  "visibleUi": {
+    "purpose": "schema_mapping_cross_check_only",
+    "initialMatchingKeyInputs": 5,
+    "expandedMatchingKeyInputs": 9,
+    "expandControlText": "Показать ещё",
+    "exactLabelCount": 1,
+    "checkChanged": true,
+    "checked": true
+  },
+  "runtimeTarget": {
+    "application": "full_same_origin_items_api",
+    "endpoint": "/web/1/js/items",
+    "requiredFlags": ["spaFlow=true", "useReload=true"],
+    "authoritativeFields": ["searchCore", "catalog", "filtersV2", "url"],
+    "freshReplayVerified": false
+  },
+  "stop": {
+    "reason": "access_challenge",
+    "blockedTextDetected": true,
+    "topLevelHcaptchaIframeDetected": false,
+    "naturalApplyObserved": false,
+    "resultCanonicalUrlObserved": false,
+    "ssrPostconditionObserved": false,
+    "challengeInteractionAttempted": false
+  },
+  "trace": "(trace discarded: traces are never committed, D-026)"
+}

@@ -1,0 +1,68 @@
+{
+  "recordedAt": "2026-08-14",
+  "purpose": "Recon evidence for the planned read-only avito/seller-reviews command. No cookies, tokens, account-private fields or full response bodies are stored.",
+  "entryPoint": {
+    "visibleLink": "a[data-marker=\"rating-caption/rating\"] on the item page, href=\"#open-reviews-list\"",
+    "note": "The seller reviews list is a modal only. There is no separate reviews page: GET /user/<hashId>/reviews returned HTTP 404 (Ошибка 404. Страница не найдена).",
+    "notTheSame": "a[data-marker=\"item-view/rating-badge-link\"] points to /catalog/.../reviews-... which is reviews about the model, not about the seller."
+  },
+  "endpoint": {
+    "url": "GET https://www.avito.ru/web/7/user/{ratingUserKey}/ratings",
+    "params": {
+      "fromItem": "item ID, optional; changes the available sort vocabulary",
+      "limit": "sent as 25 by the UI, ignored by the server (limit=2 still returned 25 rating entries)",
+      "offset": "honoured; page size is fixed at 25",
+      "photoOnly": "true|false, availability advertised by requiredFilters",
+      "sortRating": "see sortVocabulary",
+      "requiredFilters[]": "sent by the UI on the first request instead of limit/offset"
+    },
+    "keySource": "buyerItem.rating.userKey from the same /items/ads{pathname} response avito/item already reads. 64-hex, distinct from buyerItem.seller.hashId (32-hex, used by /web/2/user/get-status/) and from the /brands/<id> or /user/<id>/profile route segment.",
+    "sideEndpoint": "GET /web/1/reviews/photogallery/user/{ratingUserKey}?fromItem=<id> is issued by the modal for the photo strip; not required for the review rows."
+  },
+  "responseShape": {
+    "top": ["entries", "nextPage"],
+    "entryTypes": ["score", "photoGalleryPlaceHolder", "searchParametersV2", "rating", "info"],
+    "score": "{ reviewCount, score, scoreFloat, subtitle, title, ratingStat[{score,count,title}], ratingAction{...write review...} }",
+    "searchParametersV2": "{ blocks[{sort:{paramName:'sortRating', options[{label,value}], selectedOption}}, {inlineBoolFilter:{paramName:'photoOnly', label, selected}}], requiredFilters[] }",
+    "info": "section divider 'Отзывы без оценки' printed before unscored entries",
+    "rating": "{ id, title (author), titleCaption (role), rated (visible relative date text), stageTitle, itemTitle, textSections[{text}], score?, images[]?, answer?{answerId,answered,title,text,link}, deliveryTitle?, avatar{} }",
+    "nextPage": "same path with offset advanced by 25; absent when the feed is exhausted"
+  },
+  "companySample": {
+    "sellerName": "STEVE'S MARKET",
+    "itemId": "7991622089",
+    "visibleSummary": "829 отзывов",
+    "scoreBlock": { "reviewCount": 829, "scoreFloat": 4.9, "ratingStatSum": 829 },
+    "activeReviewsCount": 855,
+    "ratingsPerPage": 25,
+    "sortVocabularyWithFromItem": ["goods_relevant_desc", "date_desc", "date_asc", "score_desc", "score_asc"],
+    "sortVocabularyWithoutFromItem": ["date_desc", "date_asc", "score_desc", "score_asc"],
+    "requiredFilters": ["sortRating", "photoOnly"]
+  },
+  "privateSample": {
+    "itemId": "2194767053",
+    "visibleSummary": "4 отзыва",
+    "scoreBlock": { "reviewCount": 4, "scoreFloat": 5, "ratingStatSum": 4 },
+    "activeReviewsCount": 7,
+    "entriesReturned": { "rating": 7, "scored": 4, "unscored": 3, "info": 1 },
+    "requiredFilters": ["sortRating"],
+    "sortVocabularyWithFromItem": ["date_desc", "date_asc", "score_desc", "score_asc"],
+    "nextPage": null,
+    "note": "Unscored entries carry stageTitle 'Не договорились' and no score field. reviewCount/summary count scored reviews only; activeReviewsCount counts every returned entry."
+  },
+  "silentAcceptance": [
+    "Unknown ratingUserKey → HTTP 200 with {\"entries\":[]}, not 404. A wrong key is indistinguishable from an empty feed by status alone.",
+    "Unknown sortRating (nonsense_desc) → HTTP 200, silently served as date_desc; searchParametersV2.selectedOption reported the applied value.",
+    "goods_relevant_desc without fromItem → silently served as date_desc and absent from the advertised options.",
+    "offset far beyond the feed (100000) → HTTP 200 with {\"entries\":[]} and no nextPage."
+  ],
+  "zeroReviewSeller": {
+    "itemId": "8230272876",
+    "observed": "buyerItem.rating === null, so no ratingUserKey exists at all; search rows show sellerRating/sellerReviewsCount as null."
+  },
+  "requestBudget": {
+    "primingProof": "From a fresh browser session primed only with https://www.avito.ru/robots.txt, both /items/ads{pathname} and /web/7/user/{key}/ratings returned 200 application/json.",
+    "plannedCost": "robots.txt + /items/ads{pathname} + one /ratings GET = three requests per invocation"
+  },
+  "sessionHealth": "No HTTP 429, no QRATOR page and no CAPTCHA during the whole recon; every probe returned 200."
+}

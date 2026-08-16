@@ -1,0 +1,27 @@
+{
+  "price": {
+    "meaning": "Price range in rubles; serialize as pmin/pmax",
+    "verified_at": "2026-08-14",
+    "source": "fresh Divans/RAM filtersV2 plus combined strict live search verification"
+  },
+  "user": {
+    "meaning": "Seller type: 0=Все, 1=Частные, 2=Компании; serialize as user",
+    "verified_at": "2026-08-14",
+    "source": "fresh Divans/RAM filtersV2 plus combined strict live search verification"
+  },
+  "d": {
+    "meaning": "Avito Delivery only; enabled option 1=С Авито Доставкой; serialize as d",
+    "verified_at": "2026-08-14",
+    "source": "fresh natural request capture plus combined strict live search verification"
+  },
+  "localPriority": {
+    "meaning": "Prioritize listings from the selected location; context-dependent boolean serialized as localPriority",
+    "verified_at": "2026-08-14",
+    "source": "fresh Divans/RAM filtersV2 plus combined strict live search verification"
+  },
+  "sort": {
+    "meaning": "Common sort: 101=По умолчанию, 1=Дешевле, 2=Дороже, 104=По дате; serialize non-default as s",
+    "verified_at": "2026-08-14",
+    "source": "fresh UI/API vocabulary plus combined strict live search verification"
+  }
+}

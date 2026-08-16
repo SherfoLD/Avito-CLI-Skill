@@ -1,0 +1,37 @@
+{
+  "verifiedAt": "2026-08-14",
+  "command": "avito/page",
+  "context": "canonical Moscow RAM ddr5 32gb search",
+  "request": {
+    "requestedPage": 2,
+    "changedQueryKey": "p",
+    "otherQueryKeysMutated": false,
+    "originBootstrapBodyConsumed": false,
+    "targetSsrRequestCount": 1,
+    "internalItemsApiRequestCount": 0,
+    "retryCount": 0,
+    "configuredGapMs": 2000,
+    "gapBasis": "provisional user choice; not inferred from Avito rate-limit evidence; may be reduced or removed"
+  },
+  "offlineEndToEnd": {
+    "page2Passed": true,
+    "page1RemovesP": true,
+    "preservedQueryDriftRejected": true,
+    "http429Stops": true,
+    "validEmptyPageClassified": true
+  },
+  "liveVerification": {
+    "strictFixturePassed": true,
+    "rowCount": 3,
+    "traceId": "20260814082333-03e02662",
+    "networkEventCount": 2,
+    "originBootstrapStatus": 200,
+    "targetSsrStatus": 200,
+    "requestStartGapMs": 2303,
+    "http429Count": 0,
+    "accessChallengeDetected": false,
+    "failedNetworkCount": 0,
+    "suspiciousConsoleCount": 0
+  },
+  "sensitiveDataPersisted": false
+}

@@ -1,0 +1,934 @@
+{
+  "recordedAt": "2026-08-16",
+  "what": "Transport filter option forms: sectioned values and the slider range (F-060, D-040)",
+  "routes": {
+    "cars": "https://www.avito.ru/moskva/avtomobili?cd=1&context=H4sIAAAAAAAA_wEmANn_YToxOntzOjE6InkiO3M6MTY6IlNlM2laelByaXd2NmdEeVIiO318fv26JgAAAA&localPriority=0&q=bmw+x5+2015&radius=0&searchRadius=0",
+    "motorOil": "https://www.avito.ru/moskva/zapchasti_i_aksessuary/zapchasti_i_aksessuary/zapchasti_dlya_to/motornoe_maslo-ASgBAgICAkTamBPI640DrL4T8PyNAw?context=H4sIAAAAAAAA_wErANT_YToxOntzOjg6ImZyb21QYWdlIjtzOjE0OiJjYXRlZ29yeVdpZGdldCI7fQPMbfQrAAAA",
+    "carsRefined": "https://www.avito.ru/moskva/avtomobili/bmw/avtomat-ASgBAgICAkTgtg3klyjwtg3utyg?cd=1&context=H4sIAAAAAAAA_wEmANn_YToxOntzOjE6InkiO3M6MTY6InY3ZWh4Wnd4alBQY2Vjam0iO30DEy9jJgAAAA&f=ASgBAgECAkTgtg3klyjwtg3utygBRcaaDB17ImZyb20iOjEwMDAwMDAsInRvIjoyNTAwMDAwfQ&localPriority=0&q=bmw+x5+2015&radius=0&searchRadius=0",
+    "motorOilRefined": "https://www.avito.ru/moskva/zapchasti_i_aksessuary/zapchasti_i_aksessuary/zapchasti_dlya_to/motornoe_maslo-ASgBAgICAkTamBPI640DrL4T8PyNAw?context=H4sIAAAAAAAA_wFLALT_YToyOntzOjg6ImZyb21QYWdlIjtzOjE0OiJjYXRlZ29yeVdpZGdldCI7czoxOiJ5IjtzOjE2OiJMM1o5czM4WkhIdnJESnpqIjt9L19D7EsAAAA&f=ASgBAgICBES~xxL~i40DzMcSlJSNA9qYE8jrjQOsvhPw_I0D&localPriority=0"
+  },
+  "failureBeforeTheFix": {
+    "cars": "Avito filter params[152642] contains a malformed option",
+    "motorOil": "Avito filter params[152031] contains a malformed option"
+  },
+  "shapes": {
+    "sectionedTwoGroups": {
+      "id": "params[110000]",
+      "attrId": 110000,
+      "type": "sectionedMultiselect",
+      "currentValue": [],
+      "displaying": {
+        "isLiteralRadioValue": true,
+        "limit": 10,
+        "limitMessage": "Можно выбрать не больше 10 марок",
+        "placeholder": "Любая",
+        "resetButton": "true"
+      },
+      "defaultTitle": "Марка",
+      "updatesForm": true,
+      "values": [
+        {
+          "default": false,
+          "icon": null,
+          "id": "",
+          "options": [
+            {
+              "display": {
+                "multiThemeImages": {
+                  "value": {
+                    "20x20": "https://www.avito.st/s/app/auto/filters/brands/default_20x20.png",
+                    "40x40": "https://www.avito.st/s/app/auto/filters/brands/default_40x40.png",
+                    "60x60": "https://www.avito.st/s/app/auto/filters/brands/default_60x60.png"
+                  },
+                  "valueDark": {
+                    "20x20": "https://www.avito.st/s/app/auto/filters/brands/default_dark_20x20.png",
+                    "40x40": "https://www.avito.st/s/app/auto/filters/brands/default_dark_40x40.png",
+                    "60x60": "https://www.avito.st/s/app/auto/filters/brands/default_dark_60x60.png"
+                  }
+                },
+                "type": "imageLeft"
+              },
+              "name": "Audi",
+              "value": "329199"
+            },
+            {
+              "display": {
+                "multiThemeImages": {
+                  "valueDark": {
+                    "20x20": "https://www.avito.st/s/app/auto/filters/brands/default_dark_20x20.png",
+                    "40x40": "https://www.avito.st/s/app/auto/filters/brands/default_dark_40x40.png",
+                    "60x60": "https://www.avito.st/s/app/auto/filters/brands/default_dark_60x60.png"
+                  },
+                  "value": {
+                    "20x20": "https://www.avito.st/s/app/auto/filters/brands/default_20x20.png",
+                    "40x40": "https://www.avito.st/s/app/auto/filters/brands/default_40x40.png",
+                    "60x60": "https://www.avito.st/s/app/auto/filters/brands/default_60x60.png"
+                  }
+                },
+                "type": "imageLeft"
+              },
+              "name": "BMW",
+              "value": "329202"
+            },
+            {
+              "display": {
+                "multiThemeImages": {
+                  "value": {
+                    "20x20": "https://www.avito.st/s/app/auto/filters/brands/default_20x20.png",
+                    "40x40": "https://www.avito.st/s/app/auto/filters/brands/default_40x40.png",
+                    "60x60": "https://www.avito.st/s/app/auto/filters/brands/default_60x60.png"
+                  },
+                  "valueDark": {
+                    "20x20": "https://www.avito.st/s/app/auto/filters/brands/default_dark_20x20.png",
+                    "40x40": "https://www.avito.st/s/app/auto/filters/brands/default_dark_40x40.png",
+                    "60x60": "https://www.avito.st/s/app/auto/filters/brands/default_dark_60x60.png"
+                  }
+                },
+                "type": "imageLeft"
+              },
+              "name": "Chevrolet",
+              "value": "329211"
+            }
+          ],
+          "title": "Популярные",
+          "optionCount": 20
+        },
+        {
+          "default": true,
+          "icon": null,
+          "id": "",
+          "options": [
+            {
+              "display": {
+                "multiThemeImages": {
+                  "value": {
+                    "40x40": "https://www.avito.st/s/app/auto/filters/brands/default_40x40.png",
+                    "60x60": "https://www.avito.st/s/app/auto/filters/brands/default_60x60.png",
+                    "20x20": "https://www.avito.st/s/app/auto/filters/brands/default_20x20.png"
+                  },
+                  "valueDark": {
+                    "20x20": "https://www.avito.st/s/app/auto/filters/brands/default_dark_20x20.png",
+                    "40x40": "https://www.avito.st/s/app/auto/filters/brands/default_dark_40x40.png",
+                    "60x60": "https://www.avito.st/s/app/auto/filters/brands/default_dark_60x60.png"
+                  }
+                },
+                "type": "imageLeft"
+              },
+              "name": "212",
+              "value": "22534351"
+            },
+            {
+              "display": {
+                "multiThemeImages": {
+                  "value": {
+                    "20x20": "https://www.avito.st/s/app/auto/filters/brands/default_20x20.png",
+                    "40x40": "https://www.avito.st/s/app/auto/filters/brands/default_40x40.png",
+                    "60x60": "https://www.avito.st/s/app/auto/filters/brands/default_60x60.png"
+                  },
+                  "valueDark": {
+                    "40x40": "https://www.avito.st/s/app/auto/filters/brands/default_dark_40x40.png",
+                    "60x60": "https://www.avito.st/s/app/auto/filters/brands/default_dark_60x60.png",
+                    "20x20": "https://www.avito.st/s/app/auto/filters/brands/default_dark_20x20.png"
+                  }
+                },
+                "type": "imageLeft"
+              },
+              "name": "AC",
+              "value": "329192"
+            },
+            {
+              "name": "AITO",
+              "value": "17351846",
+              "display": {
+                "multiThemeImages": {
+                  "value": {
+                    "20x20": "https://www.avito.st/s/app/auto/filters/brands/default_20x20.png",
+                    "40x40": "https://www.avito.st/s/app/auto/filters/brands/default_40x40.png",
+                    "60x60": "https://www.avito.st/s/app/auto/filters/brands/default_60x60.png"
+                  },
+                  "valueDark": {
+                    "20x20": "https://www.avito.st/s/app/auto/filters/brands/default_dark_20x20.png",
+                    "40x40": "https://www.avito.st/s/app/auto/filters/brands/default_dark_40x40.png",
+                    "60x60": "https://www.avito.st/s/app/auto/filters/brands/default_dark_60x60.png"
+                  }
+                },
+                "type": "imageLeft"
+              }
+            }
+          ],
+          "title": "Все",
+          "optionCount": 418
+        }
+      ],
+      "hasSuggest": true
+    },
+    "sectionedOneGroup": {
+      "id": "params[110008]",
+      "attrId": 110008,
+      "type": "sectionedMultiselect",
+      "currentValue": [],
+      "displaying": {
+        "groups": [
+          {
+            "groupIds": [
+              "331254"
+            ],
+            "groupTitle": "Механика"
+          },
+          {
+            "groupTitle": "Автоматическая",
+            "groupIds": [
+              "331255",
+              "331257",
+              "331256"
+            ]
+          }
+        ],
+        "isGroupTitleCheckable": true,
+        "isSearchHidden": true,
+        "isTagsHidden": true,
+        "placeholder": "Любая",
+        "resetButton": true,
+        "titleSeparator": ", "
+      },
+      "defaultTitle": "Коробка передач",
+      "values": [
+        {
+          "default": true,
+          "icon": null,
+          "id": "",
+          "options": [
+            {
+              "name": "Автомат",
+              "value": "331255"
+            },
+            {
+              "name": "Вариатор",
+              "value": "331257"
+            },
+            {
+              "name": "Механика",
+              "value": "331254"
+            }
+          ],
+          "title": "Все",
+          "optionCount": 4
+        }
+      ],
+      "hasSuggest": false
+    },
+    "slider": {
+      "id": "params[162396]",
+      "attrId": 162396,
+      "type": "slider",
+      "currentValue": {
+        "from": "",
+        "to": ""
+      },
+      "displaying": {
+        "isNumeric": true,
+        "reverseSorting": {
+          "from": false,
+          "to": false
+        },
+        "select": true,
+        "titleWithoutDimension": true,
+        "toPlaceholder": "до",
+        "delimeter": "comma",
+        "fromPlaceholder": "От"
+      },
+      "defaultTitle": "Объём двигателя",
+      "dimension": "л",
+      "values": [
+        {
+          "name": "0.2 л",
+          "value": "3261702"
+        },
+        {
+          "name": "0.3 л",
+          "value": "3261703"
+        },
+        {
+          "name": "0.4 л",
+          "value": "3261704"
+        },
+        {
+          "name": "0.5 л",
+          "value": "3261705"
+        }
+      ],
+      "inputs": {
+        "from": {
+          "id": "params[162396][from]",
+          "defaultTitle": "От"
+        },
+        "to": {
+          "id": "params[162396][to]",
+          "defaultTitle": "до"
+        }
+      },
+      "hasSuggest": false
+    }
+  },
+  "sectionStats": [
+    {
+      "route": "cars",
+      "key": "params[110000]",
+      "groups": 2,
+      "options": 438,
+      "repeats": 20
+    },
+    {
+      "route": "cars",
+      "key": "params[152642]",
+      "groups": 1,
+      "options": 9,
+      "repeats": 0
+    },
+    {
+      "route": "cars",
+      "key": "params[110008]",
+      "groups": 1,
+      "options": 4,
+      "repeats": 0
+    },
+    {
+      "route": "oil",
+      "key": "params[152031]",
+      "groups": 1,
+      "options": 686,
+      "repeats": 0
+    },
+    {
+      "route": "oil",
+      "key": "params[152038]",
+      "groups": 1,
+      "options": 42,
+      "repeats": 0
+    },
+    {
+      "route": "oil",
+      "key": "params[152026]",
+      "groups": 1,
+      "options": 443,
+      "repeats": 0
+    },
+    {
+      "route": "oil",
+      "key": "params[145944]",
+      "groups": 1,
+      "options": 33,
+      "repeats": 0
+    },
+    {
+      "route": "oil",
+      "key": "params[145945]",
+      "groups": 1,
+      "options": 53,
+      "repeats": 0
+    },
+    {
+      "route": "oil",
+      "key": "params[145946]",
+      "groups": 1,
+      "options": 552,
+      "repeats": 0
+    }
+  ],
+  "afterTheFix": {
+    "cars": [
+      {
+        "key": "localPriority",
+        "name": "Сначала в выбранном радиусе",
+        "valueSyntax": "1",
+        "currentValue": null,
+        "optionCount": 0
+      },
+      {
+        "key": "params[146146]",
+        "name": "Активная безопасность",
+        "valueSyntax": "<value>[,<value>]",
+        "currentValue": null,
+        "optionCount": 4
+      },
+      {
+        "key": "params[146145]",
+        "name": "Подушки безопасности",
+        "valueSyntax": "<value>[,<value>]",
+        "currentValue": null,
+        "optionCount": 5
+      },
+      {
+        "key": "params[146136]",
+        "name": "Рулевое управление",
+        "valueSyntax": "<value>[,<value>]",
+        "currentValue": null,
+        "optionCount": 3
+      },
+      {
+        "key": "params[146137]",
+        "name": "Климат",
+        "valueSyntax": "<value>[,<value>]",
+        "currentValue": null,
+        "optionCount": 3
+      },
+      {
+        "key": "params[146153]",
+        "name": "Шины и диски",
+        "valueSyntax": "<value>[,<value>]",
+        "currentValue": null,
+        "optionCount": 1
+      },
+      {
+        "key": "params[146152]",
+        "name": "Диски",
+        "valueSyntax": "<value>[,<value>]",
+        "currentValue": null,
+        "optionCount": 11
+      },
+      {
+        "key": "params[146144]",
+        "name": "Противоугонная система",
+        "valueSyntax": "<value>[,<value>]",
+        "currentValue": null,
+        "optionCount": 3
+      },
+      {
+        "key": "params[146143]",
+        "name": "Помощь при вождении",
+        "valueSyntax": "<value>[,<value>]",
+        "currentValue": null,
+        "optionCount": 8
+      },
+      {
+        "key": "params[145632]",
+        "name": "Салон",
+        "valueSyntax": "<value>[,<value>]",
+        "currentValue": null,
+        "optionCount": 4
+      },
+      {
+        "key": "params[145639]",
+        "name": "Салон",
+        "valueSyntax": "<value>[,<value>]",
+        "currentValue": null,
+        "optionCount": 2
+      },
+      {
+        "key": "params[146139]",
+        "name": "Обогрев",
+        "valueSyntax": "<value>[,<value>]",
+        "currentValue": null,
+        "optionCount": 5
+      },
+      {
+        "key": "params[146150]",
+        "name": "Фары",
+        "valueSyntax": "<value>[,<value>]",
+        "currentValue": null,
+        "optionCount": 3
+      },
+      {
+        "key": "params[146151]",
+        "name": "Фары",
+        "valueSyntax": "<value>[,<value>]",
+        "currentValue": null,
+        "optionCount": 3
+      },
+      {
+        "key": "params[146141]",
+        "name": "Электропривод",
+        "valueSyntax": "<value>[,<value>]",
+        "currentValue": null,
+        "optionCount": 5
+      },
+      {
+        "key": "params[146147]",
+        "name": "Мультимедиа и навигация",
+        "valueSyntax": "<value>[,<value>]",
+        "currentValue": null,
+        "optionCount": 9
+      },
+      {
+        "key": "params[146140]",
+        "name": "Электростеклоподъемники",
+        "valueSyntax": "<value>[,<value>]",
+        "currentValue": null,
+        "optionCount": 2
+      },
+      {
+        "key": "params[146148]",
+        "name": "Аудиосистема",
+        "valueSyntax": "<value>[,<value>]",
+        "currentValue": null,
+        "optionCount": 4
+      },
+      {
+        "key": "params[146149]",
+        "name": "Аудиосистема",
+        "valueSyntax": "<value>[,<value>]",
+        "currentValue": null,
+        "optionCount": 1
+      },
+      {
+        "key": "params[153265]",
+        "name": "Цвет салона",
+        "valueSyntax": "<value>[,<value>]",
+        "currentValue": null,
+        "optionCount": 3
+      },
+      {
+        "key": "params[146142]",
+        "name": "Память настроек",
+        "valueSyntax": "<value>[,<value>]",
+        "currentValue": null,
+        "optionCount": 4
+      },
+      {
+        "key": "sort",
+        "name": "Сортировать",
+        "valueSyntax": "<value>",
+        "currentValue": null,
+        "optionCount": 6
+      },
+      {
+        "key": "params[1283]",
+        "name": "Тип автомобиля",
+        "valueSyntax": "<value>[,<value>]",
+        "currentValue": null,
+        "optionCount": 2
+      },
+      {
+        "key": "params[167517]",
+        "name": "Со скидками",
+        "valueSyntax": "<value>[,<value>]",
+        "currentValue": null,
+        "optionCount": 1
+      },
+      {
+        "key": "params[172120]",
+        "name": "С подарками и акциями",
+        "valueSyntax": "<value>[,<value>]",
+        "currentValue": null,
+        "optionCount": 1
+      },
+      {
+        "key": "params[149586]",
+        "name": "Селект",
+        "valueSyntax": "<value>[,<value>]",
+        "currentValue": null,
+        "optionCount": 1
+      },
+      {
+        "key": "params[152642]",
+        "name": "Страна бренда",
+        "valueSyntax": "<value>[,<value>]",
+        "currentValue": null,
+        "optionCount": 9
+      },
+      {
+        "key": "params[110000]",
+        "name": "Марка",
+        "valueSyntax": "<value>[,<value>]",
+        "currentValue": null,
+        "optionCount": 418
+      },
+      {
+        "key": "price",
+        "name": "Цена",
+        "valueSyntax": "<from>..<to>",
+        "currentValue": null,
+        "optionCount": 0
+      },
+      {
+        "key": "params[110008]",
+        "name": "Коробка передач",
+        "valueSyntax": "<value>[,<value>]",
+        "currentValue": null,
+        "optionCount": 4
+      },
+      {
+        "key": "params[110007]",
+        "name": "Привод",
+        "valueSyntax": "<value>[,<value>]",
+        "currentValue": null,
+        "optionCount": 3
+      },
+      {
+        "key": "params[110006]",
+        "name": "Тип двигателя",
+        "valueSyntax": "<value>[,<value>]",
+        "currentValue": null,
+        "optionCount": 5
+      },
+      {
+        "key": "params[161208]",
+        "name": "Турбина",
+        "valueSyntax": "<value>[,<value>]",
+        "currentValue": null,
+        "optionCount": 2
+      },
+      {
+        "key": "params[1167]",
+        "name": "Владельцев по ПТС",
+        "valueSyntax": "<value>[,<value>]",
+        "currentValue": null,
+        "optionCount": 3
+      },
+      {
+        "key": "params[110907]",
+        "name": "Регистрация автомобиля в ГАИ",
+        "valueSyntax": "<value>[,<value>]",
+        "currentValue": null,
+        "optionCount": 2
+      },
+      {
+        "key": "params[697]",
+        "name": "Состояние",
+        "valueSyntax": "<value>[,<value>]",
+        "currentValue": null,
+        "optionCount": 2
+      },
+      {
+        "key": "params[147411]",
+        "name": "Кузов",
+        "valueSyntax": "<value>[,<value>]",
+        "currentValue": null,
+        "optionCount": 13
+      },
+      {
+        "key": "params[189877]",
+        "name": "Количество мест",
+        "valueSyntax": "<value>[,<value>]",
+        "currentValue": null,
+        "optionCount": 5
+      },
+      {
+        "key": "params[696]",
+        "name": "Руль",
+        "valueSyntax": "<value>[,<value>]",
+        "currentValue": null,
+        "optionCount": 2
+      },
+      {
+        "key": "params[633]",
+        "name": "Цвет",
+        "valueSyntax": "<value>[,<value>]",
+        "currentValue": null,
+        "optionCount": 17
+      },
+      {
+        "key": "params[170678]",
+        "name": "Продавцы",
+        "valueSyntax": "<value>[,<value>]",
+        "currentValue": null,
+        "optionCount": 2
+      },
+      {
+        "key": "params[120467]",
+        "name": "Собственники и надежные партнеры",
+        "valueSyntax": "<value>[,<value>]",
+        "currentValue": null,
+        "optionCount": 1
+      },
+      {
+        "key": "params[196498]",
+        "name": "Рейтинг продавца",
+        "valueSyntax": "<value>[,<value>]",
+        "currentValue": null,
+        "optionCount": 1
+      },
+      {
+        "key": "params[126108]",
+        "name": "Дополнительно",
+        "valueSyntax": "<value>[,<value>]",
+        "currentValue": null,
+        "optionCount": 1
+      },
+      {
+        "key": "params[184023]",
+        "name": "С бесплатной Автотекой",
+        "valueSyntax": "<value>[,<value>]",
+        "currentValue": null,
+        "optionCount": 1
+      },
+      {
+        "key": "params[130109]",
+        "name": "Наличие",
+        "valueSyntax": "<value>[,<value>]",
+        "currentValue": null,
+        "optionCount": 2
+      }
+    ],
+    "motorOil": [
+      {
+        "key": "sort",
+        "name": "Сортировать",
+        "valueSyntax": "<value>",
+        "currentValue": null,
+        "optionCount": 5
+      },
+      {
+        "key": "params[157229]",
+        "name": "Тип товара для ТО",
+        "valueSyntax": "<value>",
+        "currentValue": "3259108",
+        "optionCount": 17
+      },
+      {
+        "key": "params[152031]",
+        "name": "Производитель",
+        "valueSyntax": "<value>[,<value>]",
+        "currentValue": null,
+        "optionCount": 686
+      },
+      {
+        "key": "params[152038]",
+        "name": "Класс вязкости SAE",
+        "valueSyntax": "<value>[,<value>]",
+        "currentValue": null,
+        "optionCount": 42
+      },
+      {
+        "key": "params[152026]",
+        "name": "Объём",
+        "valueSyntax": "<value>[,<value>]",
+        "currentValue": null,
+        "optionCount": 443
+      },
+      {
+        "key": "params[145944]",
+        "name": "Стандарт ACEA",
+        "valueSyntax": "<value>[,<value>]",
+        "currentValue": null,
+        "optionCount": 33
+      },
+      {
+        "key": "params[145945]",
+        "name": "Стандарт API",
+        "valueSyntax": "<value>[,<value>]",
+        "currentValue": null,
+        "optionCount": 53
+      },
+      {
+        "key": "params[145946]",
+        "name": "Допуски OEM",
+        "valueSyntax": "<value>[,<value>]",
+        "currentValue": null,
+        "optionCount": 552
+      },
+      {
+        "key": "params[192369]",
+        "name": "Акции",
+        "valueSyntax": "<value>[,<value>]",
+        "currentValue": null,
+        "optionCount": 1
+      },
+      {
+        "key": "price",
+        "name": "Цена",
+        "valueSyntax": "<from>..<to>",
+        "currentValue": null,
+        "optionCount": 0
+      },
+      {
+        "key": "params[191563]",
+        "name": "Только рыночные цены",
+        "valueSyntax": "<value>[,<value>]",
+        "currentValue": null,
+        "optionCount": 1
+      },
+      {
+        "key": "params[110056]",
+        "name": "Состояние",
+        "valueSyntax": "<value>[,<value>]",
+        "currentValue": null,
+        "optionCount": 2
+      },
+      {
+        "key": "user",
+        "name": "Продавцы",
+        "valueSyntax": "<value>",
+        "currentValue": null,
+        "optionCount": 3
+      },
+      {
+        "key": "params[196498]",
+        "name": "Рейтинг продавца",
+        "valueSyntax": "<value>[,<value>]",
+        "currentValue": null,
+        "optionCount": 1
+      },
+      {
+        "key": "d",
+        "name": "Дополнительно",
+        "valueSyntax": "<value>",
+        "currentValue": null,
+        "optionCount": 1
+      },
+      {
+        "key": "params[149578]",
+        "name": "Есть возврат",
+        "valueSyntax": "<value>[,<value>]",
+        "currentValue": null,
+        "optionCount": 1
+      },
+      {
+        "key": "params[174605]",
+        "name": "Товары из-за рубежа",
+        "valueSyntax": "<value>[,<value>]",
+        "currentValue": null,
+        "optionCount": 1
+      },
+      {
+        "key": "params[186205]",
+        "name": "С Авито Самовывозом",
+        "valueSyntax": "<value>[,<value>]",
+        "currentValue": null,
+        "optionCount": 1
+      },
+      {
+        "key": "params[165549]",
+        "name": "Рассрочка",
+        "valueSyntax": "<value>[,<value>]",
+        "currentValue": null,
+        "optionCount": 1
+      },
+      {
+        "key": "params[198219]",
+        "name": "Можно оптом",
+        "valueSyntax": "<value>[,<value>]",
+        "currentValue": null,
+        "optionCount": 1
+      },
+      {
+        "key": "params[198220]",
+        "name": "Оптовая скидка",
+        "valueSyntax": "<value>[,<value>]",
+        "currentValue": null,
+        "optionCount": 1
+      },
+      {
+        "key": "localPriority",
+        "name": "Сначала из Москвы",
+        "valueSyntax": "1",
+        "currentValue": null,
+        "optionCount": 0
+      }
+    ]
+  },
+  "roundTrip": {
+    "cars": {
+      "set": "params[110000]=329202;params[110008]=331255;price=1000000..2500000",
+      "rows": 28,
+      "applied": [
+        {
+          "key": "params[110000]",
+          "name": "Марка",
+          "valueSyntax": "<value>[,<value>]",
+          "currentValue": "329202",
+          "optionCount": 418
+        },
+        {
+          "key": "price",
+          "name": "Цена",
+          "valueSyntax": "<from>..<to>",
+          "currentValue": "1000000..2500000",
+          "optionCount": 0
+        },
+        {
+          "key": "params[110008]",
+          "name": "Коробка передач",
+          "valueSyntax": "<value>[,<value>]",
+          "currentValue": "331255",
+          "optionCount": 4
+        }
+      ]
+    },
+    "motorOil": {
+      "set": "params[152031]=3252991;params[152038]=3253514",
+      "rows": 50,
+      "applied": [
+        {
+          "key": "params[157229]",
+          "name": "Тип товара для ТО",
+          "valueSyntax": "<value>",
+          "currentValue": "3259108",
+          "optionCount": 17
+        },
+        {
+          "key": "params[152031]",
+          "name": "Производитель",
+          "valueSyntax": "<value>[,<value>]",
+          "currentValue": "3252991",
+          "optionCount": 686
+        },
+        {
+          "key": "params[152038]",
+          "name": "Класс вязкости SAE",
+          "valueSyntax": "<value>[,<value>]",
+          "currentValue": "3253514",
+          "optionCount": 42
+        }
+      ]
+    }
+  },
+  "tenCommandSweep": {
+    "route": "cars refined + item 8049188988",
+    "results": {
+      "search": "ok",
+      "getPage": "ok (plain cars p2, 50 rows)",
+      "getFilters": "ok (46 rows)",
+      "applyFilters": "ok (28 rows)",
+      "getCategories": "ok (3 rows)",
+      "moveCategory": "ok (Транспорт, 50 rows)",
+      "getItem": "ok",
+      "getSellerReviews": "ok (25 rows)",
+      "getLocation": "ok",
+      "getCoords": "ok"
+    },
+    "publishedTextObserved": "вчера в 19:15"
+  },
+  "pageBeyondLast": {
+    "what": "HTTP 429 for a page past the last one (F-061)",
+    "refused": [
+      {
+        "route": "cars refined",
+        "items": 28,
+        "page": 2,
+        "attempts": 3
+      },
+      {
+        "route": "motor oil refined",
+        "items": 79,
+        "page": 3,
+        "attempts": 2
+      }
+    ],
+    "passed": [
+      {
+        "route": "cars plain",
+        "page": 2,
+        "rows": 50
+      },
+      {
+        "route": "motor oil refined",
+        "page": 2,
+        "rows": 29
+      },
+      {
+        "route": "cars refined",
+        "page": 1,
+        "rows": 28
+      }
+    ],
+    "sameUrlFromWarmTab": {
+      "status": 200,
+      "server": "QRATOR",
+      "bytes": [
+        393122,
+        382984
+      ]
+    }
+  }
+}

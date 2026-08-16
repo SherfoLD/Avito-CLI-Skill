@@ -1,0 +1,52 @@
+{
+  "capturedAt": "2026-08-14",
+  "purpose": "Evidence for carrying the visible card decoder from search into page and filter (F-040/F-041).",
+  "pageTwoSsrRead": {
+    "method": "one browser-context fetch of the canonical DDR5 URL with p=2, SSR bootstrap only, no rendered page",
+    "responseUrl": "https://www.avito.ru/moskva/tovary_dlya_kompyutera/komplektuyuschie/operativnaya_pamyat-ASgB<redacted>?q=ddr5+32gb&p=2",
+    "status": 200,
+    "searchCorePage": 2,
+    "counts": {
+      "total": 50,
+      "withPriceStep": 50,
+      "withDescStep": 50,
+      "withGeoStep": 50,
+      "withGeoReference": 15,
+      "flatDescNonEmpty": 0,
+      "flatLocationNonNull": 15,
+      "bonusDiffersFromBase": 35
+    },
+    "conclusion": "A non-first SSR page carries the same iva steps as page 1: PriceStep, DescriptionStep and GeoStep are present on all 50 rows, the flat description is empty on all 50 (the cause of the always-null column), and 35 rows show a PriceStep price different from item.priceDetailed."
+  },
+  "sampleRow": {
+    "id": "8238216165",
+    "title": "Ddr5 32gb 6000mhz",
+    "flatDescription": "",
+    "ivaDescription": "Самовывоз метро улица академика Янгеля (с проверкой), так же можно на ",
+    "flatPrice": 29990,
+    "ivaPrice": { "value": 29990, "string": "29 990", "wasLowered": false },
+    "flatLocation": "Москва",
+    "geoReference": { "content": "Улица академика Янгеля", "afterWithIcon": "до 5 мин." }
+  },
+  "visibleCardCrossCheck": {
+    "itemId": "8230834610",
+    "page": 2,
+    "adapterRow": {
+      "price": 39078,
+      "location": null,
+      "descriptionPreview": "Оперативная память, полный комплект 2×16 ГБ. Модель: teamgroup T-Create Expert. …"
+    },
+    "visibleCard": {
+      "price": "39 078 ₽",
+      "struckBasePrice": "39 500 ₽",
+      "bonusLine": "-422 ₽ бонусами",
+      "geoBlock": "empty",
+      "description": "Оперативная память, полный комплект 2×16 ГБ. Модель: teamgroup T-Create Expert. Объём: 32 ГБ (2×16 ГБ). Тип: Ddr5. Частота: 6000 мгц. …"
+    },
+    "conclusion": "The returned price is the number printed large on the card, the base price is the struck-through one, the description matches the visible paragraph and the null location matches a card without a geo line."
+  },
+  "strictVerifies": {
+    "avito/page": "PASS on the first attempt, 3 rows, descriptionPreview now required non-empty",
+    "avito/filter": "PASS on the first attempt, 3 rows, item 7881841669 returned 43691 instead of the base 43800"
+  }
+}

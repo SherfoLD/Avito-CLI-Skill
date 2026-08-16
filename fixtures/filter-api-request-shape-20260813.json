@@ -1,0 +1,31 @@
+{
+  "verifiedAt": "2026-08-13",
+  "context": "canonical RAM ddr5 32gb search",
+  "selection": {"key": "d", "value": "1", "name": "С Авито Доставкой"},
+  "sequence": [
+    {
+      "kind": "countOnly",
+      "method": "GET",
+      "path": "/web/1/js/items",
+      "flags": {"countOnly": "1"},
+      "status": 429
+    },
+    {
+      "kind": "full",
+      "method": "GET",
+      "path": "/web/1/js/items",
+      "flags": {"useReload": "true", "spaFlow": "true"},
+      "status": 429
+    }
+  ],
+  "carriedState": [
+    "categoryId", "locationId", "name", "geoCoords", "d", "cd",
+    "hidden params[...]", "verticalCategoryId", "rootCategoryId",
+    "localPriority", "context", "proprofile on full request"
+  ],
+  "opaqueValuesPersisted": false,
+  "responseShape": {"too-many-requests": {"message": "string", "link": "string"}},
+  "firewallCaptchaRequestedAfterward": true,
+  "successfulFullResponseVerified": false,
+  "challengeInteractionAttempted": false
+}

@@ -1,0 +1,49 @@
+{
+  "verifiedAt": "2026-08-14",
+  "context": "canonical RAM ddr5 32gb search",
+  "request": {
+    "method": "GET",
+    "path": "/web/1/js/items",
+    "flags": {
+      "spaFlow": true,
+      "useReload": true,
+      "countOnly": false
+    },
+    "changedSelection": {
+      "key": "params[159478]",
+      "value": "18629557",
+      "name": "DDR5"
+    },
+    "opaqueValuesPersisted": false
+  },
+  "response": {
+    "status": 200,
+    "contentType": "application/json",
+    "rateLimited": false,
+    "accessChallenge": false,
+    "requiredState": {
+      "searchCore": true,
+      "catalog": true,
+      "filtersV2": true,
+      "url": true
+    },
+    "postconditions": {
+      "page": 1,
+      "locationId": 637640,
+      "selectionInSearchCore": true,
+      "selectionInFiltersV2": true,
+      "sectionCount": 4,
+      "filterCount": 26,
+      "catalogItemCount": 50,
+      "uniqueCatalogItemCount": 50,
+      "resultUrlHost": "www.avito.ru"
+    }
+  },
+  "adapterVerification": {
+    "offlineEndToEndPassed": true,
+    "offlineContext": "saved Divans SSR carrier plus synthetic full API response",
+    "liveStrictVerifyPendingCooldown": true,
+    "liveAttemptStoppedBeforeApi": true,
+    "stopReason": "SSR access detector false-positive fixed offline; no immediate live retry"
+  }
+}

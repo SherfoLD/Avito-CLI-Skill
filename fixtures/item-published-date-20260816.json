@@ -1,0 +1,53 @@
+{
+  "captured_at": "2026-08-16T04:05:00+03:00",
+  "source": "publication-date carriers on three surfaces of the same listings; cookies, contacts and unrelated session state omitted",
+  "carriers": {
+    "ssrCatalog": {
+      "route": "GET /moskva/tovary_dlya_kompyutera?q=<query>",
+      "field": "loaderData.data.catalog.items[].sortTimeStamp",
+      "type": "epoch milliseconds",
+      "coverage": "50 of 50 rows"
+    },
+    "itemsApi": {
+      "route": "GET /web/1/js/items",
+      "field": "catalog.items[].sortTimeStamp",
+      "type": "epoch milliseconds",
+      "coverage": "50 of 50 rows"
+    },
+    "itemApi": {
+      "route": "GET /items/ads{pathname}",
+      "field": "buyerItem.item.sortFormatedDate",
+      "type": "rendered string, Moscow time, no year and no seconds",
+      "machineReadableTimestamp": null
+    },
+    "itemPage": {
+      "route": "GET {itemUrl}",
+      "field": "[data-marker=\"item-view/item-date\"]",
+      "type": "the same rendered string with a leading middot",
+      "jsonLd": [],
+      "microdataDatePublished": null
+    }
+  },
+  "crossChecks": [
+    {
+      "itemId": "8302995737",
+      "sortTimeStamp": 1786662941000,
+      "decodedUtc": "2026-08-13T23:15:41Z",
+      "sortFormatedDate": "14 августа в 02:15",
+      "pageText": "· 14 августа в 02:15"
+    },
+    {
+      "itemId": "8218914594",
+      "region": "Ульяновск",
+      "sortTimeStamp": 1786630067000,
+      "decodedUtc": "2026-08-13T14:07:47Z",
+      "sortFormatedDate": "13 августа в 17:07"
+    }
+  ],
+  "notes": [
+    "the epoch and the rendered string are the same moment: the string is Moscow time, and the Ulyanovsk listing was rendered in Moscow time too, not in its own",
+    "the item surface carries no machine-readable timestamp at all: the epoch 1786662941 does not occur anywhere in the listing document",
+    "item.finishTime (1789254941) is the expiry, not the publication, and is the only numeric time field the item API ships",
+    "sortTimeStamp is what Avito sorts 'по дате' by, so re-publishing a listing moves it"
+  ]
+}

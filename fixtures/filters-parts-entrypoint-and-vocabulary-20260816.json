@@ -1,0 +1,100 @@
+{
+  "recordedAt": "2026-08-16",
+  "rubric": "Запчасти и аксессуары",
+  "what": "Two stops that closed the rubric's parts branch, and the round-trips that settled them",
+  "garageEntrypoint": {
+    "route": "/moskva/zapchasti_i_aksessuary/zapchasti/dlya_avtomobiley",
+    "filter": {
+      "id": "params[1216774800]",
+      "attrId": 1216774800,
+      "type": "garageEntrypoint",
+      "currentValue": null,
+      "values": [],
+      "displaying": {
+        "title": "Укажите авто",
+        "subtitle": "Подберём запчасти к нему",
+        "isCategorySelections": false,
+        "isMaxCars": false,
+        "carInfmParams": { "brand": "110000", "model": "110001", "generation": "110005" }
+      },
+      "hasSuggest": false,
+      "updatesForm": true
+    },
+    "attrIdStableAcrossReads": true,
+    "roundTrip": {
+      "sent": "params[1216774800]=1",
+      "searchCoreParams": { "5": 18, "598": 6396 },
+      "filtersV2CurrentValue": null,
+      "canonicalUrlKeptTheKey": false,
+      "verdict": "not echoed and not applied — the control carries no value of its own"
+    },
+    "chainItFills": [
+      { "sent": "params[110000]=329202", "meaning": "BMW", "thenAppears": { "key": "params[110001]", "name": "Модель авто", "options": 65 } },
+      { "sent": "params[110001]=331035", "meaning": "X5", "thenAppears": { "key": "params[110005]", "name": "Поколение авто", "options": 10 } }
+    ],
+    "presentOn": ["Запчасти → Для автомобилей"],
+    "absentOn": [
+      "корень рубрики", "Запчасти", "Аксессуары", "Аудио- и видеотехника", "Инструменты",
+      "Шины, диски и колёса", "Противоугонные устройства", "Багажники и фаркопы",
+      "Масла и автохимия", "Запчасти → Для грузовиков и спецтехники"
+    ]
+  },
+  "largeVocabulary": {
+    "route": "/moskva/zapchasti_i_aksessuary/zapchasti/dlya_gruzovikov_i_spetstehniki",
+    "filter": { "id": "params[110548]", "type": "multiselect", "name": "Производитель" },
+    "declaredValues": 12150,
+    "uniqueValues": 12150,
+    "duplicateValues": 0,
+    "conflictingNames": 0,
+    "sectionedWrappers": 0,
+    "malformedEntries": 0,
+    "longestName": 77,
+    "longestValue": 8,
+    "routeTotalValues": 12202,
+    "routeFilters": 26,
+    "sameKeyOnSiblingBranch": { "route": "Запчасти → Для автомобилей", "declaredValues": 1000 },
+    "previousCeiling": { "perFilter": 2000, "perRoute": 20000, "message": "has malformed or implausible values" },
+    "newCeiling": { "perFilter": 20000, "perRoute": 40000 }
+  },
+  "liveRoundTrips": [
+    {
+      "route": "шины",
+      "set": "params[733]=10359;params[734]=10376;params[110431]=431790;price=5000..40000",
+      "rows": 50,
+      "canonicalUrl": "/shiny/diametr_16/zimnie_shipovannye/nokian",
+      "readBack": { "params[733]": "10359", "params[734]": "10376", "params[110431]": "431790", "price": "5000..40000" }
+    },
+    {
+      "route": "диски",
+      "set": "params[796]=11060;params[797]=11074;params[799]=11109;price=..30000",
+      "rows": 50,
+      "canonicalUrl": "/diski/diametr_17/litye"
+    },
+    {
+      "route": "запчасти для авто",
+      "set": "params[110000]=329202;params[817]=11618;params[114860]=1210859;price=10000..100000",
+      "rows": 50,
+      "canonicalUrl": "/zapchasti/dlya_avtomobiley/bmw/avtosvet",
+      "readBack": { "params[110000]": "329202", "params[817]": "11618", "params[114860]": "1210859", "price": "10000..100000" }
+    },
+    {
+      "route": "запчасти для грузовиков",
+      "set": "params[110548]=448904;params[121596]=2906246;price=..50000",
+      "rows": 50,
+      "canonicalUrl": "/zapchasti/dlya_gruzovikov_i_spetstehniki/gruzoviki",
+      "readBack": { "params[121596]": "2906246", "params[110548]": "448904", "price": "..50000" }
+    },
+    {
+      "route": "коврики",
+      "set": "params[110000]=329202;params[177260]=3311697;params[177259]=3311681,3311689;price=2000..15000",
+      "rows": 50,
+      "canonicalUrl": "/dlya_salona/kovriki/3d_kovriki",
+      "readBack": { "params[110000]": "329202", "params[177259]": "3311681,3311689", "params[177260]": "3311697", "price": "2000..15000" }
+    }
+  ],
+  "applyFiltersRefusal": {
+    "sent": "params[1216774800]=1",
+    "code": "ARGUMENT",
+    "message": "filter params[1216774800] has a type this command cannot serialize safely"
+  }
+}

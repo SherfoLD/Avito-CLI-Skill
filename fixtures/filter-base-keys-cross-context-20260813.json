@@ -1,0 +1,32 @@
+{
+  "verifiedAt": "2026-08-13",
+  "contexts": ["divans", "ram-ddr5-32gb"],
+  "stableShortKeys": {
+    "price": {"serialization": ["pmin", "pmax"], "attrIdStable": true},
+    "user": {"serialization": ["user"], "attrIdStable": false},
+    "d": {"serialization": ["d"], "attrIdStable": false},
+    "footWalkingMetro": {"serialization": null, "attrIdStable": false},
+    "localPriority": {"serialization": ["localPriority"], "attrIdStable": false},
+    "sort": {"serialization": ["s"], "attrIdStable": false}
+  },
+  "stableCommonParams": {
+    "params[192369]": "Акции",
+    "params[196498]": "Рейтинг продавца",
+    "params[174533]": "Способы связи",
+    "params[174605]": "Товары из-за рубежа",
+    "params[149578]": "Есть возврат",
+    "params[165549]": "Рассрочка",
+    "params[197010]": "Уценка",
+    "params[149569]": "Слова в описании"
+  },
+  "contextDependentExamples": {
+    "Состояние": ["params[110405]", "params[110396]"],
+    "ramOnlyInComparison": ["params[186205]", "params[164865]"]
+  },
+  "ownership": {
+    "searchOnly": ["price", "user", "d", "localPriority", "sort"],
+    "genericFilter": "fresh params[...] only",
+    "unsupportedContextShortKeys": ["footWalkingMetro"]
+  },
+  "rule": "Validate availability, type and values from fresh filtersV2; dispatch special serialization by filter key, never attrId."
+}

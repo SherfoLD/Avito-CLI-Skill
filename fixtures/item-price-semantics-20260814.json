@@ -1,0 +1,36 @@
+{
+  "capturedAt": "2026-08-14",
+  "purpose": "Answer the open question whether avito/item needs the same price unification as search/page/filter (D-020).",
+  "itemId": "7950831088",
+  "url": "https://www.avito.ru/moskva/tovary_dlya_kompyutera/v-color_xsky_rgb_ddr5_32gb_cl26_6000_amd_expo_7950831088",
+  "catalogSide": {
+    "pageRow": { "price": 46882 },
+    "ssrFlatPrice": 46999,
+    "note": "The catalog decoder returns the bonus price from iva.PriceStep; the flat item.priceDetailed is the base 46999."
+  },
+  "itemSide": {
+    "adapterRow": { "price": 46882, "location": "Москва" },
+    "hydrationFormattedPrice": {
+      "string": "46 882",
+      "value": 46999,
+      "oldString": "46 999",
+      "saleDiscount": "−117 ₽ бонусами",
+      "saleDiscountType": "bonus",
+      "isWasLowered": true,
+      "saleDiscountDescriptionTotal": { "oldPrice": "46 999 ₽", "discount": "-117 ₽", "price": "46 882 ₽" }
+    },
+    "flatPrice": 46999
+  },
+  "visibleItemPage": {
+    "printedPrice": "46 882 ₽",
+    "microdataPriceAttribute": "46999",
+    "priceNodeHtml": "<span content=\"46999\" itemprop=\"price\" data-marker=\"item-view/item-price\">46 882<span itemprop=\"priceCurrency\" content=\"RUB\"> ₽ </span></span>",
+    "domFallbackNode": { "selector": "#bx_item-price-value", "textContent": "46 882 ₽" },
+    "addressBlock": "Местоположение Москва"
+  },
+  "conclusion": "avito/item already returns the visible bonus price: it decodes formattedPrice.string (46 882), not the base formattedPrice.value / item.price (46 999). The number matches both the catalog row and the number the item page prints large, so no price migration is needed. The microdata attribute itemprop=price carries the base price, so a schema.org read would be the wrong carrier.",
+  "residualRisks": [
+    "item.js falls back to the numeric rawItem.price when formattedPrice.string has no digits; that fallback returns the base price, i.e. different semantics, silently.",
+    "The DOM fallback strips every non-digit from the whole #bx_item-price-value container. On this listing the container held exactly one number, but a layout that renders the struck old price inside the same container would concatenate both into a garbage number."
+  ]
+}
