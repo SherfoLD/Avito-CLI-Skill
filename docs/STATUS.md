@@ -7,7 +7,7 @@ How each command is built is in its domain file, [docs/areas/](areas/).
 
 ## Commands
 
-Ten commands, all read-only. `npm run check` is green; the offline suite is 211
+Ten commands, all read-only. `npm run check` is green; the offline suite is 213
 checks across sixteen suites. All ten fixtures pass live against the descriptor
 schemas (D-048, D-049).
 
@@ -15,8 +15,8 @@ The row contract is a `z.strictObject` in each descriptor: `columns` is derived
 from it, the CLI parses every row through it before printing, the offline suites
 run the same parse, and `--help` prints the schema itself as a type (D-053).
 A row holds at most 16 columns (D-054), and a column is a scalar, a list or map
-of scalars, or a table of flat records (D-055): the listing row declares 14, and
-`get-item` 13. A `verify/<command>.mjs` fixture is a schema over the whole
+of scalars, or a table of flat records (D-055): the listing row declares 14,
+`get-item` 13 and `get-categories` 10. A `verify/<command>.mjs` fixture is a schema over the whole
 returned array, saying what that one request must answer with. What neither can
 express is four ESLint rules over the AST (`npm run lint`).
 
@@ -37,7 +37,7 @@ interruption left is the one approval prompt per connection (F-071, F-073).
 | `get-page` | [search](areas/search.md) | 2026-08-18 |
 | `get-filters` | [filters](areas/filters.md) | 2026-08-16 |
 | `apply-filters` | [filters](areas/filters.md) | 2026-08-18 |
-| `get-categories` | [categories](areas/categories.md) | 2026-08-15 |
+| `get-categories` | [categories](areas/categories.md) | 2026-08-18 |
 | `move-category` | [categories](areas/categories.md) | 2026-08-18 |
 | `get-location` | [geo](areas/geo.md) | 2026-08-15 |
 | `get-coords` | [geo](areas/geo.md) | 2026-08-15 |

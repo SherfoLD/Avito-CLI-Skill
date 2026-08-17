@@ -104,14 +104,16 @@ check('the reader primes robots.txt once and never renders the catalog page', as
 });
 
 // The sidebar is returned in the order Avito drew it, nesting included: rank is
-// the reading order and depth is the indentation, so a caller can reconstruct
-// the tree without this command inventing one.
-check('every node becomes a row in Avito order, with its depth', async () => {
+// the reading order, depth the indentation and parent the name above, so a
+// caller can reconstruct the tree without this command inventing one.
+check('every node becomes a row in Avito order, with its depth and parent', async () => {
   const { rows } = await readCategories();
   assert(rows.length === 4, `expected the whole sidebar, got ${rows.length}`);
   assert(JSON.stringify(rows.map((row) => row.rank)) === '[1,2,3,4]', 'rank must be the reading order');
   assert(rows[0].name === 'Телефоны' && rows[0].depth === 0, 'the branch comes first at depth 0');
-  assert(rows.slice(1).every((row) => row.depth === 1), 'its children are one level deeper');
+  assert(rows[0].parent === null, 'the top of the tree hangs under nothing');
+  assert(rows.slice(1).every((row) => row.depth === 1 && row.parent === 'Телефоны'),
+    'its children are one level deeper and name it as their parent');
   assertRows(COMMAND, rows);
 });
 
@@ -120,7 +122,7 @@ check('every node becomes a row in Avito order, with its depth', async () => {
 // is for the caller.
 check('role names what the node is, and back wins over the type', async () => {
   const { rows } = await readCategories();
-  assert(byName(rows, 'Телефоны').role === 'expanded', 'an opened branch is expanded');
+  assert(byName(rows, 'Телефоны').role === 'branch', 'a group head is a branch');
   assert(byName(rows, 'Мобильные телефоны').role === 'option', 'a followable row is an option');
   assert(byName(rows, 'Xiaomi').role === 'current', 'the current category says so');
 
@@ -132,16 +134,33 @@ check('role names what the node is, and back wins over the type', async () => {
   assert(byName(back, 'Телефоны').navigable === true, 'a back row is still followable');
 });
 
-// Only an option carries a route. An expanded branch and the current row keep a
-// URL in the bootstrap, and neither may reach the caller as a searchUrl: the
-// first cannot be followed, and moving to where you already are is not a move.
-check('only an option carries a searchUrl, and the other rows carry null', async () => {
+// The route decides, not the type (D-057): a branch is not an anchor on the
+// page and its URL is still a working route. What carries no searchUrl is the
+// route the search is already on — moving there is not a move — and a node
+// Avito hung no URL on at all.
+check('every row with a route of its own carries it, whatever its type', async () => {
   const { rows } = await readCategories();
   assert(byName(rows, 'Мобильные телефоны').searchUrl?.startsWith(ORIGIN), 'an option must carry its route');
-  assert(byName(rows, 'Телефоны').searchUrl === null, 'an expanded branch carries no route');
-  assert(byName(rows, 'Xiaomi').searchUrl === null, 'the current category carries no route');
-  assert(byName(rows, 'Телефоны').navigable === false && byName(rows, 'Xiaomi').navigable === false,
-    'neither row is navigable');
+  assert(byName(rows, 'Телефоны').searchUrl?.startsWith(ORIGIN), 'a branch carries the route Avito gave it');
+  assert(byName(rows, 'Телефоны').navigable === true, 'a branch with a route is navigable');
+  assert(byName(rows, 'Xiaomi').searchUrl === null && byName(rows, 'Xiaomi').navigable === false,
+    'the route this search is already on is not a move');
+
+  // Avito names the current category itself, and that answer outranks the
+  // pathname: a canonical route the request did not spell the same way would
+  // otherwise be handed over as a move to where the search already is (F-052).
+  const { rows: canonical } = await readCategories(withNodes([
+    node({ id: 1, name: 'Xiaomi', type: 2, isCurrent: true, url: withQuery('/moskva/telefony/xiaomi-ASgB') }),
+  ]));
+  assert(canonical[0].navigable === false && canonical[0].searchUrl === null,
+    'the row Avito marks as current is never a move, whatever its route');
+
+  const { rows: routeless } = await readCategories(withNodes([
+    node({ id: 1, name: 'Телефоны', type: 0, url: '', children: [node({ id: 2, name: 'Xiaomi' })] }),
+  ]));
+  assert(byName(routeless, 'Телефоны').navigable === false, 'a node with no URL cannot be followed');
+  assert(byName(routeless, 'Телефоны').searchUrl === null, 'and it carries none');
+  assert(routeless.length === 2, 'it is still a row, and so are its children');
 });
 
 // This is the column move-category acts on: a row that drops the query would
@@ -150,7 +169,7 @@ check('preservesQuery tells the caller which move keeps the search', async () =>
   const { rows } = await readCategories();
   assert(byName(rows, 'Мобильные телефоны').preservesQuery === true, 'a row carrying q preserves the search');
   assert(byName(rows, 'Аксессуары').preservesQuery === false, 'a row without q does not');
-  assert(byName(rows, 'Телефоны').preservesQuery === null, 'a row that cannot be followed answers nothing');
+  assert(byName(rows, 'Xiaomi').preservesQuery === null, 'a row that cannot be followed answers nothing');
 
   // A query-less search: every row preserves a query there is none of, and that
   // must read as true rather than as "unknown".
@@ -167,16 +186,11 @@ check('hasChildren describes the node, not the row order', async () => {
   assert(byName(rows, 'Мобильные телефоны').hasChildren === false, 'a leaf has none');
 });
 
-// A sidebar whose state contradicts its type is one this command cannot
-// describe, and describing it wrongly would send move-category at the wrong
-// route. Each of these is refused rather than rendered.
-check('a node whose state contradicts its type stops the command', async () => {
+// The shape of a node is this command's business; what the node's state means
+// is Avito's. A tree drawn in a way the old invariants called impossible is
+// still a tree, and a caller who cannot see it has no way out of the route.
+check('a sidebar this command cannot decode stops it', async () => {
   const cases = [
-    [[node({ id: 1, name: 'Телефоны', type: 0, isOpened: false, children: [node({ id: 2, name: 'A' })] })],
-      /inconsistent type\/state/],
-    [[node({ id: 1, name: 'Телефоны', type: 0, isOpened: true, children: [] })], /inconsistent type\/state/],
-    [[node({ id: 1, name: 'Мобильные телефоны', isCurrent: true })], /inconsistent type\/state/],
-    [[node({ id: 1, name: 'Xiaomi', type: 2, isCurrent: false })], /inconsistent type\/state/],
     [[node({ id: 1, name: 'Телефоны', type: 7 })], /unsupported type/],
     [[node({ id: 1, name: 'Телефоны', children: 'not an array' })], /children: .*expected array/],
     [[node({ id: 1, name: 'Телефоны', isOpened: 'yes' })], /isOpened: .*expected boolean/],
@@ -184,7 +198,6 @@ check('a node whose state contradicts its type stops the command', async () => {
     [[node({ id: 1, name: 'A' }), node({ id: 1, name: 'B' })], /repeats node ID 1/],
     [[node({ id: 1, name: '   ' })], /name: must not be empty/],
     [[node({ id: 1, name: 'Телефоны', url: 'https://example.com/moskva' })], /points outside/],
-    [[node({ id: 1, name: 'Телефоны', url: '' })], /missing URL/],
     [['not a node at all'], /expected object, received string/],
   ];
   for (const [sideNodes, pattern] of cases) {
@@ -192,11 +205,35 @@ check('a node whose state contradicts its type stops the command', async () => {
   }
 });
 
-check('two current categories at once is a sidebar this command refuses', async () => {
-  await refuses(withNodes([
-    node({ id: 1, name: 'Xiaomi', type: 2, isCurrent: true, url: withQuery(SOURCE_PATH) }),
-    node({ id: 2, name: 'Redmi', type: 2, isCurrent: true, url: withQuery(SOURCE_PATH) }),
-  ]), /multiple current categories/);
+// What Avito draws on a search it could not place in a category: two group
+// heads both marked current, one of them collapsed (F-084). This is the route
+// where the command is the only way out, so neither is a refusal (D-058).
+check('a collapsed branch and two current heads are described, not refused', async () => {
+  const { rows } = await readCategories(withNodes([
+    node({
+      id: 1,
+      name: 'Услуги',
+      type: 0,
+      isCurrent: true,
+      isOpened: true,
+      url: withQuery('/moskva/predlozheniya_uslug'),
+      children: [node({ id: 2, name: 'Компьютерная помощь' })],
+    }),
+    node({
+      id: 3,
+      name: 'Электроника',
+      type: 0,
+      isCurrent: true,
+      isOpened: false,
+      url: withQuery('/moskva/bytovaya_elektronika'),
+      children: [node({ id: 4, name: 'Ноутбуки' })],
+    }),
+  ]));
+  assert(rows.length === 4, `expected the whole tree, got ${rows.length}`);
+  assert(rows.filter((row) => row.current).length === 2, 'both heads say they are current');
+  assert(rows.filter((row) => row.role === 'branch').every((row) => row.navigable && row.preservesQuery),
+    'both heads keep the query and can be moved to');
+  assertRows(COMMAND, rows);
 });
 
 check('a sidebar that is not a sidebar, and one with no nodes, fail closed', async () => {

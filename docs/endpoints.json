@@ -92,7 +92,7 @@
     },
     "response": "200 text/html; loaderData.data contains rubricators.side.nodes, seoNavigation.breadcrumbs.links, searchCore and canonical url",
     "verified_at": "2026-08-14",
-    "notes": "Current avito/categories source. Use through the same-origin browser context after lightweight origin priming. Sidebar type 0 is an expanded non-link, type 1 is navigable, and type 2 is current/non-navigable. Only type 1 and real breadcrumbs may expose absolute searchUrl output; preservesQuery compares their q with searchCore.query."
+    "notes": "Current avito/categories source. Use through the same-origin browser context after lightweight origin priming. Sidebar type 0 is a branch drawn without a link, type 1 an anchor, type 2 the current category; all three carry a route and every one but type 2 and the route already requested is handed out (D-057). preservesQuery compares a row's q with searchCore.query."
   },
   "catalogFilterBootstrap": {
     "url": "https://www.avito.ru/<catalog-or-search-route>",

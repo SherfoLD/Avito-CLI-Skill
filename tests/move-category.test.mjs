@@ -151,19 +151,61 @@ check('a query-less search widens through the sidebar back rows', async () => {
   assert(calls[1] === backTarget, `the back row must be followed, got ${calls[1]}`);
 });
 
-// Neither row carries a URL of its own, and no other carrier is consulted for one.
-check('an expanded branch and the current category are refused with their reason', async () => {
+// A row with no route of its own, and the route we are already on. No other
+// carrier is consulted for a URL either of them lacks.
+check('a routeless row and the current route are refused with their reason', async () => {
   const noCrumbs = makeFetch([sourceRoute()]);
   const result = await runEvaluate(baseArgs('Телефоны'), noCrumbs.fetch);
-  assert(result.success === false && result.code === 'argument', `expanded branch followed: ${JSON.stringify(result)}`);
-  assert(/expanded branch/.test(result.message), `unexpected message: ${result.message}`);
+  assert(result.success === false && result.code === 'argument', `routeless row followed: ${JSON.stringify(result)}`);
+  assert(/hangs no route/.test(result.message), `unexpected message: ${result.message}`);
   assert(noCrumbs.calls.length === 1, 'the target was fetched despite an unusable row');
 
   const current = makeFetch([sourceRoute()]);
   const currentResult = await runEvaluate(baseArgs('Xiaomi'), current.fetch);
   assert(currentResult.success === false && currentResult.code === 'argument', `current row followed: ${JSON.stringify(currentResult)}`);
-  assert(/already in/.test(currentResult.message), `unexpected message: ${currentResult.message}`);
+  assert(/already on/.test(currentResult.message), `unexpected message: ${currentResult.message}`);
   assert(current.calls.length === 1, 'the target was fetched for the current category');
+
+  // The category Avito marks as current is refused by that mark, not only by its
+  // pathname: a canonical route spelled differently from the requested one would
+  // otherwise return the same category as a successful move (F-052).
+  const canonical = makeFetch([sourceRoute(sourceState({
+    nodes: [sideNode({ id: 1, name: 'Xiaomi', type: 2, isCurrent: true, url: withQuery('/moskva/telefony/xiaomi-ASgB') })],
+  }))]);
+  const canonicalResult = await runEvaluate(baseArgs('Xiaomi'), canonical.fetch);
+  assert(canonicalResult.success === false && /already on/.test(canonicalResult.message),
+    `a canonical copy of the current route was followed: ${JSON.stringify(canonicalResult)}`);
+  assert(canonical.calls.length === 1, 'the target was fetched for the current category');
+});
+
+// The route Avito could not place in a category: no `type=2` node anywhere, two
+// group heads both marked current, and their own routes are the only way out of
+// the search (F-084). The head is followed like any other row (D-057).
+check('a group head that carries a route is followed like any other row', async () => {
+  const rootPath = '/moskva';
+  const headPath = '/moskva/predlozheniya_uslug';
+  const heads = [
+    sideNode({ id: 1, name: 'Услуги', type: 0, isCurrent: true, isOpened: true, url: withQuery(headPath), children: [
+      sideNode({ id: 2, name: 'Компьютерная помощь', url: withQuery('/moskva/predlozheniya_uslug/komp-ASgB') }),
+    ] }),
+    sideNode({ id: 3, name: 'Электроника', type: 0, isCurrent: true, url: withQuery('/moskva/bytovaya_elektronika') }),
+  ];
+  // The city root is a prefix of every route below it, so the stub matches the
+  // head first; live, the two are separate documents.
+  const { fetch, calls } = makeFetch([
+    { match: `${ORIGIN}${headPath}`, body: bootstrapHtml(targetState({ core: { categoryId: 114 } })) },
+    {
+      match: `${ORIGIN}${rootPath}`,
+      body: bootstrapHtml(sourceState({ core: { categoryId: null }, nodes: heads })),
+    },
+  ]);
+  const result = await runEvaluate(
+    baseArgs('Услуги', { requestedUrl: `${ORIGIN}${rootPath}?q=xiaomi` }),
+    fetch,
+  );
+  assert(result.success === true, `the head was not followed: ${JSON.stringify(result)}`);
+  assert(calls[1] === `${ORIGIN}${withQuery(headPath)}`, `the head route must be followed, got ${calls[1]}`);
+  assert(result.resultSearchUrl === `${ORIGIN}${withQuery(headPath)}`, `unexpected searchUrl: ${result.resultSearchUrl}`);
 });
 
 check('an unknown name lists the visible categories instead of guessing', async () => {

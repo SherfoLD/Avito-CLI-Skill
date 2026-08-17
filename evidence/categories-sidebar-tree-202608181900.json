@@ -1,0 +1,338 @@
+{
+  "note": "rubricators.side.nodes plus how the same nodes are drawn, on a route Avito placed in no category and on one it did (F-083, F-084)",
+  "routeWithoutCategory": {
+    "requestUrl": "/moskva?q=замена аккумулятора macbook air m2",
+    "searchCore": {
+      "query": "замена аккумулятора macbook air m2",
+      "categoryId": null,
+      "locationId": 637640,
+      "locationName": "Москва"
+    },
+    "sideNodes": [
+      {
+        "id": 1000063,
+        "name": "Услуги",
+        "type": 0,
+        "categoryId": 114,
+        "mcId": 63,
+        "hasBack": false,
+        "isOpened": true,
+        "isBold": true,
+        "iconUrl": "",
+        "params": {},
+        "shield": "",
+        "shieldPreset": "",
+        "url": "/moskva/predlozheniya_uslug?cd=1&q=%D0%B7%D0%B0%D0%BC%D0%B5%D0%BD%D0%B0+%D0%B0%D0%BA%D0%BA%D1%83%D0%BC%D1%83%D0%BB%D1%8F%D1%82%D0%BE%D1%80%D0%B0+macbook+air+m2",
+        "isCurrent": true,
+        "children": [
+          {
+            "id": 71127,
+            "name": "Компьютерная помощь",
+            "type": 1,
+            "categoryId": 114,
+            "mcId": 2097572,
+            "hasBack": false,
+            "isOpened": false,
+            "isBold": false,
+            "iconUrl": "",
+            "params": {
+              "716": 3260223
+            },
+            "shield": "",
+            "shieldPreset": "",
+            "url": "/moskva/predlozheniya_uslug/komp%27yuternaya_pomoshch%27-ASgBAgICAUSYC_78jQM?cd=1&q=%D0%B7%D0%B0%D0%BC%D0%B5%D0%BD%D0%B0+%D0%B0%D0%BA%D0%BA%D1%83%D0%BC%D1%83%D0%BB%D1%8F%D1%82%D0%BE%D1%80%D0%B0+macbook+air+m2",
+            "isCurrent": false,
+            "children": [],
+            "nofollow": false
+          },
+          {
+            "id": 1060292,
+            "name": "Ремонт и обслуживание техники",
+            "type": 1,
+            "categoryId": 114,
+            "mcId": 60292,
+            "hasBack": false,
+            "isOpened": false,
+            "isBold": false,
+            "iconUrl": "",
+            "params": {
+              "716": 15834
+            },
+            "shield": "",
+            "shieldPreset": "",
+            "url": "/moskva/predlozheniya_uslug/remont_i_obsluzhivanie_tehniki-ASgBAgICAUSYC7T3AQ?cd=1&q=%D0%B7%D0%B0%D0%BC%D0%B5%D0%BD%D0%B0+%D0%B0%D0%BA%D0%BA%D1%83%D0%BC%D1%83%D0%BB%D1%8F%D1%82%D0%BE%D1%80%D0%B0+macbook+air+m2",
+            "isCurrent": false,
+            "children": [],
+            "nofollow": false
+          }
+        ],
+        "nofollow": false
+      },
+      {
+        "id": 1000007,
+        "name": "Электроника",
+        "type": 0,
+        "categoryId": 6,
+        "mcId": 7,
+        "hasBack": false,
+        "isOpened": false,
+        "isBold": true,
+        "iconUrl": "",
+        "params": {},
+        "shield": "",
+        "shieldPreset": "",
+        "url": "/moskva/bytovaya_elektronika?cd=1&q=%D0%B7%D0%B0%D0%BC%D0%B5%D0%BD%D0%B0+%D0%B0%D0%BA%D0%BA%D1%83%D0%BC%D1%83%D0%BB%D1%8F%D1%82%D0%BE%D1%80%D0%B0+macbook+air+m2",
+        "isCurrent": true,
+        "children": [
+          {
+            "id": 1000042,
+            "name": "Товары для компьютера",
+            "type": 1,
+            "categoryId": 101,
+            "mcId": 42,
+            "hasBack": false,
+            "isOpened": false,
+            "isBold": false,
+            "iconUrl": "",
+            "params": {},
+            "shield": "",
+            "shieldPreset": "",
+            "url": "/moskva/tovary_dlya_kompyutera?cd=1&q=%D0%B7%D0%B0%D0%BC%D0%B5%D0%BD%D0%B0+%D0%B0%D0%BA%D0%BA%D1%83%D0%BC%D1%83%D0%BB%D1%8F%D1%82%D0%BE%D1%80%D0%B0+macbook+air+m2",
+            "isCurrent": false,
+            "children": [],
+            "nofollow": false
+          },
+          {
+            "id": 1000046,
+            "name": "Ноутбуки",
+            "type": 1,
+            "categoryId": 98,
+            "mcId": 46,
+            "hasBack": false,
+            "isOpened": false,
+            "isBold": false,
+            "iconUrl": "",
+            "params": {},
+            "shield": "",
+            "shieldPreset": "",
+            "url": "/moskva/noutbuki?cd=1&q=%D0%B7%D0%B0%D0%BC%D0%B5%D0%BD%D0%B0+%D0%B0%D0%BA%D0%BA%D1%83%D0%BC%D1%83%D0%BB%D1%8F%D1%82%D0%BE%D1%80%D0%B0+macbook+air+m2",
+            "isCurrent": false,
+            "children": [],
+            "nofollow": false
+          }
+        ],
+        "nofollow": false
+      }
+    ],
+    "renderedSidebar": [
+      "data-marker=\"rubricator\">",
+      "<ul data-marker=\"rubricator/list\">",
+      "<li aria-hidden=\"false\" data-marker=\"category[1000063]\">",
+      "<span data-marker=\"category[1000063]/current\">",
+      "<span role=\"button\" tabindex=\"0\" data-marker=\"category[1000063]/expander\">",
+      "<ul aria-hidden=\"false\" data-marker=\"category[1000063]/nodes\">",
+      "<li aria-hidden=\"false\" data-marker=\"category[71127]\">",
+      "<a title=\"Компьютерная помощь\" data-marker=\"category[71127]/clickable\" href=\"/moskva/predlozheniya_uslug/komp%27yuternaya_pomoshch%27-ASgBAgICAUSYC_78jQM?cd=1&amp;q=%D0%B7%D0%B0%D0%BC%D0%B5%D0%BD%D0%B0+%D0%B0%D0%BA%D0%BA%D1%83%D0%BC%D1%83%D",
+      "<li aria-hidden=\"false\" data-marker=\"category[1060292]\">",
+      "<a title=\"Ремонт и обслуживание техники\" data-marker=\"category[1060292]/clickable\" href=\"/moskva/predlozheniya_uslug/remont_i_obsluzhivanie_tehniki-ASgBAgICAUSYC7T3AQ?cd=1&amp;q=%D0%B7%D0%B0%D0%BC%D0%B5%D0%BD%D0%B0+%D0%B0%D0%BA%D0%BA%D1%83%",
+      "<li aria-hidden=\"false\" data-marker=\"category[1000007]\">",
+      "<span data-marker=\"category[1000007]/current\">",
+      "<span role=\"button\" tabindex=\"0\" data-marker=\"category[1000007]/expander\">",
+      "<ul aria-hidden=\"true\" data-marker=\"category[1000007]/nodes\">",
+      "<li aria-hidden=\"true\" data-marker=\"category[1000042]\">",
+      "<a title=\"Товары для компьютера\" data-marker=\"category[1000042]/clickable\" href=\"/moskva/tovary_dlya_kompyutera?cd=1&amp;q=%D0%B7%D0%B0%D0%BC%D0%B5%D0%BD%D0%B0+%D0%B0%D0%BA%D0%BA%D1%83%D0%BC%D1%83%D0%BB%D1%8F%D1%82%D0%BE%D1%80%D0%B0+macbook",
+      "<li aria-hidden=\"true\" data-marker=\"category[1000046]\">",
+      "<a title=\"Ноутбуки\" data-marker=\"category[1000046]/clickable\" href=\"/moskva/noutbuki?cd=1&amp;q=%D0%B7%D0%B0%D0%BC%D0%B5%D0%BD%D0%B0+%D0%B0%D0%BA%D0%BA%D1%83%D0%BC%D1%83%D0%BB%D1%8F%D1%82%D0%BE%D1%80%D0%B0+macbook+air+m2\">Ноутбуки</a>"
+    ]
+  },
+  "routeWithCategory": {
+    "requestUrl": "/moskva/tovary_dlya_kompyutera/komplektuyuschie/operativnaya_pamyat-ASgBAgICAkTGB~pm7gnYZw?q=ddr5 32gb",
+    "searchCore": {
+      "query": "ddr5 32gb",
+      "categoryId": 101,
+      "locationId": 637640,
+      "locationName": "Москва"
+    },
+    "sideNodes": [
+      {
+        "id": 1000001,
+        "name": "Все категории",
+        "type": 1,
+        "categoryId": 0,
+        "mcId": 1,
+        "hasBack": true,
+        "isOpened": false,
+        "isBold": false,
+        "iconUrl": "",
+        "params": {},
+        "shield": "",
+        "shieldPreset": "",
+        "url": "/moskva?cd=1&q=ddr5+32gb",
+        "isCurrent": false,
+        "children": [],
+        "nofollow": false
+      },
+      {
+        "id": 1000007,
+        "name": "Электроника",
+        "type": 0,
+        "categoryId": 6,
+        "mcId": 7,
+        "hasBack": false,
+        "isOpened": true,
+        "isBold": false,
+        "iconUrl": "",
+        "params": {},
+        "shield": "",
+        "shieldPreset": "",
+        "url": "/moskva/bytovaya_elektronika?cd=1&q=ddr5+32gb",
+        "isCurrent": false,
+        "children": [
+          {
+            "id": 1000042,
+            "name": "Товары для компьютера",
+            "type": 0,
+            "categoryId": 101,
+            "mcId": 42,
+            "hasBack": false,
+            "isOpened": true,
+            "isBold": false,
+            "iconUrl": "",
+            "params": {},
+            "shield": "",
+            "shieldPreset": "",
+            "url": "/moskva/tovary_dlya_kompyutera?cd=1&q=ddr5+32gb",
+            "isCurrent": false,
+            "children": [
+              {
+                "id": 1000591,
+                "name": "Комплектующие",
+                "type": 0,
+                "categoryId": 101,
+                "mcId": 591,
+                "hasBack": false,
+                "isOpened": true,
+                "isBold": false,
+                "iconUrl": "",
+                "params": {
+                  "483": 6581
+                },
+                "shield": "",
+                "shieldPreset": "",
+                "url": "/moskva/tovary_dlya_kompyutera/komplektuyuschie-ASgBAgICAUTGB~pm?cd=1&q=ddr5+32gb",
+                "isCurrent": false,
+                "children": [
+                  {
+                    "id": 1003845,
+                    "name": "Оперативная память",
+                    "type": 2,
+                    "categoryId": 101,
+                    "mcId": 3845,
+                    "hasBack": false,
+                    "isOpened": true,
+                    "isBold": true,
+                    "iconUrl": "",
+                    "params": {
+                      "483": 6581,
+                      "631": 6636
+                    },
+                    "shield": "",
+                    "shieldPreset": "",
+                    "url": "/moskva/tovary_dlya_kompyutera/komplektuyuschie/operativnaya_pamyat-ASgBAgICAkTGB~pm7gnYZw?cd=1&q=ddr5+32gb",
+                    "isCurrent": true,
+                    "children": [],
+                    "nofollow": false
+                  },
+                  {
+                    "id": 1003844,
+                    "name": "Процессоры",
+                    "type": 1,
+                    "categoryId": 101,
+                    "mcId": 3844,
+                    "hasBack": false,
+                    "isOpened": false,
+                    "isBold": false,
+                    "iconUrl": "",
+                    "params": {
+                      "483": 6581,
+                      "631": 6641
+                    },
+                    "shield": "",
+                    "shieldPreset": "",
+                    "url": "/moskva/tovary_dlya_kompyutera/komplektuyuschie/protsessory-ASgBAgICAkTGB~pm7gniZw?cd=1&q=ddr5+32gb",
+                    "isCurrent": false,
+                    "children": [],
+                    "nofollow": false
+                  },
+                  {
+                    "id": 1003841,
+                    "name": "Видеокарты",
+                    "type": 1,
+                    "categoryId": 101,
+                    "mcId": 3841,
+                    "hasBack": false,
+                    "isOpened": false,
+                    "isBold": false,
+                    "iconUrl": "",
+                    "params": {
+                      "483": 6581,
+                      "631": 6611
+                    },
+                    "shield": "",
+                    "shieldPreset": "",
+                    "url": "/moskva/tovary_dlya_kompyutera/komplektuyuschie/videokarty-ASgBAgICAkTGB~pm7gmmZw?cd=1&q=ddr5+32gb",
+                    "isCurrent": false,
+                    "children": [],
+                    "nofollow": false
+                  },
+                  {
+                    "id": 1003846,
+                    "name": "Материнские платы",
+                    "type": 1,
+                    "categoryId": 101,
+                    "mcId": 3846,
+                    "hasBack": false,
+                    "isOpened": false,
+                    "isBold": false,
+                    "iconUrl": "",
+                    "params": {
+                      "483": 6581,
+                      "631": 6631
+                    },
+                    "shield": "",
+                    "shieldPreset": "",
+                    "url": "/moskva/tovary_dlya_kompyutera/komplektuyuschie/materinskie_platy-ASgBAgICAkTGB~pm7gnOZw?cd=1&q=ddr5+32gb",
+                    "isCurrent": false,
+                    "children": [],
+                    "nofollow": false
+                  }
+                ],
+                "nofollow": false
+              }
+            ],
+            "nofollow": false
+          },
+          {
+            "id": 1000045,
+            "name": "Настольные компьютеры",
+            "type": 1,
+            "categoryId": 31,
+            "mcId": 45,
+            "hasBack": false,
+            "isOpened": false,
+            "isBold": false,
+            "iconUrl": "",
+            "params": {},
+            "shield": "",
+            "shieldPreset": "",
+            "url": "/moskva/nastolnye_kompyutery?cd=1&q=ddr5+32gb",
+            "isCurrent": false,
+            "children": [],
+            "nofollow": false
+          }
+        ],
+        "nofollow": false
+      }
+    ]
+  }
+}

@@ -3,16 +3,22 @@
  * returns Avito's category sidebar as rows, in the order Avito drew it, so a
  * `name` can be fed straight into `move-category`.
  *
- * The two columns that are not a copy of the node:
+ * The columns that are not a copy of the node:
  *
- *   `role`           `expanded`, `option`, `current` (the node's `type`, see
+ *   `role`           `branch`, `option`, `current` (the node's `type`, see
  *                    `src/browser/prelude/rubricator.mjs`) or `back`, the way up
+ *   `parent`         the visible name of the node this one hangs under, so a row
+ *                    read on its own still says which branch it is on
+ *   `navigable`      whether `move-category` can be pointed at this row: it has
+ *                    a route and that route is not the one we are on (D-057)
  *   `preservesQuery` whether following this row keeps the text query. One that
  *                    drops it does not widen the search — it replaces it with a
  *                    plain category browse, which `move-category` refuses
  *
- * A node is validated strictly even though nothing is followed here: describing
- * a sidebar wrongly would send `move-category` at the wrong route.
+ * The whole tree is returned, every node of it. What a node's state means is
+ * Avito's to say, not this command's: a branch that is collapsed and two group
+ * heads that are both `isCurrent` are what the page draws on a search Avito
+ * could not place in a category (F-084).
  */
 
 import {
@@ -30,7 +36,7 @@ import {
   text,
   z,
 } from '../runtime/schema.mjs';
-import { isNavigableSidebarNode, sidebarRole } from '../browser/prelude/rubricator.mjs';
+import { isFollowableNode, sidebarRole } from '../browser/prelude/rubricator.mjs';
 import { readCategoryState } from '../browser/commands/get-categories.mjs';
 
 // Origin priming only: the body is never read. Rendering the catalog would pull its
@@ -43,7 +49,7 @@ const MAX_NAME_LENGTH = 300;
 
 // Avito's three node kinds (`src/browser/prelude/rubricator.mjs`) plus the one this
 // command adds: `back`, the row that leads up out of the current category.
-const SIDEBAR_ROLE = z.enum(['expanded', 'option', 'current', 'back']);
+const SIDEBAR_ROLE = z.enum(['branch', 'option', 'current', 'back']);
 
 /**
  * The part of a sidebar node that is a shape. What a node *means* — whether its
@@ -139,7 +145,7 @@ function targetPreservesQuery(targetUrl, currentQuery) {
 
 export default defineCommand({
   name: 'get-categories',
-  description: 'Get the category Avito auto-detected for a search URL and the other categories reachable from it. Feed a name column value into avito move-category',
+  description: 'Get the whole Avito category sidebar of a search URL as a tree: where the search sits, and every route it can be moved to. Feed a name column value into avito move-category',
   access: 'read',
   example: 'avito get-categories <searchUrl> -f json',
   domain: 'www.avito.ru',
@@ -152,14 +158,15 @@ export default defineCommand({
       help: 'Search URL from avito search, apply-filters, move-category or get-page',
     },
   ],
-  // `preservesQuery` and `searchUrl` are null together and only for a row that
-  // cannot be followed: an expanded branch is a control, and the current
-  // category is where the search already is.
+  // `preservesQuery` and `searchUrl` are null together and only where there is
+  // no move to make: the route the search is already on, and a node Avito gave
+  // no route at all. `parent` is null at the top of the tree and nowhere else.
   row: z.strictObject({
     rank: rank(),
     role: SIDEBAR_ROLE,
     name: text().max(MAX_NAME_LENGTH),
     depth: z.number().int().nonnegative().max(MAX_DEPTH),
+    parent: text().max(MAX_NAME_LENGTH).nullable(),
     current: z.boolean(),
     hasChildren: z.boolean(),
     navigable: z.boolean(),
@@ -235,21 +242,21 @@ export default defineCommand({
       throw new CommandExecutionError('Avito category sidebar has an unexpected shape');
     }
 
-    const decodedSideNodes = [];
+    const rows = [];
     const seenSideIds = new Set();
-    const decodeSideNodes = (nodes, depth = 0) => {
+    const decodeSideNodes = (nodes, depth, parent) => {
       if (!Array.isArray(nodes) || depth > MAX_DEPTH) {
         throw new CommandExecutionError('Avito category sidebar exceeds its supported nesting depth');
       }
 
       for (const rawNode of nodes) {
-        if (decodedSideNodes.length >= MAX_SIDE_NODES) {
+        if (rows.length >= MAX_SIDE_NODES) {
           throw new CommandExecutionError('Avito category sidebar contains implausibly many nodes');
         }
         const node = decode(
           SIDEBAR_NODE,
           rawNode,
-          `Avito category sidebar node at position ${decodedSideNodes.length}`,
+          `Avito category sidebar node at position ${rows.length}`,
         );
         if (seenSideIds.has(node.id)) {
           throw new CommandExecutionError(`Avito category sidebar repeats node ID ${node.id}`);
@@ -258,65 +265,35 @@ export default defineCommand({
         if (role === null) {
           throw new CommandExecutionError(`Avito category sidebar node ${node.id} has unsupported type`);
         }
-        if (
-          (role === 'expanded' && (!node.isOpened || node.children.length === 0))
-          || (role === 'option' && node.isCurrent)
-          || (role === 'current' && !node.isCurrent)
-        ) {
-          throw new CommandExecutionError(`Avito category sidebar node ${node.id} has inconsistent type/state`);
-        }
-
         seenSideIds.add(node.id);
-        const navigable = isNavigableSidebarNode(node.type);
-        const targetUrl = navigable
-          ? normalizeResultUrl(node.url, responseUrl.href, `category sidebar node ${node.id}`)
-          : null;
-        // The current row's URL is checked and then dropped: it is never a
-        // `searchUrl` in the output, because moving to where you already are is
-        // not a move. A malformed one still means this is not the sidebar of
-        // this search, so it is not passed over in silence.
-        if (node.isCurrent) {
-          normalizeResultUrl(node.url, responseUrl.href, `current category sidebar node ${node.id}`);
-        }
-        decodedSideNodes.push({
-          decodedNodeId: node.id,
-          decodedName: node.name,
-          decodedDepth: depth,
-          decodedCurrent: node.isCurrent,
-          decodedHasChildren: node.children.length > 0,
-          decodedNavigable: navigable,
-          decodedRole: node.hasBack ? 'back' : role,
-          decodedTargetUrl: targetUrl,
+
+        // A node Avito hangs no URL on is a row that cannot be followed, not a
+        // sidebar this command fails to understand. One that carries a URL
+        // pointing off the site is the second thing, and it stops the call.
+        const target = String(node.url ?? '').trim() === ''
+          ? null
+          : normalizeResultUrl(node.url, responseUrl.href, `category sidebar node ${node.id}`);
+        const navigable = isFollowableNode(node.type, target, responseUrl.pathname);
+
+        rows.push({
+          rank: rows.length + 1,
+          role: node.hasBack ? 'back' : role,
+          name: node.name,
+          depth,
+          parent,
+          current: node.isCurrent,
+          hasChildren: node.children.length > 0,
+          navigable,
+          preservesQuery: navigable ? targetPreservesQuery(target, searchCore.query) : null,
+          searchUrl: navigable ? target.href : null,
         });
-        decodeSideNodes(node.children, depth + 1);
+        decodeSideNodes(node.children, depth + 1, node.name);
       }
     };
-    decodeSideNodes(rawSideNodes);
+    decodeSideNodes(rawSideNodes, 0, null);
 
-    const currentSideNodes = decodedSideNodes.filter((node) => node.decodedCurrent);
-    if (currentSideNodes.length > 1) {
-      throw new CommandExecutionError('Avito category sidebar contains multiple current categories');
-    }
-
-    if (decodedSideNodes.length === 0) {
+    if (rows.length === 0) {
       throw new EmptyResultError('avito get-categories', 'This Avito search has no category navigation');
-    }
-
-    const rows = [];
-    for (const node of decodedSideNodes) {
-      rows.push({
-        rank: rows.length + 1,
-        role: node.decodedRole,
-        name: node.decodedName,
-        depth: node.decodedDepth,
-        current: node.decodedCurrent,
-        hasChildren: node.decodedHasChildren,
-        navigable: node.decodedNavigable,
-        preservesQuery: node.decodedNavigable
-          ? targetPreservesQuery(node.decodedTargetUrl, searchCore.query)
-          : null,
-        searchUrl: node.decodedNavigable ? node.decodedTargetUrl.href : null,
-      });
     }
 
     return rows;

@@ -73,12 +73,23 @@ check('the matcher reports the row and the column that failed', async () => {
 
 check('a rule over the whole set fires on the set, not on a row', async () => {
   const fixture = await loadFixture('get-categories');
-  const rows = (currents) => Array.from({ length: 4 }, (_, index) => ({
-    rank: index + 1,
-    role: 'option',
-    name: `Category ${index}`,
-    current: index < currents,
-  }));
+  // A sidebar the other rules of the fixture accept, so only the count of
+  // current rows decides: the first row is the branch above, the rest hang
+  // under it, and the row we are on is the one with no route.
+  const rows = (currents) => Array.from({ length: 4 }, (_, index) => {
+    const current = index >= 1 && index <= currents;
+    return {
+      rank: index + 1,
+      role: index === 0 ? 'branch' : 'option',
+      name: `Category ${index}`,
+      depth: index === 0 ? 0 : 1,
+      parent: index === 0 ? null : 'Category 0',
+      current,
+      navigable: !current,
+      preservesQuery: current ? null : true,
+      searchUrl: current ? null : `https://www.avito.ru/moskva/category-${index}?cd=1&q=ddr5+32gb`,
+    };
+  });
 
   assert(validateRows(rows(1), fixture).length === 0, 'one current category is the shape of a sidebar');
   for (const currents of [0, 2]) {

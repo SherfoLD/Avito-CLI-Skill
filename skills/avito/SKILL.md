@@ -58,6 +58,15 @@ avito get-item <url>                                → full text and original p
 One ordering rule: `apply-filters` and `move-category` accept page 1 only and
 refuse a URL carrying `p=<n>`. So filters and category first, depth after.
 
+`get-categories` answers with the whole sidebar tree: `depth` and `parent` say
+where a row hangs, and `navigable` says whether the row has a route to move to
+at all — a branch heading is a destination like any other, and what is never one
+is the category the search is already in. `move-category` takes a row that is
+`navigable` **and** `preservesQuery: true`; it refuses the rest with the reason.
+When Avito could not place a query in any category at all, several rows come
+back with `current: true`: those are the candidate groups it drew instead, and
+moving into one of them is how you choose.
+
 ## The commands
 
 | Command | Subject | Gives you |

@@ -4,7 +4,7 @@ Updated: 2026-08-18
 
 The future only. What is already done is in [STATUS.md](STATUS.md) and in git.
 
-Two blocks, and the first one comes first. Phases 24–29 are what one consumer
+Two blocks, and the first one comes first. Phases 25–29 are what one consumer
 session found by using the skill blind on a real task — a services search in
 Moscow — and every claim in them was replayed live before it was written down.
 Phases 13–21 are the category walk: the unit of work there is a top-level Avito
@@ -37,48 +37,6 @@ at 14 and `get-item` at 13. What a column still costs is meaning — what it say
 when the value is missing — and payload, which every row pays on every page.
 `-f table` prints a record as `[object Object]`; `attributes` has done that since
 it existed, and any second record column inherits it.
-
-## Phase 24 — `get-categories` dies exactly where it is the only way out
-
-`avito get-categories` on `https://www.avito.ru/moskva?q=замена+аккумулятора+macbook+air+m2`
-answers `COMMAND_EXEC: Avito category sidebar node 1000007 has inconsistent
-type/state`. The sidebar behind that refusal, read raw:
-
-| id | type | name | isCurrent | isOpened | children | url |
-|---|---|---|---|---|---|---|
-| 1000063 | 0 | Услуги | true | true | 2 | `/moskva/predlozheniya_uslug?cd=1&q=…` |
-| 1000007 | 0 | Электроника | true | false | 2 | `/moskva/bytovaya_elektronika?cd=1&q=…` |
-
-with two navigable `type=1` children under each. `searchCore.categoryId` is
-`null`: Avito determined no category and drew several candidate groups instead.
-Two invariants fail at once — a `type=0` node that is not `isOpened`, and two
-nodes claiming `isCurrent`. The second one would refuse the call even if the
-first were relaxed.
-
-This is the case where the command matters most: no category was chosen, so
-`move-category` is the only correction available, and it takes its `--to` names
-from this output alone. One refusal disables both.
-
-- [ ] Establish what Avito draws here against the visible page before touching the
-      invariants. "Expanded branch" and "the current category" were read off a
-      route that had a category; a route without one may be a different mode, and
-      guessing it from the payload is how a wrong opinion gets written down.
-- [ ] Decide what `isCurrent` on more than one group head means, and what the
-      `current` column then says. The "multiple current categories" refusal is a
-      second decision, not a consequence of the first.
-- [ ] Both group heads carry a URL with `?cd=1&q=…`, and today it is dropped
-      because `type=0` is not navigable — deliberately, as a control (F-034).
-      On this route that URL is the whole answer: it is the way into `Услуги`
-      keeping the query. Decide whether `navigable` is a property of the type or
-      of the presence of a URL, and check the answer against a route that does
-      have a category, where the rule was written.
-- [ ] Then check the pair end to end: `move-category --to Услуги` from this URL,
-      with the postconditions that already exist — the route Avito named, page 1,
-      the location unchanged, `searchCore.query` preserved.
-- [ ] This closes the `--category` request on `search` as well: a search that
-      lands in no category is exactly when a caller wants to name one, and the
-      sidebar already hands over a URL that does it. Nothing in `search` needs a
-      new argument if this works.
 
 ## Phase 25 — Partial degradation of an optional field
 
@@ -164,8 +122,9 @@ current region is — `avito browser` reports a browser, not a session's region.
 **Category.** Three searches landed in three different categories
 (`/predlozheniya_uslug`, `/moskva`, `/bytovaya_elektronika`), which makes their
 results incomparable. `searchCore.categoryId` is the carrier — `null` when Avito
-determined none, which is itself the fact a caller most needs (phase 24) — and
-every card carries its own `category`.
+determined none, which is itself the fact a caller most needs, and which today is
+visible only as several current branches in `get-categories` (F-084) — and every
+card carries its own `category`.
 
 - [ ] Decide where a per-call scalar goes in a contract that returns rows.
       `searchUrl` is the precedent: one value, repeated on every row, and it works

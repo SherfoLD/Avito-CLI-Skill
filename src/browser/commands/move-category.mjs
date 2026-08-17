@@ -17,7 +17,7 @@
 import { fail } from '../prelude/refusal.mjs';
 import { decodeCatalogRows } from '../prelude/card.mjs';
 import { readDocument } from '../prelude/document.mjs';
-import { isNavigableSidebarNode, sidebarRole } from '../prelude/rubricator.mjs';
+import { isFollowableNode, sidebarRole } from '../prelude/rubricator.mjs';
 import { cleanText, comparableText } from '../prelude/text.mjs';
 
 export async function moveCategory(input, env) {
@@ -93,12 +93,18 @@ export async function moveCategory(input, env) {
       if (!name || name.length > MAX_NAME_LENGTH) {
         throw new Error('Avito category sidebar node has no usable name');
       }
-      // What the type means is Avito vocabulary and lives in one place for both
-      // commands that read this sidebar; see src/browser/prelude/rubricator.mjs.
-      if (isNavigableSidebarNode(node.type)) {
-        registerCandidate(name, normalizeUrl(node.url, sourceResponseUrl.href));
+      // What a node's route is worth is decided the same way in both commands
+      // that read this sidebar; see src/browser/prelude/rubricator.mjs.
+      const url = String(node.url ?? '').trim();
+      const target = url === '' ? null : normalizeUrl(url, sourceResponseUrl.href);
+      if (isFollowableNode(node.type, target, sourceResponseUrl.pathname)) {
+        registerCandidate(name, target);
       } else {
-        blocked.push({ categoryName: name, role: sidebarRole(node.type) });
+        blocked.push({
+          categoryName: name,
+          role: target === null ? 'routeless' : 'current',
+          hasChildren: node.children.length > 0,
+        });
       }
       collectSideNodes(node.children, depth + 1);
     }
@@ -116,11 +122,10 @@ export async function moveCategory(input, env) {
     const blockedMatch = blocked.find((entry) => comparableText(entry.categoryName) === comparableText(target));
     if (blockedMatch) {
       const reason = blockedMatch.role === 'current'
-        ? 'is the category this search is already in;'
-          + ' moving there is not a move and would drop the search query'
-        : blockedMatch.role === 'expanded'
-          ? 'is an expanded branch of the sidebar and Avito gives it no navigation URL;'
-            + ' move to one of its options instead'
+        ? 'is the route this search is already on; moving there is not a move'
+        : blockedMatch.role === 'routeless'
+          ? 'is a sidebar row Avito hangs no route on'
+            + (blockedMatch.hasChildren ? '; move to one of its children instead' : '')
           : 'is reachable only through a route that drops the search query "' + sourceQuery + '",'
             + ' which would return an unrelated category listing instead of this search.'
             + ' Categories that keep the query: '
