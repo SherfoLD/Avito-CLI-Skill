@@ -101,6 +101,16 @@ against `sortRating` in the server's `nextPage`.
   visible `reviewCount` counts only scored reviews while `activeReviewsCount`
   counts all: a private seller showed `summary="4 отзыва"` against seven returned
   records.
+- **F-075 — a review photo carries its own dimensions beside the size keys.**
+  Each entry of `images` is `{"1280x960": url, "640x480": url, "256x192": url,
+  "180x135": url, "originalSize": {"width": 720, "height": 960}}` — a structure,
+  not a scalar, under a key that is not a size. Item photos have no such
+  companion, so a decoder written from `item.imageUrls` refuses every review with
+  a photo. The size keys are the only ones read; what a size key may carry is
+  checked where the vocabulary is (a structure there is not a URL and must never
+  be stringified into one), and the rest of the entry is Avito's to change. The
+  variant that wins is the largest offered, and the URL under `1280x960` returns
+  the photo at its `originalSize` — 720×960, not 1280×960.
 - **The sort vocabulary depends on `fromItem`** and comes from Avito itself: with
   it, `goods_relevant_desc` is available; without it, not. The availability of the
   "photos only" filter is dynamic too and differs between a private seller and a

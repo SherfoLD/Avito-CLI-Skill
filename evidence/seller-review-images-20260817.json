@@ -1,0 +1,21 @@
+{
+  "recordedAt": "2026-08-17",
+  "purpose": "The shape of one entry of images in the seller ratings feed (F-075). Public photo URLs only; no cookies, tokens or account-private fields.",
+  "endpoint": "GET https://www.avito.ru/web/7/user/{ratingUserKey}/ratings?fromItem={itemId}&limit=25&offset=0&photoOnly=false",
+  "entryPath": "entries[].value.images[]",
+  "sample": {
+    "1280x960": "https://20.img.avito.st/image/1/1.dRFchLa5c6Xop8965fc9WVCE2PruIdl6_qfU-u4x3fo.UK7bSbxHl8xt2CMPPDOae8XVQWcVQaSWtYONqCMq6go?cqp=2.8HWONhCMqhnSPF9dn4O_xcilkaIArKyuXQ2DZxl5f9xNoR0vMzn3",
+    "180x135": "https://20.img.avito.st/image/1/1.dRFchLa5c6Xoz9l06Pc9WVCE2PruIdkS6KnZ-u4x3fo.N0ip4r1g8FMkMsNEt8xgAbwyIO-JDq9fzCBKwj0QdWg?cqp=2.8HWONhCMqhnSPF9dn4O_xcilkaIArKyuXQ2DZxl5f9xNoR0vMzn3",
+    "256x192": "https://20.img.avito.st/image/1/1.dRFchLa5c6Xop9966fc9WVCE2PruIdl67qfY-u4x3fo._GVsrvbzupj9vWtVZ0aaIeEMxilSwBGct8o5L53-7RA?cqp=2.8HWONhCMqhnSPF9dn4O_xcilkaIArKyuXQ2DZxl5f9xNoR0vMzn3",
+    "640x480": "https://20.img.avito.st/image/1/1.dRFchLa5c6Xop9E67fc9WVCE2PruIdl64Ofc-u4x3fo.DWoZ2QpnizMtIc0FWAVQNkSR1_qQnuztGTwCRwBqih4?cqp=2.8HWONhCMqhnSPF9dn4O_xcilkaIArKyuXQ2DZxl5f9xNoR0vMzn3",
+    "originalSize": { "width": 720, "height": 960 }
+  },
+  "observedOn": [
+    "review 455585257 (1 photo), 447304793 (2 photos), 378511289 (1 photo) of one Moscow repair-service seller",
+    "the same originalSize object appeared on every photo of every seller checked, private and company alike"
+  ],
+  "notes": [
+    "originalSize is the only non-size key observed; item.imageUrls entries in the listing hydration carry no such companion",
+    "the URL under 1280x960 was fetched and returned image/jpeg 720x960 — the largest offered variant is the original, and the size key is a ceiling rather than the delivered size"
+  ]
+}

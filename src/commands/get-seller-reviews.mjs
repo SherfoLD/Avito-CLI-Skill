@@ -62,8 +62,14 @@ const RATING_CONTEXT = z.object({
   }),
 });
 
-/** One photo as Avito ships it: the same picture under several size keys. */
-const IMAGE_VARIANTS = z.record(z.string(), z.union([z.string(), z.number(), z.null()]));
+/**
+ * One photo as Avito ships it: the same picture under several size keys, beside
+ * companion metadata of Avito's own — `originalSize` is an object of `width` and
+ * `height` (F-075). Only the size keys are read, so nothing else is constrained
+ * here; what a size key is allowed to carry is checked where the size vocabulary
+ * lives, in `decodeReviewImages`.
+ */
+const IMAGE_VARIANTS = z.record(z.string(), z.unknown());
 
 /**
  * One visible review. A review without a score is a real class, not missing
@@ -227,9 +233,12 @@ function decodeReviewImages(variantSets, position) {
     let source = null;
     let sourceArea = -1;
     for (const [key, value] of Object.entries(variants)) {
-      const url = cleanText(value);
       const size = /^(\d+)x(\d+)$/.exec(key);
-      if (!url || !size) continue;
+      // A size key that carries anything but text is not a photo URL: `String()` of a
+      // structure is `[object Object]`, which is non-empty and would pass for one.
+      if (!size || typeof value !== 'string') continue;
+      const url = cleanText(value);
+      if (!url) continue;
       const area = Number(size[1]) * Number(size[2]);
       if (area > sourceArea) {
         sourceArea = area;

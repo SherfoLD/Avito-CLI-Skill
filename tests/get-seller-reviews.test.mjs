@@ -189,10 +189,16 @@ check('rows decode the visible review, and an unscored review keeps score null',
 });
 
 check('review photos keep the high-resolution Avito variants and reject foreign hosts', async () => {
+  // `originalSize` is Avito's own companion metadata beside the size keys (F-075): the
+  // photo is read past it, and its structure is not a value the decoder may stringify.
   const withImages = reviewEntry({
     images: [
-      { '1280x960': 'https://50.img.avito.st/image/1/big.jpg', '640x480': 'https://50.img.avito.st/image/1/small.jpg' },
-      { '640x480': 'https://20.img.avito.st/image/1/only-small.jpg' },
+      {
+        '1280x960': 'https://50.img.avito.st/image/1/big.jpg',
+        '640x480': 'https://50.img.avito.st/image/1/small.jpg',
+        originalSize: { width: 720, height: 960 },
+      },
+      { '640x480': 'https://20.img.avito.st/image/1/only-small.jpg', originalSize: { width: 640, height: 480 } },
     ],
   });
   const page = makePage(defaultResponder(feedPayload({ entries: [scoreBlock(), withImages] })));
@@ -212,6 +218,17 @@ check('review photos keep the high-resolution Avito variants and reject foreign 
   const unusablePage = makePage(defaultResponder(feedPayload({ entries: [unusable] })));
   const unusableError = await failure(COMMAND.run(unusablePage, { itemUrl: ITEM_URL }));
   assert(unusableError.code === 'COMMAND_EXEC', `a photo with no size variant produced ${unusableError.code}`);
+
+  // A size key holding a structure is not a URL, and `[object Object]` must not become one.
+  const structured = reviewEntry({ images: [{ '1280x960': { url: 'https://50.img.avito.st/image/1/x.jpg' } }] });
+  const structuredPage = makePage(defaultResponder(feedPayload({ entries: [structured] })));
+  const structuredError = await failure(COMMAND.run(structuredPage, { itemUrl: ITEM_URL }));
+  assert(structuredError.code === 'COMMAND_EXEC', `a structured size value produced ${structuredError.code}`);
+
+  const notAnObject = reviewEntry({ images: [['https://50.img.avito.st/image/1/x.jpg']] });
+  const notAnObjectPage = makePage(defaultResponder(feedPayload({ entries: [notAnObject] })));
+  const notAnObjectError = await failure(COMMAND.run(notAnObjectPage, { itemUrl: ITEM_URL }));
+  assert(notAnObjectError.code === 'COMMAND_EXEC', `an image that is not an object produced ${notAnObjectError.code}`);
 
   const foreign = reviewEntry({ images: [{ '1280x960': 'https://evil.example.com/photo.jpg' }] });
   const badPage = makePage(defaultResponder(feedPayload({ entries: [foreign] })));

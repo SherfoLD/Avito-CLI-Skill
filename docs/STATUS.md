@@ -39,7 +39,7 @@ interruption left is the one approval prompt per connection (F-071, F-073).
 | `get-location` | [geo](areas/geo.md) | 2026-08-15 |
 | `get-coords` | [geo](areas/geo.md) | 2026-08-15 |
 | `get-item` | [item](areas/item.md) | 2026-08-16 |
-| `get-seller-reviews` | [item](areas/item.md) | 2026-08-15 |
+| `get-seller-reviews` | [item](areas/item.md) | 2026-08-17 |
 
 The consumer flow is one chain around one carrier of state, the canonical `searchUrl`:
 
