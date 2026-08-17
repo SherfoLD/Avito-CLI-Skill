@@ -14,7 +14,7 @@ import * as path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import { ArgumentError, CliError, EXIT_CODES, exitCodeFor } from '../src/runtime/errors.mjs';
-import { parseRows } from '../src/runtime/schema.mjs';
+import { parseRows, rowTypeScript } from '../src/runtime/schema.mjs';
 import { brokerEnabled, openBrowserContext } from '../src/runtime/cdp.mjs';
 import { liveBroker, stopBroker } from '../src/runtime/broker-client.mjs';
 import {
@@ -50,7 +50,8 @@ function usage(commands) {
   for (const descriptor of commands.values()) {
     lines.push(`  ${descriptor.name.padEnd(width)}  ${firstSentence(descriptor.description)}`);
   }
-  lines.push('', 'Run `avito <command> --help` for the arguments of one command.');
+  lines.push('', 'Run `avito <command> --help` for the arguments of one command and the type');
+  lines.push('of the rows it answers with. `avito --version` names the build, for a report.');
   lines.push('');
   lines.push('The browser is a Chromium you already own. Three ways to reach it:');
   lines.push('  --browser-profile <dir>  a running browser with chrome://inspect debugging on');
@@ -93,9 +94,23 @@ function commandHelp(descriptor) {
     }
     lines.push('');
   }
-  lines.push('Columns:', `  ${descriptor.columns.join(', ')}`, '');
+  lines.push('Output:');
+  lines.push('  A JSON array of Row — one element per result, and an array even when there');
+  lines.push('  is exactly one. `-f table` prints the same rows as a table.');
+  lines.push('');
+  for (const line of rowTypeScript(descriptor.row).split('\n')) lines.push(`  ${line}`);
+  lines.push('');
   if (descriptor.example) lines.push('Example:', `  ${descriptor.example}`, '');
   return lines.join('\n');
+}
+
+/**
+ * The first line of a report against this CLI. The path is here because a
+ * version alone does not say which checkout answered.
+ */
+function versionLine() {
+  const manifest = JSON.parse(fs.readFileSync(path.join(PROJECT_ROOT, 'package.json'), 'utf-8'));
+  return `avito ${manifest.version} (${path.join(PROJECT_ROOT, 'bin', 'avito.mjs')})`;
 }
 
 function firstSentence(text) {
@@ -282,6 +297,12 @@ async function runSessionSubcommand(subcommand) {
 
 async function main() {
   const argv = process.argv.slice(2);
+
+  if (argv.includes('--version')) {
+    console.log(versionLine());
+    return EXIT_CODES.SUCCESS;
+  }
+
   const commands = await loadCommands();
 
   const wantsHelp = argv.includes('--help') || argv.includes('-h');

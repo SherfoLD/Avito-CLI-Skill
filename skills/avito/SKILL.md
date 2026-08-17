@@ -10,7 +10,9 @@ Ten read-only commands over the user's own Chrome. **You call the CLI.** You do
 not open pages, inject scripts, assemble requests or decode responses — every
 command already does that, with the guards that make its answer trustworthy.
 
-Add `-f json` when you need to read fields programmatically.
+The output is already JSON — a plain array of rows, one element per result, and
+an array even when a command returns exactly one. `-f table` is the option, for
+showing a person; `avito <command> --help` prints the type of the rows.
 
 ## Before the first command
 
@@ -71,8 +73,9 @@ refuse a URL carrying `p=<n>`. So filters and category first, depth after.
 | `get-location <query>` | a city or region name | the location ID `search` needs, and metro/district IDs |
 | `get-coords <address>` | an address | the coordinate pair `--coords` needs |
 
-Run `avito <command> --help` for the arguments. That is the contract; this file
-does not restate it.
+Run `avito <command> --help` for the arguments and for the row type it answers
+with. That is the contract; this file does not restate it — what follows is only
+what a type cannot say.
 
 ## Reading the output
 
@@ -93,9 +96,9 @@ read `searchUrl` to see whether you received a search or a category.
 `publishedText` in `get-item` is Avito's rendered string — no year, no seconds,
 Moscow time. If you need the date as a value, use the row.
 
-**`null` means Avito did not send it.** `sellerName` is null for private sellers
-when the browser session is not logged in — that is Avito withholding identity,
-not a missing seller.
+**A `null` the type allows is Avito withholding, not a gap in the decoding.**
+`sellerName` is null for private sellers when the browser session is not logged
+in — that is Avito hiding identity, and the rating still arrives beside it.
 
 ## Applying filters
 
@@ -148,7 +151,20 @@ there, then take it to the user — a browser that is closed, or has debugging
 switched off, or an approval prompt nobody clicked, is theirs to fix, not
 something to retry around.
 
-Two known rough edges: `get-page` past the last page of results reports a
-CAPTCHA or rate-limit cooldown when it usually means "there is no such page", and
-two Avito categories — real estate and jobs — currently refuse entirely on some
-routes. `docs/STATUS.md` has the current register.
+## Known rough edges
+
+Three, and none of them corrupts what you get — each either refuses or hands you
+the wrong reason for a refusal. Read them as "expected here", not as something to
+retry through.
+
+- **`get-page` past the last page of results** reports a CAPTCHA or a rate-limit
+  cooldown when it usually means there is no such page. Check the row count of
+  the page you have before asking for the next one.
+- **Real estate, and vacancies in jobs**: `get-filters` refuses the whole
+  category when Avito ships a named filter without a name. Flat rentals, garages
+  and vacancies are the confirmed routes. Search itself works; narrowing does not.
+- **Résumés in jobs**: `search` refuses on a résumé card, whose placeholder photo
+  is served from outside Avito's image hosting.
+
+Two more categories — business equipment and Business 360 — have never been
+checked, so anything there is unknown rather than known-good.

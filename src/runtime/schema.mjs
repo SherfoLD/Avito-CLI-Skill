@@ -10,6 +10,10 @@
  * `decode` is the other half: Avito's responses are validated with the same
  * schemas, and a failure becomes a typed error. Response-shape drift ends the
  * call; it never becomes a partial row.
+ *
+ * `rowTypeScript` is the same declaration turned outward: `--help` prints the
+ * schema, so the caller reads the contract that is enforced rather than a
+ * paraphrase of it kept somewhere else.
  */
 
 import { z } from 'zod';
@@ -59,23 +63,32 @@ export const optionalText = () => cleanedText()
   .transform((value) => value || null)
   .default(null);
 
-/** An Avito identifier as this CLI hands it over: digits, kept as a string. */
-export const idString = () => z.string().regex(/^\d+$/, 'must be an Avito ID of digits only');
+/**
+ * An Avito identifier as this CLI hands it over: digits, kept as a string.
+ *
+ * The `note` is what `--help` prints beside the column. A regex check exposes
+ * only its pattern object, so a format states itself here or nowhere.
+ */
+export const idString = () => z.string()
+  .regex(/^\d+$/, 'must be an Avito ID of digits only')
+  .meta({ note: 'digits only' });
 
 /** Any absolute https URL — the host is checked by whoever owns that vocabulary. */
-export const httpsUrl = () => z.string().regex(/^https:\/\/[^\s]+$/, 'must be an absolute https URL');
+export const httpsUrl = () => z.string()
+  .regex(/^https:\/\/[^\s]+$/, 'must be an absolute https URL')
+  .meta({ note: 'absolute https URL' });
 
 /** A canonical listing URL: no query, no fragment, ending in the item ID. */
 export const itemUrl = () => z.string().regex(
   /^https:\/\/www\.avito\.ru\/[^?#]+_\d+$/,
   'must be a canonical https://www.avito.ru listing URL with no query',
-);
+).meta({ note: 'listing URL, no query' });
 
 /** Any Avito search or catalog URL, query and all. */
 export const searchUrl = () => z.string().regex(
   /^https:\/\/www\.avito\.ru\/[^\s]*$/,
   'must be an https://www.avito.ru search URL',
-);
+).meta({ note: 'search URL, query and all' });
 
 /** A 1-based position in the returned page. */
 export const rank = () => z.number().int().positive();
@@ -189,4 +202,96 @@ function columnDepth(schema) {
 /** A container of something undescribable is undescribable, not one level deep. */
 function nest(inner) {
   return inner < 0 ? -1 : inner + 1;
+}
+
+// ── the row as the consumer reads it ─────────────────────────────────────────
+
+/**
+ * The row schema as a TypeScript declaration, which `--help` prints in place of
+ * a list of column names: it is the one notation a consuming agent reads without
+ * being taught it, and it carries what a list cannot — that a column may be
+ * `null`, that another is a list, and that the answer as a whole is an array.
+ */
+export function rowTypeScript(schema, typeName = 'Row') {
+  const members = rowColumns(schema).map((column) => {
+    const { type, note } = describeColumn(schema.shape[column]);
+    return { declaration: `  ${column}: ${type};`, note };
+  });
+  const width = Math.max(...members.map((member) => member.declaration.length));
+  return [
+    `type ${typeName} = {`,
+    ...members.map(({ declaration, note }) => (
+      note ? `${declaration.padEnd(width)}  // ${note}` : declaration
+    )),
+    '};',
+  ].join('\n');
+}
+
+/** A column this printer has no notation for. The offline suite refuses one. */
+function undescribed() {
+  return { type: 'unknown', note: null };
+}
+
+/**
+ * The grammar here is the one `columnDepth` walks: a type accepted there is a
+ * type printed here, and a column that comes back undescribed is one the two
+ * have drifted apart on.
+ */
+function describeColumn(schema) {
+  const def = schema?.def;
+  if (!def) return undescribed();
+  if (def.type === 'nullable') {
+    const inner = describeColumn(def.innerType);
+    return { type: `${inner.type} | null`, note: inner.note };
+  }
+  if (def.type === 'optional' || def.type === 'default') return describeColumn(def.innerType);
+  if (def.type === 'union') {
+    const parts = (def.options ?? []).map(describeColumn);
+    if (parts.length === 0) return undescribed();
+    return {
+      type: parts.map((part) => part.type).join(' | '),
+      note: parts.find((part) => part.note)?.note ?? null,
+    };
+  }
+  if (def.type === 'array') {
+    const inner = describeColumn(def.element);
+    return { type: `${inner.type}[]`, note: inner.note };
+  }
+  if (def.type === 'record') {
+    const inner = describeColumn(def.valueType);
+    return { type: `Record<string, ${inner.type}>`, note: inner.note };
+  }
+  if (def.type === 'literal' || def.type === 'enum') {
+    const values = def.type === 'literal' ? def.values ?? [] : Object.values(def.entries ?? {});
+    if (values.length === 0) return undescribed();
+    return { type: values.map((value) => JSON.stringify(value)).join(' | '), note: null };
+  }
+  const note = schema.meta?.()?.note ?? (def.type === 'number' ? numberNote(def) : null);
+  // A date reaches the caller through `JSON.stringify`, which is where it stops
+  // being one.
+  if (def.type === 'date') return { type: 'string', note: note ?? 'ISO 8601' };
+  if (SCALAR_TYPES.has(def.type)) return { type: def.type, note };
+  return undescribed();
+}
+
+/** `integer, 0..5` — the bounds a numeric column declares, in the order they read. */
+function numberNote(def) {
+  let minimum = null;
+  let maximum = null;
+  let integer = false;
+  for (const check of def.checks ?? []) {
+    const rule = check._zod?.def ?? check.def ?? {};
+    if (rule.check === 'number_format') integer = true;
+    if (rule.check === 'greater_than') minimum = rule;
+    if (rule.check === 'less_than') maximum = rule;
+  }
+
+  const parts = integer ? ['integer'] : [];
+  if (minimum && maximum && minimum.inclusive && maximum.inclusive) {
+    parts.push(`${minimum.value}..${maximum.value}`);
+  } else {
+    if (minimum) parts.push(`${minimum.inclusive ? '>=' : '>'} ${minimum.value}`);
+    if (maximum) parts.push(`${maximum.inclusive ? '<=' : '<'} ${maximum.value}`);
+  }
+  return parts.join(', ') || null;
 }

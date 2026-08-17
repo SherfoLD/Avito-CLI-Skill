@@ -280,6 +280,25 @@ The listing row is exactly 12 keys: `itemId`, `title`, `price`, `location`,
   four, so what a command connects to and what `avito session status` prints
   cannot disagree.
 
+- **D-053 — the row contract is printed, not paraphrased.** `--help` renders the
+  `row` schema as a TypeScript declaration above the arguments' answer — a
+  notation a consuming agent reads without being taught it — in place of the
+  comma-separated column names it used to print. What that reaches which a list
+  could not: a nullable column (`price: number | null`), a list (`string[]`), the
+  filter grammar as a literal union (`valueSyntax: "<from>..<to>" | …`), and the
+  array around the whole answer, which was the contract of every command and was
+  written down nowhere (`jq '.title'` on `get-item` answers `Cannot index array
+  with string`).
+  `| null`, `[]`, `Record<>` and numeric bounds come out of the schema; a string
+  format does not, because a regex check exposes only its pattern object. So a
+  format states itself in `.meta({ note })` where the vocabulary is declared —
+  four helpers in `schema.mjs` plus `published` in `LISTING_ROW`, and every
+  command that will ever be written inherits them. A per-column `.describe()` was
+  the alternative and would have been ten edits to paraphrase column names.
+  Prose keeps only what a type cannot hold, which is meaning: what `price` counts
+  (D-020), that a row is a card rather than a listing, that a `null`
+  `sellerName` is Avito withholding identity (D-028).
+
 - **D-052 — `avito browser` finds the candidates instead of describing where to
   look.** Debugging leaves `DevToolsActivePort` in the profile root, so the
   browsers offering a connection can be listed rather than explained: one scan

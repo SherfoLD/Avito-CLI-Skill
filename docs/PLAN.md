@@ -1,14 +1,18 @@
 # Plan
 
-Updated: 2026-08-16
+Updated: 2026-08-17
 
 The future only. What is already done is in [STATUS.md](STATUS.md) and in git.
 
-The unit of work is a top-level Avito category, not a command: data shape belongs
-to the category, so "works" only means something per category. Eight of twelve
-are walked; the four below are not. The remaining defects close two categories
-each, so the phases reference one another instead of repeating the work. The
-order between phases is free; inside a phase, top to bottom.
+Two blocks, and the first one comes first. Phases 23–29 are what one consumer
+session found by using the skill blind on a real task — a services search in
+Moscow — and every claim in them was replayed live before it was written down.
+Phases 13–21 are the category walk: the unit of work there is a top-level Avito
+category, not a command, because data shape belongs to the category. Eight of
+twelve are walked, four are not.
+
+Order between the blocks is fixed; inside a block the order between phases is
+free, and inside a phase it is top to bottom.
 
 The register of failures and the coverage table are in [STATUS.md](STATUS.md).
 
@@ -24,6 +28,213 @@ read. Neither is urgent and neither is free.
 - [ ] `sellerName` is defended by no live rule at all (D-028) and cannot be —
       `notEmpty` applies to every row. Only the offline suite and human eyes
       stand behind it.
+
+## The twelve-key ceiling
+
+Four of the phases below want a new column, and three of them cannot have one for
+free: `MAX_ROW_KEYS` is 12 and both `search` and `get-item` are at 12 today. So a
+new column is a swap, not an addition, and the swaps are not independent of one
+another — `imagesPreviews` and `images` are the two candidates everything else is
+queueing behind (phase 26). Decide the ceiling before the columns: either it
+holds and the phases below bid for two slots, or it moves and that is its own
+decision with its own reason.
+
+## Phase 23 — A service has a price list, not a price
+
+The largest data defect found, and it is not a parse failure. Replayed on
+`4045441344` and `8000518854`, both in Services:
+
+- the item API (`/items/ads<pathname>`) sends `item.price: null` and
+  `formattedPrice` empty — `isHasValue: false`, `value: 0`, `string: ""`,
+  `buyerItem.priceString: ""`. There is no scalar price to lose;
+- the price lives in `item.priceList.groups[].values[]`, each `{ title, price,
+  subPrice, serviceId, url }` with `price` as Avito's own string: `от 5 000 ₽`,
+  `Цена договорная`, `1 ₽`;
+- the search card carries `priceDetailed.fullString: "от 490 ₽"` beside
+  `value: 490`, and its own `priceList` — `valuesAll` (the whole list),
+  `values` (the two Avito draws) and `countHint: "Ещё 5 услуг"`.
+
+So the row's `price: 490` is the floor of a price list printed as if it were a
+price, and `get-item`'s `null` is honest but useless. Sorting and comparing by
+price across services is meaningless today, and nothing in the output says so.
+
+- [ ] Name the carrier of "from" before writing any code. `priceDetailed.string`
+      begins with `от`, and reading that is text-scanning Avito's dialect. Look
+      for a structural flag on the card first, across services and at least one
+      goods route where the same field carries a plain number.
+- [ ] Decide what `price` means in a listing row once "from" is known. A boolean
+      beside it (`priceIsFrom`) states the fact without changing what `price` is;
+      a null price on services states it by refusing. Both are defensible, only
+      one costs a column (see the ceiling above).
+- [ ] Decide what `get-item` does with `price` on a service. It may not invent the
+      minimum of the list — that is a fallback value. Either null stays and the
+      list is returned, or the command refuses a shape it has no column for.
+- [ ] The price list itself, on both carriers. It is a table inside a row, which
+      the flat 12-key contract has no form for: `get-item.attributes` is the
+      precedent for a nested object in a row, and `countHint` says the card's
+      `values` is a truncation while `valuesAll` is not.
+- [ ] Check which other categories ship `priceList`. It was found in Services;
+      whose shape it is — the category's or the seller's — has to be asked
+      separately (F-057), and the answer decides whether this is a services
+      phase or a row-contract phase.
+- [ ] `attributes` on a service already carries what the page prints as
+      «Подробности» (`График работы`, `Чем занимается исполнитель`,
+      `Производители`, `Техника`) — confirmed live on `4045441344`. Compare it
+      field by field with the visible block before assuming it is complete.
+
+## Phase 24 — `get-categories` dies exactly where it is the only way out
+
+`avito get-categories` on `https://www.avito.ru/moskva?q=замена+аккумулятора+macbook+air+m2`
+answers `COMMAND_EXEC: Avito category sidebar node 1000007 has inconsistent
+type/state`. The sidebar behind that refusal, read raw:
+
+| id | type | name | isCurrent | isOpened | children | url |
+|---|---|---|---|---|---|---|
+| 1000063 | 0 | Услуги | true | true | 2 | `/moskva/predlozheniya_uslug?cd=1&q=…` |
+| 1000007 | 0 | Электроника | true | false | 2 | `/moskva/bytovaya_elektronika?cd=1&q=…` |
+
+with two navigable `type=1` children under each. `searchCore.categoryId` is
+`null`: Avito determined no category and drew several candidate groups instead.
+Two invariants fail at once — a `type=0` node that is not `isOpened`, and two
+nodes claiming `isCurrent`. The second one would refuse the call even if the
+first were relaxed.
+
+This is the case where the command matters most: no category was chosen, so
+`move-category` is the only correction available, and it takes its `--to` names
+from this output alone. One refusal disables both.
+
+- [ ] Establish what Avito draws here against the visible page before touching the
+      invariants. "Expanded branch" and "the current category" were read off a
+      route that had a category; a route without one may be a different mode, and
+      guessing it from the payload is how a wrong opinion gets written down.
+- [ ] Decide what `isCurrent` on more than one group head means, and what the
+      `current` column then says. The "multiple current categories" refusal is a
+      second decision, not a consequence of the first.
+- [ ] Both group heads carry a URL with `?cd=1&q=…`, and today it is dropped
+      because `type=0` is not navigable — deliberately, as a control (F-034).
+      On this route that URL is the whole answer: it is the way into `Услуги`
+      keeping the query. Decide whether `navigable` is a property of the type or
+      of the presence of a URL, and check the answer against a route that does
+      have a category, where the rule was written.
+- [ ] Then check the pair end to end: `move-category --to Услуги` from this URL,
+      with the postconditions that already exist — the route Avito named, page 1,
+      the location unchanged, `searchCore.query` preserved.
+- [ ] This closes the `--category` request on `search` as well: a search that
+      lands in no category is exactly when a caller wants to name one, and the
+      sidebar already hands over a URL that does it. Nothing in `search` needs a
+      new argument if this works.
+
+## Phase 25 — Partial degradation of an optional field
+
+The review images defect is fixed (F-075), the class behind it is not. One
+optional media field of one element killed a page of 25 reviews whose text was
+intact and was the whole point of the request.
+
+The rule stands — a command returns correct data or throws — and the fix does not
+weaken it: a review without its photo is not a lie, it is a review with a photo
+we could not read. What is missing is a way to say that.
+
+- [ ] Draw the line where it belongs: the shape of the response and the required
+      fields of an element fail closed as today; an optional media field of one
+      element degrades that element. Anything that changes what a *required*
+      field says stays a refusal.
+- [ ] Find the carrier for "part of this element is missing". Silently returning
+      the element without its photos is the fallback value this repository does
+      not do. A column is a column (see the ceiling); a typed warning on stderr
+      is not part of any contract yet. This one is a stop-and-ask.
+- [ ] Do it in one place. Phase 21 already has the three copies of the
+      largest-variant rule with three failure contracts (`card.mjs` throws,
+      `item.mjs` returns `null`, `get-seller-reviews` throws typed) — that
+      inventory is the input to this decision, and this decision is what tells
+      the three copies apart or merges them.
+
+## Phase 26 — Images cost more than they return
+
+`imagesPreviews` is five opaque URLs per row and fifty rows per search: it
+dominates the payload of every `search`, and a text task uses none of them. The
+originals are only in `get-item` anyway, so the previews buy nothing but volume.
+
+Owner's proposal, to be discussed before it is built: drop the image columns from
+the output and add `--with-images <dir>`, where the caller passes a private tmp
+path and the command downloads the photos there, converted to png, so a human can
+look at them. The same flag for every command that has images.
+
+- [ ] Discuss it first. This is the first command that writes to disk, the first
+      that fetches a binary, and png conversion needs a decoder this repository
+      does not have. "Read-only" currently means "read-only against Avito" and
+      would come to mean something else.
+- [ ] Decide what the row says instead. A count, a file path per image, or
+      nothing — and what happens when one photo of five fails to download, which
+      is phase 25's question in another shape.
+- [ ] Whatever is decided, this is where the two free columns come from. Nothing
+      in phases 23, 27 or 28 should be planned as if they were already free.
+
+## Phase 27 — The seller as an entity
+
+A caller choosing an executor works seller by seller, and the CLI has no seller.
+`sellerName` is a string on a row; that seven of the fifty rows were the same
+shop was discovered by noticing repeats.
+
+The identity is in the payload, three times over, on `4045441344`:
+`buyerItem.userHashedId` (`944d1e…`), `buyerItem.seller.hashId` (`cc39a1…`),
+`buyerItem.rating.userKey` (`1667625…`), plus `item.userId` (`82922703`),
+`item.shop` (`{ domain: "i82922703", id: 187313, isShop: true, name }`) and
+`linkLoggerShop.profileUrl` (`brands/i82922703?…`). `publicProfile` is `null` on
+this one.
+
+- [ ] Establish which key addresses which page, and for whom. A shop resolves
+      through `/brands/<domain>`; a private seller has no `shop` at all, and
+      `get-seller-reviews` already reaches a feed by a key of its own — start from
+      what that command resolves and why.
+- [ ] Owner's note, and the reason this is not a one-liner: a profile in Services
+      is not the profile of a goods seller. Research the closed categories before
+      designing the output, not after.
+- [ ] Then `sellerUrl` on `get-item` (a column, see the ceiling) and
+      `get-seller-items` as its own command, which is the scenario the whole
+      request came from: everything this seller offers, in one call.
+
+## Phase 28 — What a search result silently is
+
+Two facts decide how a result reads, and both are inferred from the slug of
+`searchUrl` today.
+
+**Location.** `search` without `--location-id` returned Moscow, and the only
+evidence was `/moskva/` in the URL. `searchCore` carries `locationId: 637640`,
+`locationName: "Москва"` and `geoCoords`, and none of it reaches the output.
+`--help` says "omit to keep the current region"; nothing tells a caller what the
+current region is — `avito browser` reports a browser, not a session's region.
+
+**Category.** Three searches landed in three different categories
+(`/predlozheniya_uslug`, `/moskva`, `/bytovaya_elektronika`), which makes their
+results incomparable. `searchCore.categoryId` is the carrier — `null` when Avito
+determined none, which is itself the fact a caller most needs (phase 24) — and
+every card carries its own `category`.
+
+- [ ] Decide where a per-call scalar goes in a contract that returns rows.
+      `searchUrl` is the precedent: one value, repeated on every row, and it works
+      because a caller reads one row. Two more repeated columns is the obvious
+      shape and the expensive one (see the ceiling).
+- [ ] Read the resolved location off the response, never off the argument. The
+      command already knows: an echoed `--location-id` proves nothing (F-037), and
+      `locationName` beside it is what the caller asked to see.
+- [ ] The card's own `category` and `searchCore.categoryId` are not the same
+      question — one is per row, the other per search. Decide which one the caller
+      needs before adding either.
+
+## Phase 29 — `get-item` one URL at a time
+
+The natural shape of the work is a wide search and then a handful of candidates:
+fifty rows, seven kept, seven separate calls. `get-item url1 url2 url3` removes
+six round trips from the most common flow there is.
+
+- [ ] Decide what a batch does when one URL of seven fails. Fail-closed says the
+      call ends; the value of the batch says the other six are still true. This is
+      phase 25's line drawn on a different axis, and the two answers should not
+      contradict each other.
+- [ ] Count the requests before promising the saving. `get-item` falls back from
+      the item API to a rendered page, and seven renders in one call is a
+      different load profile from seven commands — the untested question of a
+      safe request rate sits under this one.
 
 ## Phase 13 — Real estate
 

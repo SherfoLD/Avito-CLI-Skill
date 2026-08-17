@@ -3,16 +3,20 @@
 // Every other suite leans on this machinery, so a schema layer that silently
 // accepted everything would make all of them pass while checking nothing. It is
 // exercised here directly, including the failures it is supposed to produce.
-import { runner } from './harness.mjs';
+import { loadCommand, runner } from './harness.mjs';
 import { defineCommand } from '../src/runtime/command.mjs';
+import { loadManifest } from '../scripts/lib/manifest.mjs';
 import {
   count,
   decode,
+  httpsUrl,
   idString,
   itemUrl,
   optionalText,
   parseRows,
+  rank,
   requiredText,
+  rowTypeScript,
   text,
   z,
 } from '../src/runtime/schema.mjs';
@@ -166,6 +170,58 @@ check('Avito text is normalized, and a structure is never stringified into one',
   // `String(value ?? '')` of an object is "[object Object]" — non-empty, and so
   // past every emptiness check downstream.
   assert(schema.safeParse({ name: {} }).success === false, 'a structure must not become text');
+});
+
+check('the printed type says what a list of column names cannot', () => {
+  const printed = rowTypeScript(z.strictObject({
+    itemId: idString(),
+    price: z.number().nonnegative().nullable(),
+    sellerRating: z.number().min(0).max(5).nullable(),
+    reviewsCount: count(),
+    position: rank(),
+    role: z.enum(['option', 'current']),
+    images: z.array(httpsUrl()),
+    attributes: z.record(text(), text()),
+    url: itemUrl(),
+  }));
+
+  const expected = [
+    'itemId: string;',                            // the format only the vocabulary knows
+    'price: number | null;',                      // nullable, and not optional
+    'sellerRating: number | null;',
+    'reviewsCount: number;',
+    'position: number;',
+    'role: "option" | "current";',
+    'images: string[];',
+    'attributes: Record<string, string>;',
+    'url: string;',
+  ];
+  for (const member of expected) {
+    assert(printed.includes(member), `${member} is not in the printed type:\n${printed}`);
+  }
+
+  const notes = ['// digits only', '// 0..5', '// integer, >= 0', '// integer, > 0', '// listing URL, no query'];
+  for (const note of notes) {
+    assert(printed.includes(note), `${note} is not in the printed type:\n${printed}`);
+  }
+  assert(printed.startsWith('type Row = {') && printed.endsWith('};'), `the block is not a declaration:\n${printed}`);
+});
+
+check('every command prints a type, and no column of one arrives as unknown', async () => {
+  for (const entry of await loadManifest()) {
+    const { COMMAND } = await loadCommand(entry.name);
+    const printed = rowTypeScript(COMMAND.row);
+    // A column reaching `unknown` means the printer and the flatness rule stopped
+    // agreeing on what a column may be, which is invisible in a passing `--help`.
+    assert(!/unknown/.test(printed), `${entry.name} prints an undescribed column:\n${printed}`);
+    assert(
+      printed.split('\n').length === COMMAND.columns.length + 2,
+      `${entry.name} prints ${printed.split('\n').length - 2} members for ${COMMAND.columns.length} columns`,
+    );
+    for (const column of COMMAND.columns) {
+      assert(printed.includes(`  ${column}: `), `${entry.name} does not print ${column}`);
+    }
+  }
 });
 
 export default await run('schema — the row contract and how Avito payloads become data');

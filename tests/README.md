@@ -31,7 +31,9 @@ the implementation drifts. Nothing here is a copy of the code.
   if an export moves.
 - `schema.test.mjs` — the row contract itself: a non-strict, oversized, nested or
   snake_case row is refused at definition time, an undeclared or undefined column
-  ends the call, and `decode` names the path that drifted.
+  ends the call, and `decode` names the path that drifted. Then the same contract
+  turned outward: the type `--help` prints carries the nullability, the lists and
+  the bounds, and no column of any command comes back undescribed (D-053).
 - `lint-rules.test.mjs` — the four repository ESLint rules, each given the code
   it must refuse and the honest code it must ignore. `npx eslint .` reporting
   nothing is only good news if the rules can report something.
@@ -82,7 +84,7 @@ the implementation drifts. Nothing here is a copy of the code.
   against whichever carrier the response happens to have, and the review without
   a score that must stay null.
 
-199 checks in total. The number only ever goes up: an assertion that has to
+208 checks in total. The number only ever goes up: an assertion that has to
 change is a contract change with a `D-0xx` number, not a test edit.
 
 ## What a suite is for

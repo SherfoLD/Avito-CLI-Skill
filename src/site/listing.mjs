@@ -35,7 +35,7 @@ export const LISTING_ROW = z.strictObject({
   published: z.string().regex(
     /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/,
     'must be a UTC instant like 2026-08-14T02:15:41Z',
-  ).nullable(),
+  ).meta({ note: 'ISO 8601 instant, UTC' }).nullable(),
   sellerName: text().nullable(),
   sellerRating: z.number().min(0).max(5).nullable(),
   sellerReviewsCount: count().nullable(),

@@ -7,13 +7,13 @@ How each command is built is in its domain file, [docs/areas/](areas/).
 
 ## Commands
 
-Ten commands, all read-only. `npm run check` is green; the offline suite is 206
+Ten commands, all read-only. `npm run check` is green; the offline suite is 208
 checks across sixteen suites. All ten fixtures pass live against the descriptor
 schemas (D-048, D-049).
 
 The row contract is a `z.strictObject` in each descriptor: `columns` is derived
-from it, the CLI parses every row through it before printing, and the offline
-suites run the same parse. A `verify/<command>.mjs` fixture is a schema over the
+from it, the CLI parses every row through it before printing, the offline suites
+run the same parse, and `--help` prints the schema itself as a type (D-053). A `verify/<command>.mjs` fixture is a schema over the
 whole returned array, saying what that one request must answer with. What neither
 can express is four ESLint rules over the AST (`npm run lint`).
 
