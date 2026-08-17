@@ -2,7 +2,7 @@
 
 Confirmed live: 2026-08-16
 
-The shared row decoder, the 12-key shape and the transport are in
+The shared row decoder, the row shape and the transport are in
 [_platform.md](_platform.md).
 
 ## Contract

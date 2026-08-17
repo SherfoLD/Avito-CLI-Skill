@@ -1,20 +1,20 @@
 # Listing and seller — `get-item`, `get-seller-reviews`
 
-Confirmed live: 2026-08-15
+Confirmed live: 2026-08-18
 
 Transport and the shared rules are in [_platform.md](_platform.md).
 
 ## Contract
 
-`get-item <url>` accepts a full listing URL, normally from a listing row.
-Columns: `itemId`, `title`, `price`, `location`, `description`, `attributes`,
-`publishedText`, `sellerName`, `sellerRating`, `sellerReviewsCount`, `images`,
-`url`.
+`get-item <url>` accepts a full listing URL, normally from a listing row. The
+columns are in `--help`, printed from the schema (D-053).
 
-The command is called for two of those columns: `description` — the full text
-instead of the truncated `descriptionPreview` — and `images` — the original
-photographs (`1280x960`) instead of the catalog previews (`636x636`). The rest
-are already in the listing row and do not justify a separate call.
+The command is called for three of them: `description` — the full text instead
+of the truncated `descriptionPreview`; `images` — the original photographs
+(`1280x960`) instead of the catalog previews (`636x636`); and `priceList` — the
+price table of a service, which the listing row reports only the existence of
+(D-056). The rest are already in the listing row and do not justify a separate
+call.
 `publishedText` is the one column the listing row states more precisely: there
 the same date arrives as the machine-readable moment `published`, here only as a
 string, exactly as Avito prints it (F-059, D-039).
@@ -55,13 +55,16 @@ against `sortRating` in the server's `nextPage`.
   `GET /items/ads{pathname}`, which yields structured fields without loading the
   listing page; the two fallback layers bound the risk of drift in an
   undocumented endpoint.
-- **D-017 — `get-item` is 12 keys again.** Three flat nullable seller fields plus
-  `images`, always an array; the fourth was `sellerId`, removed by D-038, and the
-  freed slot went to `publishedText` (D-039). Media is accepted only from
-  `*.img.avito.st`. The final DOM fallback deliberately returns nullable seller
-  fields and an empty `images` rather than opening the gallery.
+- **D-017 — three flat nullable seller fields plus `images`, always an array.**
+  The fourth was `sellerId`, removed by D-038, and the freed slot went to
+  `publishedText` (D-039); `priceList` was the thirteenth column (D-056). Media is
+  accepted only from `*.img.avito.st`. The final DOM fallback deliberately returns
+  nullable seller fields and an empty `images` rather than opening the gallery,
+  and a `null` `priceList` rather than an empty one: the visible table is anchored
+  by nothing but its own heading, so that path reports it did not read one instead
+  of claiming there is none.
 - **D-021 — the review feed accepts a listing URL, and `get-item` does not
-  change.** The option "replace one of `get-item`'s 12 columns with `reviewsUrl`"
+  change.** The option "replace one of `get-item`'s columns with `reviewsUrl`"
   was rejected: such a link would just be `<itemUrl>#open-reviews-list`, it
   carries no `ratingUserKey` and it saves no requests. The option "accept
   `ratingUserKey` as an argument" was rejected: it exposes an internal hash, and
@@ -122,6 +125,32 @@ against `sortRating` in the server's `nextPage`.
   did, silently, so a capture taken from it is alphabetized by label and will
   appear to differ on every attribute while every value is identical. An order
   Avito does not have is not ours to invent, which is the same rule as F-072.
+
+- **F-080 — a service has no scalar price, and its price list is grouped.**
+  `item.price` is `null`, `formattedPrice` is `{string: "", value: 0, isHasValue:
+  false}`, `buyerItem.priceString` is empty and the page prints nothing at all
+  where a goods listing prints its number, so `get-item`'s `price: null` is the
+  honest answer and not a decoding loss. The table is `item.priceList =
+  { title, isRedesign, groups: [{ title, isCollapsed, values }] }`, and an entry
+  is `{ title, price, subTitle, subPrice, serviceId, url, imv, withSsr }` —
+  richer than the card's pair, with `subTitle` and `subPrice` null on every entry
+  read. One group, titled «Прайс-лист», on all three items. On a goods listing
+  the key is present and `null`. The rendered page prints the group entry for
+  entry, so the API is the visible list. The command returns it flat, in Avito's
+  order, with the group titles merged away — one group has ever been sent, and a
+  column holds a table rather than a tree (D-055).
+
+- **F-081 — the card's price list and the listing page's disagree.** Same three
+  items, both carriers read as JSON and both compared against their own rendered
+  page: on `8107239005` the page and the API carry an entry the card does not
+  («Диагностика (при заказе ремонта)», Бесплатно) and price the shared
+  «Диагностика» at 500 ₽ where the card says «Цена договорная»; on `7318797534`
+  all 25 titles agree in order while 23 prices differ — card «от 490 ₽» against
+  «Цена договорная». The page agrees with the item API every time, so the card's
+  list is the search index's copy of the same table and it goes stale. A caller
+  who needs the price a seller currently asks needs `get-item`, and the two
+  lists must never be presented as one: `search` reports only that a table exists
+  and `get-item` is the one command that reads it (D-056).
 
 ## Risks
 

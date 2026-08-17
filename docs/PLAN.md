@@ -1,10 +1,10 @@
 # Plan
 
-Updated: 2026-08-17
+Updated: 2026-08-18
 
 The future only. What is already done is in [STATUS.md](STATUS.md) and in git.
 
-Two blocks, and the first one comes first. Phases 23–29 are what one consumer
+Two blocks, and the first one comes first. Phases 24–29 are what one consumer
 session found by using the skill blind on a real task — a services search in
 Moscow — and every claim in them was replayed live before it was written down.
 Phases 13–21 are the category walk: the unit of work there is a top-level Avito
@@ -29,58 +29,14 @@ read. Neither is urgent and neither is free.
       `notEmpty` applies to every row. Only the offline suite and human eyes
       stand behind it.
 
-## The twelve-key ceiling
+## What a new column still costs
 
-Four of the phases below want a new column, and three of them cannot have one for
-free: `MAX_ROW_KEYS` is 12 and both `search` and `get-item` are at 12 today. So a
-new column is a swap, not an addition, and the swaps are not independent of one
-another — `imagesPreviews` and `images` are the two candidates everything else is
-queueing behind (phase 26). Decide the ceiling before the columns: either it
-holds and the phases below bid for two slots, or it moves and that is its own
-decision with its own reason.
-
-## Phase 23 — A service has a price list, not a price
-
-The largest data defect found, and it is not a parse failure. Replayed on
-`4045441344` and `8000518854`, both in Services:
-
-- the item API (`/items/ads<pathname>`) sends `item.price: null` and
-  `formattedPrice` empty — `isHasValue: false`, `value: 0`, `string: ""`,
-  `buyerItem.priceString: ""`. There is no scalar price to lose;
-- the price lives in `item.priceList.groups[].values[]`, each `{ title, price,
-  subPrice, serviceId, url }` with `price` as Avito's own string: `от 5 000 ₽`,
-  `Цена договорная`, `1 ₽`;
-- the search card carries `priceDetailed.fullString: "от 490 ₽"` beside
-  `value: 490`, and its own `priceList` — `valuesAll` (the whole list),
-  `values` (the two Avito draws) and `countHint: "Ещё 5 услуг"`.
-
-So the row's `price: 490` is the floor of a price list printed as if it were a
-price, and `get-item`'s `null` is honest but useless. Sorting and comparing by
-price across services is meaningless today, and nothing in the output says so.
-
-- [ ] Name the carrier of "from" before writing any code. `priceDetailed.string`
-      begins with `от`, and reading that is text-scanning Avito's dialect. Look
-      for a structural flag on the card first, across services and at least one
-      goods route where the same field carries a plain number.
-- [ ] Decide what `price` means in a listing row once "from" is known. A boolean
-      beside it (`priceIsFrom`) states the fact without changing what `price` is;
-      a null price on services states it by refusing. Both are defensible, only
-      one costs a column (see the ceiling above).
-- [ ] Decide what `get-item` does with `price` on a service. It may not invent the
-      minimum of the list — that is a fallback value. Either null stays and the
-      list is returned, or the command refuses a shape it has no column for.
-- [ ] The price list itself, on both carriers. It is a table inside a row, which
-      the flat 12-key contract has no form for: `get-item.attributes` is the
-      precedent for a nested object in a row, and `countHint` says the card's
-      `values` is a truncation while `valuesAll` is not.
-- [ ] Check which other categories ship `priceList`. It was found in Services;
-      whose shape it is — the category's or the seller's — has to be asked
-      separately (F-057), and the answer decides whether this is a services
-      phase or a row-contract phase.
-- [ ] `attributes` on a service already carries what the page prints as
-      «Подробности» (`График работы`, `Чем занимается исполнитель`,
-      `Производители`, `Техника`) — confirmed live on `4045441344`. Compare it
-      field by field with the visible block before assuming it is complete.
+The ceiling is 16 (D-054) and a column may be a table of flat records (D-055), so
+the phases below no longer bid against one another for a slot: the listing row is
+at 14 and `get-item` at 13. What a column still costs is meaning — what it says
+when the value is missing — and payload, which every row pays on every page.
+`-f table` prints a record as `[object Object]`; `attributes` has done that since
+it existed, and any second record column inherits it.
 
 ## Phase 24 — `get-categories` dies exactly where it is the only way out
 
@@ -140,8 +96,8 @@ we could not read. What is missing is a way to say that.
       field says stays a refusal.
 - [ ] Find the carrier for "part of this element is missing". Silently returning
       the element without its photos is the fallback value this repository does
-      not do. A column is a column (see the ceiling); a typed warning on stderr
-      is not part of any contract yet. This one is a stop-and-ask.
+      not do. A column states it in the contract; a typed warning on stderr is
+      part of no contract yet. This one is a stop-and-ask.
 - [ ] Do it in one place. Phase 21 already has the three copies of the
       largest-variant rule with three failure contracts (`card.mjs` throws,
       `item.mjs` returns `null`, `get-seller-reviews` throws typed) — that
@@ -166,8 +122,9 @@ look at them. The same flag for every command that has images.
 - [ ] Decide what the row says instead. A count, a file path per image, or
       nothing — and what happens when one photo of five fails to download, which
       is phase 25's question in another shape.
-- [ ] Whatever is decided, this is where the two free columns come from. Nothing
-      in phases 23, 27 or 28 should be planned as if they were already free.
+- [ ] Decide it on the payload, not on the column budget: D-054 freed four
+      slots, and dropping the images is now worth doing only if the volume is
+      the reason.
 
 ## Phase 27 — The seller as an entity
 
@@ -189,7 +146,7 @@ this one.
 - [ ] Owner's note, and the reason this is not a one-liner: a profile in Services
       is not the profile of a goods seller. Research the closed categories before
       designing the output, not after.
-- [ ] Then `sellerUrl` on `get-item` (a column, see the ceiling) and
+- [ ] Then `sellerUrl` on `get-item` (a column of its own) and
       `get-seller-items` as its own command, which is the scenario the whole
       request came from: everything this seller offers, in one call.
 
@@ -213,7 +170,7 @@ every card carries its own `category`.
 - [ ] Decide where a per-call scalar goes in a contract that returns rows.
       `searchUrl` is the precedent: one value, repeated on every row, and it works
       because a caller reads one row. Two more repeated columns is the obvious
-      shape and the expensive one (see the ceiling).
+      shape; what it costs now is payload on every row, not a slot.
 - [ ] Read the resolved location off the response, never off the argument. The
       command already knows: an echoed `--location-id` proves nothing (F-037), and
       `locationName` beside it is what the caller asked to see.
@@ -255,11 +212,15 @@ Confirmed on flat rentals (`снять квартиру 2 комнатную`) a
       returned. Confirm that this is correct rather than a side effect of the
       `params[...]` rule — if it can be applied, this category needs a way to
       pick a subcategory by filter and not only through `move-category`.
-- [ ] Walk the category: flat sales and rentals, daily rentals, houses, land,
-      garages, commercial.
-- [ ] Check the semantics of the listing row on real estate: the 12 keys were
-      written for goods, and what `price` means on a daily rental has never been
-      looked at live.
+- [ ] Walk the category: flat sales and rentals, houses, land, garages,
+      commercial. Daily rentals are not on this list and cannot be: that route is
+      a different Avito product with no catalog in it at all (F-082).
+- [ ] Check the semantics of the listing row on the routes the price columns have
+      not seen — houses, land, garages, commercial. Rentals and sales were read
+      live on 2026-08-18: 100 cards, every one a plain number, no floor and no
+      price list, so nothing there argues with the goods reading of `price`
+      (F-079). Commercial rent is the one route where a rate («₽ за м²», F-077)
+      is likely, and it is the one that has not been read.
 
 ## Phase 14 — Jobs
 

@@ -15,6 +15,8 @@ const ROW = {
   apiItemId: '7881841669',
   apiTitle: 'DDR5 32gb Kingston Fury',
   apiPrice: 43691,
+  apiMinPrice: null,
+  apiHasPriceList: false,
   apiLocation: 'Китай-город, до 5 мин.',
   apiDescriptionPreview: 'Авитодоставка открыта',
   apiPublished: '2026-08-13T23:15:41Z',
@@ -253,7 +255,7 @@ check('remove-reserved drops reserved rows without asking Avito to refine anythi
   const page = makePage(context(CANONICAL_PRESERVED, { resultRows: rows }));
   const result = await COMMAND.run(page, { query: 'ddr5 32gb', 'remove-reserved': true });
   assert(result.length === 1 && result[0].itemId === '8288791269', `unexpected rows: ${JSON.stringify(result.map((r) => r.itemId))}`);
-  assert(!('isReserved' in result[0]), 'the flag must stay out of the 12-key row contract');
+  assert(!('isReserved' in result[0]), 'the flag must stay out of the row contract');
   const passed = page.calls.evaluateWithArgs[0].args;
   assert(passed.refinement.apply === false, 'remove-reserved must not trigger the items API');
   assert(!('removeReserved' in passed.refinement), 'remove-reserved must not look like a server-applied key');

@@ -21,6 +21,40 @@ export function itemReviewCount(value) {
 }
 
 /**
+ * The price table of a service, as the listing page prints it (F-080). Avito
+ * groups the entries and has only ever sent one group, «Прайс-лист»; the groups
+ * are merged because a row column holds a table and not a tree, so a second
+ * group would arrive as more entries rather than as a lost one. A goods listing
+ * carries the key with `null` and decodes to an empty table.
+ *
+ * `undefined` means malformed, the same as everywhere else in this decoder.
+ */
+export function decodeItemPriceList(rawPriceList) {
+  const clean = (value) => String(value ?? '').replace(/\s+/g, ' ').trim();
+  if (rawPriceList == null) return [];
+  if (typeof rawPriceList !== 'object' || Array.isArray(rawPriceList)) return undefined;
+  const groups = rawPriceList.groups;
+  if (!Array.isArray(groups) || groups.length > 20) return undefined;
+
+  const entries = [];
+  for (const group of groups) {
+    if (!group || typeof group !== 'object' || Array.isArray(group)) return undefined;
+    if (!Array.isArray(group.values) || group.values.length > 200) return undefined;
+    for (const value of group.values) {
+      if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+      const title = clean(value.title);
+      // Avito's own string, «Бесплатно» and «Цена договорная» included: an entry
+      // is priced by a phrase as often as by a number, and the two phrases are
+      // not the same answer (F-076).
+      const price = clean(value.price);
+      if (!title || !price) return undefined;
+      entries.push({ title, price });
+    }
+  }
+  return entries;
+}
+
+/**
  * Original-size photos, from `item.imageUrls` when Avito ships it and from the
  * gallery otherwise. Returns `null` for anything malformed, which fails the
  * whole item rather than quietly returning fewer photos.
@@ -173,11 +207,16 @@ export function decodeBuyerItemInBrowser(buyerItem, expectedItemId, env) {
   if (decodedSellerReviewsCount === undefined) return null;
   const decodedImages = decodeItemImages(rawItem.imageUrls, buyerItem.galleryInfo?.media);
   if (decodedImages === null) return null;
+  const decodedPriceList = decodeItemPriceList(rawItem.priceList);
+  if (decodedPriceList === undefined) return null;
 
   return {
     decodedItemId,
     decodedTitle,
-    decodedPrice,
+    // A listing priced by a table has no single price, and the page prints none
+    // either. The minimum of the table is not that price (F-080).
+    decodedPrice: decodedPriceList.length > 0 ? null : decodedPrice,
+    decodedPriceList,
     decodedLocation,
     decodedDescription,
     decodedAttributes,

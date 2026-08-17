@@ -1,0 +1,108 @@
+{
+  "capturedAt": "2026-08-17",
+  "purpose": "Phase 23: name the carriers of a service price before any code — what the search card holds, what the item API holds, and what the listing page prints.",
+  "routes": {
+    "servicesRepair": "https://www.avito.ru/moskva/predlozheniya_uslug?q=ремонт+стиральных+машин",
+    "servicesCleaning": "https://www.avito.ru/moskva/predlozheniya_uslug?q=уборка+квартиры",
+    "goods": "https://www.avito.ru/moskva/bytovaya_elektronika?q=телевизор"
+  },
+  "cardCarrier": {
+    "where": "loaderData.data.catalog.items[].priceList — a flat field of the item, beside priceDetailed, not inside any iva step",
+    "shape": "{ valuesAll: [{title, price}], values: [{title, price}], countHint?: string }",
+    "observed": {
+      "cardsOnRepairRoute": 50,
+      "cardsWithAPriceList": 26,
+      "entryKeysets": [
+        "[\"price\",\"title\"]"
+      ],
+      "listKeysets": [
+        "[\"countHint\",\"values\",\"valuesAll\"]",
+        "[\"values\",\"valuesAll\"]"
+      ],
+      "valuesIsAlwaysAPrefixOfValuesAll": true,
+      "countHintPresentExactlyWhenTruncated": true,
+      "countHintEqualsRemainder": "valuesAll 5 / values 2 → \"Ещё 3 услуги\"; 25/2 → \"Ещё 23 услуги\"",
+      "entriesPerList": {
+        "min": 1,
+        "max": 27,
+        "mean": 7.5
+      },
+      "titlesUniqueWithinAList": true,
+      "bytesForFiftyRows": 16158
+    },
+    "matchesTheVisibleCard": "The server-rendered card of the same document prints exactly valuesAll: the first two entries with their prices, the rest as bare titles, then countHint. Example (8107239005 → 7682919922 route): «от 500 ₽ | Диагностика стиральной и сушильной машины Цена договорная | Замена подшипников от 3 000 ₽ | Замена элементов системы вентиляции | Замена сливного насоса | Ещё 2 услуги»."
+  },
+  "itemCarrier": {
+    "where": "GET /items/ads{pathname} → buyerItem.item.priceList",
+    "shape": "{ title, isRedesign, groups: [{ title, isCollapsed, values: [{title, price, subTitle, subPrice, serviceId, url, imv, withSsr}] }] }",
+    "observed": {
+      "groupsPerItem": 1,
+      "groupTitle": "Прайс-лист",
+      "subTitleAndSubPrice": "null on every entry of the three items read",
+      "serviceIdAndUrl": "serviceId 0 or a catalog id; url null or an Avito service-catalog path",
+      "onAGoodsListing": "priceList: null (2133045709, a television) — the key exists and is null outside services",
+      "scalarPriceOnAService": {
+        "item.price": null,
+        "item.formattedPrice": {
+          "string": "",
+          "value": 0,
+          "isHasValue": false
+        },
+        "buyerItem.priceString": "",
+        "visiblePriceNode": "empty — the page prints no price at the top at all"
+      }
+    },
+    "matchesTheVisiblePage": "The rendered listing page prints the API list entry for entry, in order: «Прайс-лист Диагностика (при заказе ремонта) Бесплатно Диагностика 500 ₽ Замена подшипников от 2 000 ₽ …» for 8107239005, and 25 × «Цена договорная» for 7318797534."
+  },
+  "theTwoCarriersDisagree": {
+    "8107239005": {
+      "cardScalar": "от 400 ₽",
+      "cardList": 5,
+      "apiList": 6,
+      "differences": [
+        "«Диагностика (при заказе ремонта)» = Бесплатно — absent from the card list",
+        "«Диагностика» — card: «Цена договорная», API and page: «500 ₽»",
+        "the four remaining titles agree exactly"
+      ]
+    },
+    "7318797534": {
+      "cardScalar": "от 990 ₽",
+      "cardList": 25,
+      "apiList": 25,
+      "differences": [
+        "titles agree one for one and in order",
+        "23 of 25 prices differ: card «от 490 ₽» against API and page «Цена договорная»"
+      ]
+    },
+    "7929201116": {
+      "cardScalar": "Цена договорная",
+      "cardList": 1,
+      "apiList": 1,
+      "differences": [
+        "«Диагностика» — card: «Цена договорная», API and page: «Бесплатно»"
+      ]
+    },
+    "reading": "The listing page agrees with the item API on all three. The card's list is the search index's copy of the same table and it can be stale in both directions: entries missing, prices different. Neither is a decoding difference — both were read as JSON from their own carrier and compared to the rendered text of their own page."
+  },
+  "scalarPriceForms": {
+    "structuralFlags": {
+      "priceDetailed.hasValue": "false on both «Цена договорная» and «Бесплатно»; the flat value is 0 for both. The PriceStep value tells them apart: null for «Цена договорная» (6 cards of 50 on the repair route), 0 for «Бесплатно» (19 cards of 50 on sobaki?q=щенок).",
+      "priceDetailed.postfix": "the unit, and it is structural: \"\" (29 cards), «за м²» (9), «за час» (9), «за м³» (1) on the cleaning route",
+      "fullString": "the whole visible string: postfix and «от» included"
+    },
+    "noStructuralFlagForFrom": "The priceDetailed keyset is identical on every card of both services routes — enabled, exponent, fullString, hasValue, postfix, string, stringWithoutDiscount, title, titleDative, value, wasLowered. «от» appears only inside string / fullString. 27 of 50 cards on the repair route carry it; a card with a price list can print a plain «500 ₽» and a card with no price list can print «от 250 ₽», so the list does not imply it either.",
+    "whatTheCliAnsweredAtCaptureTime": {
+      "search «ремонт стиральных машин»": "50 rows, 7 of them price: 0 where the card prints «Цена договорная»",
+      "priceOfAnFromCard": "price: 500 for a card printing «от 500 ₽»",
+      "priceOfAPerUnitCard": "price: 150 for a card printing «от 150 ₽ за м²»",
+      "get-item on 8107239005": "price: null, attributes carrying the visible «Подробности» block, and no price list at all",
+      "search «щенок»": "50 rows, 19 of them price: 0 where the card prints «Бесплатно» — the same zero, and there it is the right answer"
+    }
+  },
+  "whereElseTheseFormsOccur": {
+    "priceListOnACard": "found only in Services (categoryId 114). Absent on all 50 cards of: bytovaya_elektronika?q=телевизор, transport?q=bmw, zhivotnye?q=щенок, dlya_doma_i_dachi?q=диван, vakansii, oborudovanie_dlya_biznesa.",
+    "postfix": "non-empty only in Services in the same sample.",
+    "hasValueFalse": "not services-only: 19 of 50 on sobaki?q=щенок and 5 of 50 on oborudovanie_dlya_biznesa. On the dogs route every one of them is «Бесплатно», not «Цена договорная», so the count is a count of the flag and not of the defect.",
+    "notChecked": "Real estate: /moskva/kvartiry/sdam and .../posutochno answered 200 with a bootstrap whose catalog.items was empty in this shape, so no card was read there at all."
+  }
+}

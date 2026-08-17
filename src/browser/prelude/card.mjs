@@ -25,18 +25,28 @@ export function stepPayload(item, step, component) {
  * is rendered struck through next to the visible 43 691 ₽. That visible value
  * lives in the PriceStep payload, while the top-level priceDetailed keeps the
  * base price (D-020).
+ *
+ * A card with no number to show says so twice over and differently: the step
+ * value is `null` under «Цена договорная» and `0` under «Бесплатно», while the
+ * flat value is `0` under both (F-076). So the step is the whole answer wherever
+ * Avito sent one — its own string included — and the flat field, which carries a
+ * different quantity, is read only where there is no step at all.
  */
 export function itemPrice(item) {
   const visible = stepPayload(item, 'PriceStep', 'price')?.priceDetailed;
-  const candidates = [
-    visible?.value,
-    visible?.string,
+  if (visible) return firstNumber([visible.value, visible.string]);
+  if (item?.priceDetailed?.hasValue === false) return null;
+  return firstNumber([
     item?.priceDetailed?.value,
     item?.priceDetailed?.price,
     item?.priceDetailed?.string,
     item?.priceDetailed?.fullString,
     item?.price,
-  ];
+  ]);
+}
+
+/** The first candidate that is a number, or that spells one. */
+export function firstNumber(candidates) {
   for (const candidate of candidates) {
     if (typeof candidate === 'number' && Number.isFinite(candidate) && candidate >= 0) return candidate;
     if (typeof candidate === 'string') {
@@ -48,6 +58,35 @@ export function itemPrice(item) {
     }
   }
   return null;
+}
+
+/**
+ * Whether the number Avito printed is the price or only its floor. There is no
+ * flag for «от»: the word lives inside the price string and nowhere else
+ * (F-078), so the test is the shape of that string rather than its vocabulary —
+ * digits and spaces alone are a price, digits with anything beside them are a
+ * floor, and a string with no digits at all is a phrase («Бесплатно», «Цена
+ * договорная») that `itemPrice` has already answered for.
+ */
+export function itemPriceIsFloor(item) {
+  const visible = stepPayload(item, 'PriceStep', 'price')?.priceDetailed;
+  const printed = cleanText((visible ?? item?.priceDetailed)?.string);
+  return /\d/.test(printed) && /[^\d\s]/.test(printed);
+}
+
+/**
+ * A services card can carry a whole table of prices instead of one, and then the
+ * scalar beside it is a floor rather than a price (F-079). The table itself is
+ * not returned: it is the search index's copy and it disagrees with the listing
+ * page's (F-081), so the row says only that `get-item` has one to read.
+ */
+export function itemHasPriceList(item) {
+  const priceList = item?.priceList;
+  if (priceList == null) return false;
+  if (typeof priceList !== 'object' || Array.isArray(priceList) || !Array.isArray(priceList.valuesAll)) {
+    throw new Error('item price list is malformed');
+  }
+  return priceList.valuesAll.length > 0;
 }
 
 /**
@@ -197,7 +236,7 @@ export function itemImages(item) {
 /**
  * Decode a whole catalog into intermediate rows. The `api*` prefix marks these
  * as the decoder's own shape: the command maps them onto its declared columns,
- * and `apiReserved` never reaches a row because it is not one of the twelve.
+ * and `apiReserved` never reaches a row because it is not one of the columns.
  *
  * Returns `{ rows }` or `{ failure }`.
  */
@@ -228,10 +267,19 @@ export function decodeCatalogRows(catalog, env) {
     }
 
     seenIds.add(itemId);
+    const hasPriceList = itemHasPriceList(item);
+    // One number cannot stand for a table of them, and which entry Avito took
+    // the scalar from is not stated anywhere: beside a list of 900 ₽ and up the
+    // card printed «от 400 ₽» (F-079). So a number that is not the price is
+    // still the floor Avito advertised, and it is handed over as one.
+    const printedPrice = itemPrice(item);
+    const isFloor = hasPriceList || itemPriceIsFloor(item);
     rows.push({
       apiItemId: itemId,
       apiTitle: title,
-      apiPrice: itemPrice(item),
+      apiPrice: isFloor ? null : printedPrice,
+      apiMinPrice: isFloor ? printedPrice : null,
+      apiHasPriceList: hasPriceList,
       apiLocation: itemLocation(item),
       apiDescriptionPreview: itemDescription(item, env),
       apiPublished: itemPublished(item),

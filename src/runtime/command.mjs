@@ -31,7 +31,7 @@ import { assertRowSchema, rowColumns } from './schema.mjs';
 
 const ARG_TYPES = new Set(['string', 'int', 'bool']);
 
-export const MAX_ROW_KEYS = 12;
+export const MAX_ROW_KEYS = 16;
 
 export function defineCommand(descriptor) {
   assert(isRecord(descriptor), 'command descriptor must be an object');

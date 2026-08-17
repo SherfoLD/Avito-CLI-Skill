@@ -273,6 +273,8 @@ const ROW = {
   apiItemId: '8288791269',
   apiTitle: 'Xiaomi Redmi Note 13',
   apiPrice: 15990,
+  apiMinPrice: null,
+  apiHasPriceList: false,
   apiLocation: 'Москва',
   apiDescriptionPreview: 'Новый, запечатан',
   apiPublished: null,

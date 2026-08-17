@@ -2,10 +2,10 @@
  * The row contract as a value, and the one way an Avito payload becomes data.
  *
  * A row schema is a `strictObject`: an undeclared key is a failure, not a value
- * that survives in `-f json` and vanishes in `-f table`. It is also flat — a
- * column is a scalar, or an array or record of scalars, and nothing deeper.
- * `assertRowSchema` checks both against the declaration, so a violation fails at
- * import rather than on a row.
+ * that survives in `-f json` and vanishes in `-f table`. A column is a scalar, an
+ * array or record of scalars, or a list of flat records — a table inside a row,
+ * which is the only nesting there is (D-055). `assertRowSchema` checks both
+ * against the declaration, so a violation fails at import rather than on a row.
  *
  * `decode` is the other half: Avito's responses are validated with the same
  * schemas, and a failure becomes a typed error. Response-shape drift ends the
@@ -146,7 +146,7 @@ export function rowColumns(schema) {
 
 /**
  * Check a row schema at definition time: strict, non-empty, within the key
- * ceiling, and flat.
+ * ceiling, and shaped like a column.
  */
 export function assertRowSchema(name, schema, { maxKeys }) {
   const fail = (message) => {
@@ -168,20 +168,19 @@ export function assertRowSchema(name, schema, { maxKeys }) {
     if (!/^[a-z][A-Za-z0-9]*$/.test(column)) {
       fail(`column "${column}" is not camelCase — row keys are the agent-facing API`);
     }
-    const depth = columnDepth(schema.shape[column]);
-    if (depth > 1) {
-      fail(`column "${column}" nests deeper than one level; a row is flat by contract`);
-    }
-    if (depth < 0) {
+    if (columnDepth(schema.shape[column]) < 0) {
       fail(`column "${column}" has a type this contract cannot describe as a column`);
     }
   }
 }
 
 /**
- * 0 for a scalar, 1 for an array or record of scalars, 2+ for anything deeper,
- * -1 for a shape that is not a column at all. Wrappers do not count — a nullable
- * string is as flat as a string.
+ * 0 for a scalar, 1 for an array or record of scalars or a flat record, 2 for a
+ * list of flat records, -1 for a shape that is not a column at all. Wrappers do
+ * not count — a nullable string is as flat as a string.
+ *
+ * A list of lists is -1 rather than 2: the one nested form this contract has is
+ * a table, and a table's rows are records (D-055).
  */
 function columnDepth(schema) {
   const def = schema?.def;
@@ -191,17 +190,32 @@ function columnDepth(schema) {
   }
   if (def.type === 'union') {
     const depths = (def.options ?? []).map(columnDepth);
-    return depths.length === 0 ? -1 : Math.max(...depths);
+    return depths.length === 0 || depths.some((depth) => depth < 0) ? -1 : Math.max(...depths);
   }
   if (SCALAR_TYPES.has(def.type)) return 0;
-  if (def.type === 'array') return nest(columnDepth(def.element));
-  if (def.type === 'record') return nest(columnDepth(def.valueType));
+  if (def.type === 'object') return isFlatRecord(schema) ? 1 : -1;
+  if (def.type === 'array') {
+    if (columnDepth(def.element) === 0) return 1;
+    return isFlatRecord(def.element) ? 2 : -1;
+  }
+  if (def.type === 'record') return columnDepth(def.valueType) === 0 ? 1 : -1;
   return -1;
 }
 
-/** A container of something undescribable is undescribable, not one level deep. */
-function nest(inner) {
-  return inner < 0 ? -1 : inner + 1;
+/**
+ * A record inside a column is declared the way the row itself is: `strictObject`
+ * of scalars. An undeclared key has to fail one level down as well, and a
+ * `z.object` is exactly the shape that would let one through.
+ */
+function isFlatRecord(schema) {
+  const def = schema?.def;
+  if (!def) return false;
+  if (def.type === 'nullable' || def.type === 'optional' || def.type === 'default') {
+    return isFlatRecord(def.innerType);
+  }
+  if (def.type !== 'object' || def.catchall?.def?.type !== 'never') return false;
+  const fields = Object.values(schema.shape ?? {});
+  return fields.length > 0 && fields.every((field) => columnDepth(field) === 0);
 }
 
 // ── the row as the consumer reads it ─────────────────────────────────────────
@@ -238,6 +252,14 @@ function undescribed() {
  * have drifted apart on.
  */
 function describeColumn(schema) {
+  const described = describeShape(schema);
+  // A note declared on the column itself wins over one inherited from what it
+  // contains: `priceList` says what its prices are, `images` what its URLs are.
+  const own = schema?.meta?.()?.note ?? null;
+  return own ? { ...described, note: own } : described;
+}
+
+function describeShape(schema) {
   const def = schema?.def;
   if (!def) return undescribed();
   if (def.type === 'nullable') {
@@ -260,6 +282,12 @@ function describeColumn(schema) {
   if (def.type === 'record') {
     const inner = describeColumn(def.valueType);
     return { type: `Record<string, ${inner.type}>`, note: inner.note };
+  }
+  if (def.type === 'object') {
+    const fields = Object.entries(schema.shape ?? {})
+      .map(([field, value]) => `${field}: ${describeColumn(value).type}`);
+    if (fields.length === 0) return undescribed();
+    return { type: `{ ${fields.join('; ')} }`, note: null };
   }
   if (def.type === 'literal' || def.type === 'enum') {
     const values = def.type === 'literal' ? def.values ?? [] : Object.values(def.entries ?? {});

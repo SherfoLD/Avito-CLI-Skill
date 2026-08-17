@@ -68,7 +68,7 @@ refuse a URL carrying `p=<n>`. So filters and category first, depth after.
 | `apply-filters <searchUrl> --set <selections>` | a search URL | the narrowed listing and a new `searchUrl` |
 | `get-categories <searchUrl>` | a search URL | where you can move from here; feed a `name` into `move-category` |
 | `move-category <searchUrl> --to <name>` | a search URL | the listing in another category |
-| `get-item <url>` | a listing URL | the full description and the original-size photos |
+| `get-item <url>` | a listing URL | the full description, the original-size photos and a service's price table |
 | `get-seller-reviews <itemUrl>` | a listing URL | the seller's review feed |
 | `get-location <query>` | a city or region name | the location ID `search` needs, and metro/district IDs |
 | `get-coords <address>` | an address | the coordinate pair `--coords` needs |
@@ -90,7 +90,22 @@ into a category route, and sometimes the text query dissolves into that category
 entirely. So a result is not guaranteed to be a text match for what you asked;
 read `searchUrl` to see whether you received a search or a category.
 
-**`price` is the price the card prints large**, bonuses applied.
+**`price` is a price or it is `null`** — it is never a teaser. On services Avito
+usually advertises a floor or a whole price list, and neither is what the work
+costs, so:
+
+- `minPrice` instead of `price` means the number Avito showed is not what the
+  work costs — it printed «от 500 ₽», or it priced the listing by a table and put
+  one number on the card. Treat it as a starting point, never as a price.
+- `hasPriceList: true` means that table exists. `get-item` returns it as
+  `priceList`; the row does not carry it, because the copy search holds can be
+  out of date.
+- both `null` means Avito printed a phrase — «Цена договорная». `price: 0` is not
+  that: it means the listing really is free.
+
+One thing the row still does not tell you: whether a number is a rate. «150 ₽ за
+м²» arrives as `price: 150` like any other 150, so on services do not compare
+prices across listings without opening them.
 
 **`published` is an exact instant** (ISO 8601, UTC) in a listing row.
 `publishedText` in `get-item` is Avito's rendered string — no year, no seconds,

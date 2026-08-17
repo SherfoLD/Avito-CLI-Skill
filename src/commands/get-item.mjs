@@ -94,6 +94,7 @@ function toOutputRow(decodedItem, normalizedUrl) {
     itemId: decodedItem.decodedItemId,
     title: decodedItem.decodedTitle,
     price: decodedItem.decodedPrice,
+    priceList: decodedItem.decodedPriceList,
     location: decodedItem.decodedLocation,
     description: decodedItem.decodedDescription,
     attributes: decodedItem.decodedAttributes,
@@ -126,21 +127,26 @@ export function describeApiFailure(apiAttempt) {
 
 export default defineCommand({
   name: 'get-item',
-  description: 'Get one listing in full: the complete description and the original-size photos, which a search row only previews',
+  description: 'Get one listing in full: the complete description, the original-size photos and a service price list, none of which a search row carries',
   access: 'read',
   example: 'avito get-item <url> -f json',
   domain: 'www.avito.ru',
   args: [
     { name: 'url', type: 'string', required: true, positional: true, help: 'Full https://www.avito.ru item URL from avito search' },
   ],
-  // The listing row of `search` with three differences: the whole description
-  // instead of its preview, the original-size photos instead of the previews,
-  // and `publishedText` — the rendered string Avito prints, because the listing
+  // The listing row of `search`, minus what belongs to a card (`minPrice`,
+  // `hasPriceList`, `searchUrl`) and plus what only the listing page has: the
+  // whole description, the original-size photos, the price list a service is
+  // priced by (D-056), and `publishedText` — the rendered string, because the
   // page carries no machine-readable date anywhere (D-039, F-059).
   row: z.strictObject({
     itemId: idString(),
     title: text(),
     price: z.number().nonnegative().nullable(),
+    // Empty is "Avito priced this listing with a number, not a table"; null is
+    // "this answer came from the visible page, which is not where the table is".
+    priceList: z.array(z.strictObject({ title: text(), price: text() })).nullable()
+      .meta({ note: "price as Avito wrote it: «от 1 500 ₽», «Цена договорная»" }),
     location: text().nullable(),
     description: text().nullable(),
     attributes: z.record(text(), text()),
@@ -236,6 +242,9 @@ export default defineCommand({
       itemId: normalizedItemId,
       title: fallbackObserved.domObservedTitle,
       price: decodeVisiblePrice(fallbackObserved.domObservedPriceText),
+      // The visible price table is anchored by nothing but its own heading, so
+      // this path reports that it did not read one rather than that there is none.
+      priceList: null,
       location: fallbackObserved.domObservedLocation,
       description: fallbackObserved.domObservedDescription,
       attributes: fallbackObserved.domObservedAttributes,

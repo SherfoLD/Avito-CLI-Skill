@@ -1,5 +1,5 @@
 /**
- * The listing row: the twelve columns `search`, `get-page`, `apply-filters` and
+ * The listing row: the columns `search`, `get-page`, `apply-filters` and
  * `move-category` all hand over, and the two pieces of logic they share.
  *
  * `card.mjs` decodes the catalog into `api*` rows inside the page; this is the
@@ -20,7 +20,9 @@ import {
 /**
  * Nullability here is a statement about Avito, not about our confidence:
  *
- *   price          a listing can be shown without one
+ *   price          a listing can be shown without one, and a listing priced by
+ *                  a floor or by a table has no single one to show (D-056)
+ *   minPrice       the floor, and only where Avito printed one instead of a price
  *   location       a card can carry no geo reference and no city
  *   published      a card can arrive without the stamp Avito sorts by (F-059)
  *   sellerName     an anonymous session gets no seller-info step for a private
@@ -30,6 +32,9 @@ export const LISTING_ROW = z.strictObject({
   itemId: idString(),
   title: text(),
   price: z.number().nonnegative().nullable(),
+  minPrice: z.number().nonnegative().nullable()
+    .meta({ note: 'set instead of price where Avito printed «от …»' }),
+  hasPriceList: z.boolean().meta({ note: 'the prices are a table — read it with get-item' }),
   location: text().nullable(),
   descriptionPreview: text().nullable(),
   published: z.string().regex(
@@ -53,6 +58,8 @@ export function listingRows(apiRows, resultSearchUrl) {
     itemId: row.apiItemId,
     title: row.apiTitle,
     price: row.apiPrice,
+    minPrice: row.apiMinPrice,
+    hasPriceList: row.apiHasPriceList,
     location: row.apiLocation,
     descriptionPreview: row.apiDescriptionPreview,
     published: row.apiPublished,

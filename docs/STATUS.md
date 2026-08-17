@@ -1,21 +1,24 @@
 # State
 
-Updated: 2026-08-16
+Updated: 2026-08-18
 
 Facts only: what works, what does not, and why. The future is in [PLAN.md](PLAN.md).
 How each command is built is in its domain file, [docs/areas/](areas/).
 
 ## Commands
 
-Ten commands, all read-only. `npm run check` is green; the offline suite is 208
+Ten commands, all read-only. `npm run check` is green; the offline suite is 211
 checks across sixteen suites. All ten fixtures pass live against the descriptor
 schemas (D-048, D-049).
 
 The row contract is a `z.strictObject` in each descriptor: `columns` is derived
 from it, the CLI parses every row through it before printing, the offline suites
-run the same parse, and `--help` prints the schema itself as a type (D-053). A `verify/<command>.mjs` fixture is a schema over the
-whole returned array, saying what that one request must answer with. What neither
-can express is four ESLint rules over the AST (`npm run lint`).
+run the same parse, and `--help` prints the schema itself as a type (D-053).
+A row holds at most 16 columns (D-054), and a column is a scalar, a list or map
+of scalars, or a table of flat records (D-055): the listing row declares 14, and
+`get-item` 13. A `verify/<command>.mjs` fixture is a schema over the whole
+returned array, saying what that one request must answer with. What neither can
+express is four ESLint rules over the AST (`npm run lint`).
 
 The browser has to be one the user already runs, with debugging on at
 `chrome://inspect/#remote-debugging` — a purpose-launched empty profile is
@@ -30,15 +33,15 @@ interruption left is the one approval prompt per connection (F-071, F-073).
 
 | Command | Domain | Strict live verify |
 |---|---|---|
-| `search` | [search](areas/search.md) | 2026-08-16 |
-| `get-page` | [search](areas/search.md) | 2026-08-16 |
+| `search` | [search](areas/search.md) | 2026-08-18 |
+| `get-page` | [search](areas/search.md) | 2026-08-18 |
 | `get-filters` | [filters](areas/filters.md) | 2026-08-16 |
-| `apply-filters` | [filters](areas/filters.md) | 2026-08-16 |
+| `apply-filters` | [filters](areas/filters.md) | 2026-08-18 |
 | `get-categories` | [categories](areas/categories.md) | 2026-08-15 |
-| `move-category` | [categories](areas/categories.md) | 2026-08-16 |
+| `move-category` | [categories](areas/categories.md) | 2026-08-18 |
 | `get-location` | [geo](areas/geo.md) | 2026-08-15 |
 | `get-coords` | [geo](areas/geo.md) | 2026-08-15 |
-| `get-item` | [item](areas/item.md) | 2026-08-16 |
+| `get-item` | [item](areas/item.md) | 2026-08-18 |
 | `get-seller-reviews` | [item](areas/item.md) | 2026-08-17 |
 
 The consumer flow is one chain around one carrier of state, the canonical `searchUrl`:
@@ -103,7 +106,7 @@ category counts as walked when all ten commands pass on its routes, not just
 | Home and garden | walked (furniture, appliances, category root) |
 | Animals | walked on one route (dogs) — topped up in phase 18 |
 | Transport | walked (cars, motorcycles, trucks and machinery, watercraft, cross-enduro) |
-| Real estate | fails on `get-filters` — phase 13 |
+| Real estate | fails on `get-filters` — phase 13; `search` reads rentals and sales, and the daily-rental route is not a catalog at all (F-082) |
 | Jobs | fails with two different refusals in its two halves — phase 14 |
 | Services | walked (cleaning — all ten commands; movers, health, computer help, roofing, category root) |
 | Parts and accessories | walked (tyres, rims, wheels, car parts and by make, truck parts, mats, all eight subcategories of the root) |
@@ -130,9 +133,20 @@ Cross-cutting. Risks specific to one command are in its domain file.
 - A safe request rate has never been measured, and the fixed gaps between
   requests were removed (D-035). The first candidate measurement turned out to
   be a refusal on the page past the last one, not a rate limit (F-061).
+- **`price` still does not say what it counts.** A floor travels as `minPrice`
+  and a table as `hasPriceList` (D-056), but a rate does not: «150 ₽ за м²» is
+  `price: 150`, the unit sits in the payload and in no column (F-077). Nothing
+  refuses, and no fixture catches a wrong number — only a wrong shape.
+- A service's price list exists twice and the two copies disagree: the search
+  card's is the index's and goes stale, `get-item`'s is what the page prints
+  (F-081). Only the second one is returned.
 - `get-page` past the last page of results receives `429` and calls it a CAPTCHA
   or a rate-limit cooldown. The data is not corrupted, but the caller is handed
   the wrong diagnosis — phase 20.
+- A query that lands on Avito Travel («квартира посуточно») comes back as
+  `EMPTY_RESULT: No listings match the requested query`, which is the same wrong
+  diagnosis in another place: the route carries no catalog at all (F-082), and
+  the listing is not empty.
 - Two categories are entirely unavailable and two more were never checked, and
   the refusal only arrives on the call — see the register above.
 - Every command depends on the undocumented internal shape of the SSR bootstrap

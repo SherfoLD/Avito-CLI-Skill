@@ -130,6 +130,70 @@ check('a card without iva steps falls back to the flat items API fields', async 
   assert(row.apiDescriptionPreview === 'Оперативная память с гарантией.', `flat description not used: ${row.apiDescriptionPreview}`);
 });
 
+// Avito prints a phrase where a card has no number, and the flat value is 0 under both
+// phrases: «Цена договорная», which is no price, and «Бесплатно», which is a real zero.
+// Reading the flat field turned the first into the second (F-076). A services card prices
+// by a table, and then the scalar beside it is a floor rather than a price (F-079).
+check('a card with no number reports none, and a real zero survives as zero', async () => {
+  const routes = (rows) => [ssrRoute(), apiRoute(apiState({ items: rows }))];
+  const decode = async (card) => {
+    const result = await runEvaluate(baseArgs(), makeFetch(routes([card])).fetch);
+    assert(result.success === true, `failed: ${result.message}`);
+    return result.apiRows[0];
+  };
+
+  const negotiable = await decode(item({ priceForm: 'negotiable' }));
+  assert(negotiable.apiPrice === null, `«Цена договорная» must not be a number, got ${negotiable.apiPrice}`);
+
+  const free = await decode(item({ priceForm: 'free' }));
+  assert(free.apiPrice === 0, `«Бесплатно» is a real zero, got ${free.apiPrice}`);
+
+  // The unit is Avito's and no column carries it, so it must not change the
+  // number either: «43 691 ₽ за м²» is the same 43691 as «43 691 ₽» (F-077).
+  const perUnit = await decode(item({ priceUnit: 'за м²' }));
+  assert(perUnit.apiPrice === 43691, `the unit must not disturb the number, got ${perUnit.apiPrice}`);
+
+  // «от 43 691» is a floor, and the floor is not the price. The word is matched
+  // by nothing: a string of digits and spaces is a price, one carrying anything
+  // else is a floor (F-078).
+  const floor = await decode(item({ priceForm: 'floor' }));
+  assert(floor.apiPrice === null, `a floor is not a price, got ${floor.apiPrice}`);
+  assert(floor.apiMinPrice === 43691, `the floor must survive as one, got ${floor.apiMinPrice}`);
+
+  const plain = await decode(item());
+  assert(plain.apiPrice === 43691 && plain.apiMinPrice === null, 'a plain price must stay a price');
+  assert(negotiable.apiMinPrice === null && free.apiMinPrice === null, 'a phrase carries no floor');
+
+  // A step Avito sent is the whole answer: the flat field carries the base price,
+  // a different quantity, and its 0 under a phrase is what made «Цена договорная»
+  // a free listing. A step with no value key at all must not reopen that path.
+  const stepWithoutValue = item();
+  delete stepWithoutValue.iva.PriceStep[0].payload.priceDetailed.value;
+  stepWithoutValue.iva.PriceStep[0].payload.priceDetailed.string = 'Цена договорная';
+  const guarded = await decode(stepWithoutValue);
+  assert(guarded.apiPrice === null, `the flat zero must stay out of it, got ${guarded.apiPrice}`);
+
+  const priced = await decode(item({
+    priceList: {
+      values: [{ title: 'Диагностика', price: 'Цена договорная' }],
+      valuesAll: [{ title: 'Диагностика', price: 'Цена договорная' }, { title: 'Замена ТЭН', price: 'от 1 500 ₽' }],
+      countHint: 'Ещё 1 услуга',
+    },
+  }));
+  assert(priced.apiHasPriceList === true, 'a card priced by a table must say so');
+  assert(priced.apiPrice === null, `one number cannot stand for a table, got ${priced.apiPrice}`);
+  assert(priced.apiMinPrice === 43691, `the number Avito printed beside the table is its floor, got ${priced.apiMinPrice}`);
+  assert(plain.apiHasPriceList === false, 'a card without a table must say so too');
+
+  let stopped = false;
+  try {
+    await decode(item({ priceList: { values: [], countHint: 'Ещё 1 услуга' } }));
+  } catch (error) {
+    stopped = /price list is malformed/.test(String(error?.message ?? error));
+  }
+  assert(stopped, 'a price list Avito sent in an unknown shape must stop the call');
+});
+
 // Avito ships the moment it sorts by on every card and prints that same moment on the
 // listing page; get-item sees only the rendered string, so the exact instant belongs to the
 // row (F-059). A card without the stamp keeps its row and reports null, while a stamp in a
@@ -655,6 +719,8 @@ const ROW = {
   apiItemId: '8288791269',
   apiTitle: 'DDR5 32gb Kingston Fury',
   apiPrice: 43691,
+  apiMinPrice: null,
+  apiHasPriceList: false,
   apiLocation: 'Москва',
   apiDescriptionPreview: 'Авитодоставка открыта',
   apiPublished: '2026-08-13T23:15:41Z',
@@ -675,7 +741,7 @@ check('remove-reserved drops the reserved rows without touching the selection', 
   const stub = filterStub(observedFilter(rows));
   const result = await COMMAND.run(stub, filterArgs({ 'remove-reserved': true }));
   assert(result.length === 1 && result[0].itemId === ROW.apiItemId, `unexpected rows: ${JSON.stringify(result.map((r) => r.itemId))}`);
-  assert(!('isReserved' in result[0]), 'the flag must stay out of the 12-key row contract');
+  assert(!('isReserved' in result[0]), 'the flag must stay out of the row contract');
   assertRow(COMMAND, result[0]);
   assert(stub.seen[0].selections[0].key === 'params[159478]', 'the selection must reach the browser unchanged');
   assert(!('removeReserved' in stub.seen[0]), 'remove-reserved must never look like an Avito selection');

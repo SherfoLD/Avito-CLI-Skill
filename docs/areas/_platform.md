@@ -1,6 +1,6 @@
 # Platform — shared by all ten commands
 
-Confirmed live: 2026-08-16
+Confirmed live: 2026-08-18
 
 What belongs to no single command: transport, carriers of state, the shared row
 decoder, output shape, repository rules. Anything command-specific is in that
@@ -59,16 +59,15 @@ type — so the only automatic defence is the mandatory non-empty
 
 ## Output shape
 
-The listing row is exactly 12 keys: `itemId`, `title`, `price`, `location`,
-`descriptionPreview`, `published`, `sellerName`, `sellerRating`,
-`sellerReviewsCount`, `imagesPreviews`, `url`, `searchUrl`. It is one schema,
-`LISTING_ROW` in `src/site/listing.mjs`, imported by `search`, `get-page`,
-`apply-filters` and `move-category` (D-048).
+The listing row is 14 keys, one schema — `LISTING_ROW` in
+`src/site/listing.mjs`, imported by `search`, `get-page`, `apply-filters` and
+`move-category` (D-048). The keys themselves are in `--help`, printed from the
+schema (D-053).
 
-- 12 keys is the ceiling, and a column nests no deeper than 1. Both are checked
-  against the schema when the module is imported. The slot freed by D-038 is
-  occupied by `published` (D-039); a new column is again possible only in place
-  of an existing one.
+- 16 keys is the ceiling (D-054). A column is a scalar, an array or record of
+  scalars, or an array of flat records — a table inside a row, and the only
+  nesting there is (D-055). Both rules are checked against the schema when the
+  module is imported.
 - `searchUrl` repeats in every row: the output is an array of rows with no
   metadata envelope.
 - Page size belongs to Avito (50 listings, 25 reviews). No command has a count
@@ -84,13 +83,13 @@ The listing row is exactly 12 keys: `itemId`, `title`, `price`, `location`,
   the command has fresh evidence with a replay.
 - **D-005 — no secrets stored.** Cookies, tokens and personal fields enter
   neither the repository, nor the fixtures, nor the logs.
-- **D-016 — the row is flat.** Nested objects are rejected by the row-shape rule;
-  seller type is not derived at all — a live `--seller company` response carried
-  a `/user/.../profile` link, so the seller's route does not encode their type.
+- **D-016 — seller type is not derived.** A live `--seller company` response
+  carried a `/user/.../profile` link, so the seller's route does not encode their
+  type, and a column that guessed it would be guessing on every row.
 - **D-020 — `price` is the price with bonuses**, the number Avito prints large on
   the card. The owner's decision. The base price is not exposed as its own
-  column: the 12 keys are taken. `get-item` is outside this decision — the
-  listing page has its own price semantics and it already agrees (F-043).
+  column. `get-item` is outside this decision — the listing page has its own
+  price semantics and it already agrees (F-043).
 - **D-022 — a command returns Avito's whole page.** `--limit` was removed
   everywhere: the request was paid for in full regardless, and the argument only
   threw away rows already received. The price of the decision is that fixtures no
@@ -280,6 +279,40 @@ The listing row is exactly 12 keys: `itemId`, `title`, `price`, `location`,
   four, so what a command connects to and what `avito session status` prints
   cannot disagree.
 
+- **D-054 — the key ceiling is 16.** The owner's decision. Twelve had become the
+  reason for every deferred column, and four phases were bidding for the same two
+  slots. Nothing about a wider row makes a column free: each one still has to
+  answer what it means when the value is missing.
+
+- **D-055 — a column may be a table, and a table is a list of flat records.**
+  The owner's decision, taken for the service price list: `{ title, price }[]`
+  says what a `Record<title, price>` cannot — that two entries may share a title,
+  and that the order is Avito's. The grammar admits exactly one level of it. A
+  record inside a column is declared like the row itself, `strictObject` of
+  scalars, so an undeclared key fails one level down as well; a list of lists and
+  a record of records stay refused, because the shape they would describe is a
+  tree and a row holds a table. `-f table` prints the entry count, the way it
+  already prints one for `images`.
+
+- **D-056 — `price` is a price or it is `null`; anything advertised is
+  `minPrice`.** The
+  owner's decision, and the reason is what the number does to a reader: on
+  services the scalar is bait for the click, not what the work costs. `minPrice`
+  is where that number goes, and it covers both ways a card can carry one: a
+  floor («от 500 ₽» → `minPrice: 500`) and a table, where the card prints one
+  number for a list of them — including as a plain «500 ₽», which is why
+  `minPrice` cannot be read as "Avito wrote от". A card priced by a table also
+  answers `hasPriceList: true` and points at `get-item`, which returns the
+  table. `minPrice` is only ever the number Avito itself printed — never the
+  smallest entry of the table, which is a different number: beside a list
+  starting at 900 ₽ the same card printed «от 400 ₽» (F-079).
+  A phrase leaves both null, except «Бесплатно», which is the real `0` it says
+  (F-076). Telling a price from a floor needs no vocabulary: digits and spaces
+  alone are a price, digits with anything beside them are a floor (F-078). What
+  the row still does not carry is the unit of a rate — `postfix` holds it and no
+  column takes it (F-077), so «150 ₽ за м²» and a flat 150 ₽ are one number to
+  anything that sorts.
+
 - **D-053 — the row contract is printed, not paraphrased.** `--help` renders the
   `row` schema as a TypeScript declaration above the arguments' answer — a
   notation a consuming agent reads without being taught it — in place of the
@@ -448,6 +481,37 @@ The listing row is exactly 12 keys: `itemId`, `title`, `price`, `location`,
   and probes the endpoint it would use. Same species as F-061 and F-069: the
   data was never wrong, the diagnosis was.
 
+- **F-076 — a card with no number says so twice, and differently.**
+  `priceDetailed.hasValue: false` covers two visible forms and the flat `value`
+  is `0` under both, so `hasValue` alone says only "no number to compare by".
+  What tells them apart is the `PriceStep` value: `null` under «Цена договорная»
+  (6 cards of 50 on `predlozheniya_uslug?q=ремонт+стиральных+машин`), `0` under
+  «Бесплатно» (19 cards of 50 on `sobaki?q=щенок`, shelter listings). Reading the
+  flat zero when the step said `null` answered a number where Avito printed a
+  phrase; the step decides now, and the flat field is read only where Avito sent
+  no step at all. Live after the fix: `«ремонт стиральных машин»` returns
+  `price: null` on all 7 of its «Цена договорная» rows, `«щенок»` returns
+  `price: 0` on all 20 of its «Бесплатно» ones.
+
+- **F-077 — the price can carry a unit, and the unit is structural.**
+  `priceDetailed.postfix` holds it — `за м²`, `за час`, `за м³` — beside the
+  number rather than inside it, so it never disturbs the number and no column
+  carries it (D-056). On `predlozheniya_uslug?q=уборка+квартиры` 19 cards of 50
+  carry one, so a `price: 150` there is what the page prints as
+  «от 150 ₽ за м²». Outside
+  Services the postfix was empty on every card read (electronics, transport,
+  animals, home and garden, vacancies, business equipment).
+
+- **F-078 — «от» has no structural carrier at all.** The `priceDetailed` keyset
+  is identical on every card of both services routes, so the word lives only
+  inside `string` / `fullString`, so what the decoder tests is the shape of that
+  string rather than the word: digits and spaces are a price, digits with
+  anything beside them are a floor, and the number then travels as `minPrice`
+  (D-056). It is implied by nothing else: a card with a price list can print a
+  plain «500 ₽» and a card with no list can print «от 250 ₽», so `hasPriceList`
+  is not a proxy for it. 27 cards of 50 on the repair route carry it, none on the
+  goods routes read.
+
 ## Risks
 
 - Browser-side IP blocks (`Доступ ограничен: проблема с IP`, hCaptcha) and `429`
@@ -460,6 +524,10 @@ The listing row is exactly 12 keys: `itemId`, `title`, `price`, `location`,
   does not reproduce in silence counts as a number here.
 - Drift in the shared row decoder breaks four commands at once and shows up as
   different semantics, not as a refusal.
+- **`price` still does not say what it counts.** The phrases, the floor and the
+  table are handled (D-056), but «150 ₽ за м²» is `price: 150` like any other
+  150: the unit is in the payload and in no column. No fixture catches a wrong
+  number, only a wrong shape.
 - Every command depends on the internal shape of the SSR bootstrap. Any drift
   must end fail-closed, not in a fallback value.
 - The decoder checks were written against the shape of two or three goods

@@ -49,7 +49,7 @@ check('a row schema must be strict, so an undeclared key cannot pass through', (
   refusesDescriptor({ row: z.strictObject({}) }, /declares no columns/);
 });
 
-check('a row is flat: a column is a scalar, or a list or map of scalars', () => {
+check('a column is a scalar, a list or map of scalars, or a table of flat records', () => {
   const accepted = defineCommand({
     ...base,
     row: z.strictObject({
@@ -58,29 +58,59 @@ check('a row is flat: a column is a scalar, or a list or map of scalars', () => 
       images: z.array(z.string()),
       attributes: z.record(text(), text()),
       role: z.enum(['a', 'b']),
+      priceList: z.array(z.strictObject({ title: text(), price: text() })).nullable(),
     }),
   });
-  assert(accepted.columns.length === 5, 'a flat row of five columns must be accepted');
+  assert(accepted.columns.length === 6, 'a row of six columns must be accepted');
 
+  // A record one level down is declared the way the row is, so an undeclared key
+  // fails there too.
+  refusesDescriptor(
+    { row: z.strictObject({ sellers: z.array(z.object({ name: text() })) }) },
+    /column "sellers" has a type this contract cannot describe/,
+  );
   refusesDescriptor(
     { row: z.strictObject({ seller: z.object({ name: text() }) }) },
     /column "seller" has a type this contract cannot describe/,
   );
   refusesDescriptor(
     { row: z.strictObject({ rows: z.array(z.array(z.string())) }) },
-    /column "rows" nests deeper than one level/,
+    /column "rows" has a type this contract cannot describe/,
   );
   refusesDescriptor(
-    { row: z.strictObject({ sellers: z.array(z.object({ name: text() })) }) },
-    /column "sellers" has a type this contract cannot describe/,
+    {
+      row: z.strictObject({
+        groups: z.array(z.strictObject({ values: z.array(z.strictObject({ title: text() })) })),
+      }),
+    },
+    /column "groups" has a type this contract cannot describe/,
+  );
+  refusesDescriptor(
+    { row: z.strictObject({ nested: z.record(text(), z.strictObject({ title: text() })) }) },
+    /column "nested" has a type this contract cannot describe/,
+  );
+});
+
+check('a flat record is a column of its own, and it prints as one', () => {
+  const command = defineCommand({
+    ...base,
+    row: z.strictObject({
+      itemId: idString(),
+      priceList: z.array(z.strictObject({ title: text(), price: text() })).nullable(),
+    }),
+  });
+  const printed = rowTypeScript(command.row);
+  assert(
+    printed.includes('priceList: { title: string; price: string }[] | null;'),
+    `the table column must print its record, got:\n${printed}`,
   );
 });
 
 check('the column ceiling and the naming rule are checked against the schema', () => {
-  const thirteen = Object.fromEntries(
-    Array.from({ length: 13 }, (_, index) => [`column${index}`, text()]),
+  const seventeen = Object.fromEntries(
+    Array.from({ length: 17 }, (_, index) => [`column${index}`, text()]),
   );
-  refusesDescriptor({ row: z.strictObject(thirteen) }, /declares 13 columns, ceiling is 12/);
+  refusesDescriptor({ row: z.strictObject(seventeen) }, /declares 17 columns, ceiling is 16/);
   refusesDescriptor({ row: z.strictObject({ item_id: idString() }) }, /column "item_id" is not camelCase/);
   refusesDescriptor({ row: z.strictObject({ ItemId: idString() }) }, /column "ItemId" is not camelCase/);
 });

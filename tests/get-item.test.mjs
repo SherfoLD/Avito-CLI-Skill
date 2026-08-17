@@ -41,6 +41,9 @@ function buyerItem({
   // The only date the listing surface carries anywhere: a rendered string, no year and no
   // seconds. The exact instant lives in the search row instead (F-059).
   sortFormatedDate = '14 августа в 02:15',
+  // A service is priced by a table and by nothing else: the scalar carriers are all
+  // empty, and the page prints the groups exactly as they arrive (F-080).
+  priceList = null,
 } = {}) {
   return {
     item: {
@@ -55,6 +58,7 @@ function buyerItem({
       searchLocation: [{ name: 'Москва', current: true }],
       conditionParams: conditionItems == null ? null : { data: { items: conditionItems } },
       ...(sortFormatedDate === false ? {} : { sortFormatedDate }),
+      priceList,
       imageUrls,
     },
     paramsDto: categoryItems == null ? null : { items: categoryItems },
@@ -80,6 +84,48 @@ check('a price string with two numbers falls back to the base price instead of c
   assert(decoded.decodedPrice === 46999, `expected the base price fallback, got ${decoded.decodedPrice}`);
   const missing = decode({ priceString: 'Цена договорная' });
   assert(missing.decodedPrice === 46999, `expected the base price fallback, got ${missing.decodedPrice}`);
+});
+
+// A service has no price, it has a table of them, and the listing page prints nothing
+// where a goods listing prints its number. The entries keep Avito's own strings, and the
+// groups merge because a column holds a table rather than a tree (F-080).
+check('a price table replaces the price, and a listing priced by a number keeps one', () => {
+  const service = decode({
+    priceString: '',
+    basePrice: null,
+    priceList: {
+      title: 'Прайс-лист',
+      groups: [
+        { title: 'Прайс-лист', isCollapsed: false, values: [
+          { title: 'Диагностика (при заказе ремонта)', price: 'Бесплатно', subPrice: null, serviceId: 0, url: null },
+          { title: 'Замена подшипников', price: 'от 2 000 ₽', subPrice: null, serviceId: 3233810, url: '/moskva/predlozheniya_uslug/zamena' },
+        ] },
+        { title: 'Выезд', isCollapsed: true, values: [{ title: 'Выезд за МКАД', price: 'Цена договорная' }] },
+      ],
+    },
+  });
+  assert(service.decodedPrice === null, `a table is not a price, got ${service.decodedPrice}`);
+  assert(
+    JSON.stringify(service.decodedPriceList) === JSON.stringify([
+      { title: 'Диагностика (при заказе ремонта)', price: 'Бесплатно' },
+      { title: 'Замена подшипников', price: 'от 2 000 ₽' },
+      { title: 'Выезд за МКАД', price: 'Цена договорная' },
+    ]),
+    `unexpected table: ${JSON.stringify(service.decodedPriceList)}`,
+  );
+
+  const goods = decode();
+  assert(goods.decodedPrice === 46882 && goods.decodedPriceList.length === 0, 'a listing Avito priced with a number keeps it and reports no table');
+
+  for (const malformed of [
+    { groups: null },
+    { groups: [{ title: 'Прайс-лист' }] },
+    { groups: [{ values: [{ title: 'Диагностика' }] }] },
+    { groups: [{ values: [{ price: 'Бесплатно' }] }] },
+    { groups: [{ values: ['Диагностика'] }] },
+  ]) {
+    assert(decode({ priceList: malformed }) === null, `a table shaped ${JSON.stringify(malformed)} must fail the item`);
+  }
 });
 
 check('decodeVisiblePrice reads one number and fails closed on anything else', () => {

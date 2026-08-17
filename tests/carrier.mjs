@@ -48,7 +48,33 @@ export function item({
   // Avito ships a flat boolean on every catalog card; `null` here means the key is absent,
   // which is the drift case the reservation filter must refuse instead of guessing.
   isReserved = false,
+  // `number` prints the price, `floor` prints «от <price>», and the two phrase
+  // forms print no number at all: both set the flat value to 0 and `hasValue` to
+  // false, and only the step tells them apart (F-076).
+  priceForm = 'number',
+  // The unit, as Avito sends it beside the number rather than inside it (F-077).
+  priceUnit = '',
+  // A services card prices by a table, and then the scalar beside it is a floor
+  // (F-079). `values` is what Avito draws, `valuesAll` the whole list.
+  priceList = null,
 } = {}) {
+  // Avito prints the floor of a range as part of the price string and marks it
+  // nowhere else, which is why the decoder tests the shape of the string (F-078).
+  const printed = priceForm === 'floor' ? `от ${visiblePrice}` : String(visiblePrice);
+  const phrase = priceForm === 'negotiable' ? 'Цена договорная' : 'Бесплатно';
+  const hasNumber = priceForm === 'number' || priceForm === 'floor';
+  const flatPrice = hasNumber
+    ? {
+      value: basePrice,
+      string: priceForm === 'floor' ? `от ${basePrice}` : String(basePrice),
+      fullString: `${basePrice} ₽`,
+      hasValue: true,
+      postfix: priceUnit,
+    }
+    : { value: 0, string: phrase, fullString: phrase, hasValue: false, postfix: priceUnit };
+  const stepPrice = hasNumber
+    ? { value: visiblePrice, string: printed, discountType: 'item_bonus', valueOld: `${basePrice} ₽`, postfix: priceUnit }
+    : { value: priceForm === 'negotiable' ? null : 0, string: phrase, postfix: priceUnit };
   return {
     type: 'item',
     id,
@@ -57,7 +83,8 @@ export function item({
     urlPath: `/moskva/tovary_dlya_kompyutera/ddr5_${id}`,
     ...(sortTimeStamp == null ? {} : { sortTimeStamp }),
     description: flatDescription,
-    priceDetailed: { value: basePrice, string: String(basePrice), fullString: `${basePrice} ₽` },
+    priceDetailed: flatPrice,
+    ...(priceList == null ? {} : { priceList }),
     location: locationName ? { id: 637640, name: locationName } : null,
     rating,
     addressDetailed: { locationName: locationName || '' },
@@ -66,9 +93,9 @@ export function item({
     // fixed key order, so the carrier mirrors that instead of a single named size.
     images,
     iva: {
-      PriceStep: visiblePrice == null ? [] : [{
+      PriceStep: visiblePrice == null && hasNumber ? [] : [{
         componentData: { component: 'price' },
-        payload: { priceDetailed: { value: visiblePrice, string: String(visiblePrice), discountType: 'item_bonus', valueOld: `${basePrice} ₽` } },
+        payload: { priceDetailed: stepPrice },
       }],
       DescriptionStep: description == null ? [] : [{ componentData: { component: 'description' }, payload: { description } }],
       GeoStep: [{ componentData: { component: 'geo' }, payload: { geoForItems: { geoReferences: geoReference ? [geoReference] : [], addressLocality: locationName || '' } } }],

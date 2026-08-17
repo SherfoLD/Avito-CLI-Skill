@@ -27,23 +27,28 @@ The shared vocabulary — `text`, `idString`, `httpsUrl`, `itemUrl`, `searchUrl`
 `rank`, `count` — lives in `src/runtime/schema.mjs`. Use it before writing a new
 regex: the same claim written twice drifts once.
 
-## The ceiling
+## The ceiling and the shape
 
-12 top-level keys, nesting depth at most 1. Both are checked against the schema
-when the module is imported, so a thirteenth column or a nested one fails before
-anything runs.
+16 top-level keys (D-054). A column is a scalar, an array or record of scalars,
+or an array of flat records — a table inside a row, and the only nesting there is
+(D-055). A record one level down is declared the way the row is, `strictObject`
+of scalars; a list of lists and a record of records are refused, because the
+shape they describe is a tree. All of it is checked against the schema when the
+module is imported, so a seventeenth column or a tree fails before anything runs.
 
-The ceiling is the reason column design is a decision rather than a habit: there
-is no free slot. A new column exists only in place of an existing one, and the
-argument for the trade has to be made out loud. When `sellerId` was removed, the
-slot it freed went to `published` — and the case for `sellerId` leaving was that
-no command grouped by it, built a URL from it, or checked a postcondition with it
-(D-038).
+Headroom is not permission. A column costs meaning — what it says when the value
+is missing, which is a question every nullable column has to answer out loud —
+and it costs payload on every row of every page. When `sellerId` was removed, the
+case was that no command grouped by it, built a URL from it, or checked a
+postcondition with it (D-038); that is the shape of the argument a new column
+needs too, in reverse.
 
-Depth 1 means a map is allowed and an array of objects is not. That is why filter
-options are `{"<value>": "<name>"}` rather than `[{value, name}]`: the map keeps
-the grouping inside the allowed depth, while the flat alternative turned a
-26-filter schema into 498 repeating rows (D-010).
+A map is still the right form for a vocabulary: filter options are
+`{"<value>": "<name>"}` rather than `[{value, name}]` because the flat
+alternative turned a 26-filter schema into 498 repeating rows (D-010). The table
+form is for what is genuinely a table of its own — `get-item.priceList` is
+`{ title, price }[]` because two services can share a title and the order is
+Avito's, neither of which a map can hold (D-056).
 
 ## Naming
 
@@ -66,8 +71,9 @@ the grouping inside the allowed depth, while the flat alternative turned a
 Identity → the business numbers → metadata.
 
 ```
-itemId, title, price, location, descriptionPreview, published,
-sellerName, sellerRating, sellerReviewsCount, imagesPreviews, url, searchUrl
+itemId, title, price, minPrice, hasPriceList, location, descriptionPreview,
+published, sellerName, sellerRating, sellerReviewsCount, imagesPreviews,
+url, searchUrl
 ```
 
 For the four listing commands this exact list and this exact order are fixed —

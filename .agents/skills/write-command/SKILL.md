@@ -158,7 +158,8 @@ npm run check                    ── green ──→ DONE
        [ ] check at least one decoded value against the visible page by eye
 [ ] 7. Design the row schema (references/output-design.md):
        [ ] camelCase, aligned with the neighbouring commands
-       [ ] at most 12 columns, nesting depth at most 1
+       [ ] at most 16 columns; a column is a scalar, a list or map of scalars,
+           or a list of flat records — nothing deeper
        [ ] order: identity → the business numbers → metadata
        [ ] reuse the vocabulary in src/runtime/schema.mjs before writing a regex
        [ ] nullable where Avito can legitimately withhold it — and say why
@@ -223,7 +224,7 @@ npm run check                    ── green ──→ DONE
 |---|---|
 | [references/recon.md](references/recon.md) | Step 3: driving Chrome through MCP, and what to look at in what order |
 | [references/carrier-selection.md](references/carrier-selection.md) | Step 5: the carrier classes, their contracts and their real maintenance cost |
-| [references/output-design.md](references/output-design.md) | Step 7: naming, types, order, the 12-key ceiling |
+| [references/output-design.md](references/output-design.md) | Step 7: naming, types, order, the key ceiling and the shape a column may take |
 | [references/command-template.md](references/command-template.md) | Step 8: file layout, the descriptor, the split between the Node half and the page half |
 | [references/typed-errors.md](references/typed-errors.md) | Step 8, before writing the body: which error goes where, and the three silent anti-patterns |
 | [references/offline-suites.md](references/offline-suites.md) | Step 9: synthetic carriers, budget assertions, what an offline suite can and cannot prove |

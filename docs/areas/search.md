@@ -1,8 +1,8 @@
 # Listings — `search`, `get-page`
 
-Confirmed live: 2026-08-16
+Confirmed live: 2026-08-18
 
-The shared row decoder, the 12-key shape and the transport are in
+The shared row decoder, the row shape and the transport are in
 [_platform.md](_platform.md).
 
 ## Contract
@@ -55,8 +55,8 @@ the old pathname.
 - **D-018 — submitting is a `?q=` navigation, and a dissolved query is accepted.**
   A `q === query` guard rejected correct Avito results for a whole class of
   queries, and a UI click added flakiness on the first submit. A "the query
-  dissolved" marker was not added as its own column: the 12 keys are taken, and
-  the category route is visible in the canonical `searchUrl`. One bounded
+  dissolved" marker was not added as its own column: the category route is
+  visible in the canonical `searchUrl` already. One bounded
   navigation retry is allowed if the redirect did not complete.
 - **D-019 — rows are read from the SSR catalog.** The DOM scrape was deleted
   entirely: rendering the catalog existed only to serve it, and without it a
@@ -100,6 +100,33 @@ the old pathname.
   contains neither `reserv` nor `заброн`. The chain catalog → item API → visible
   page agrees: for a card with `isReserved: true` the item API gives
   `deliveryInfo.isReserved: true` and the page shows «Товар зарезервирован».
+
+- **F-079 — a services card carries its whole price list, flat and complete.**
+  `catalog.items[].priceList` sits beside `priceDetailed`, not inside an `iva`
+  step, and is `{ valuesAll, values, countHint? }` where every entry is exactly
+  `{ title, price }` — two strings, no other key, across 26 lists on one route.
+  `values` is a prefix of `valuesAll`, `countHint` («Ещё 5 услуг») appears
+  exactly when the two differ and names the remainder, so `valuesAll` is the
+  whole table rather than a truncation. Titles were unique inside every list;
+  lists ran 1 to 27 entries, 7.5 on average, and 16 kB for a page of 50 rows.
+  The server-rendered card prints exactly `valuesAll`: the first two entries with
+  their prices, the rest as bare titles, then the hint. Found only in Services —
+  absent on all 50 cards of electronics, transport, animals, home and garden,
+  vacancies, business equipment, flat rentals and flat sales, and on the last two
+  every card also carried a plain number: no floor, no phrase, no table. The
+  table itself is not returned, only `hasPriceList` beside a null `price` and the
+  floor Avito advertised as `minPrice` (D-056): the card's copy of the table is
+  the search index's and it disagrees with the one the listing page prints
+  (F-081), so the caller who needs the prices reads them with `get-item`.
+
+- **F-082 — the daily-rental route is a different product, not an empty
+  category.** `/moskva/kvartiry/sdam/posutochno` answers `200` with
+  «Авито Путешествия» in the title and carries no `script[data-mfe-state]` at
+  all, so there is no catalog to decode and every listing command ends on the
+  same absence; a query that lands there (`квартира посуточно`) comes back as
+  `EMPTY_RESULT`. Long-term rentals on `/moskva/kvartiry/sdam` and sales on
+  `/moskva/kvartiry/prodam` are ordinary catalog routes and read normally, so
+  this is one route of real estate rather than the category.
 
 ## Risks
 

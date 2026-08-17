@@ -219,6 +219,8 @@ const ROW = {
   apiItemId: '8288791269',
   apiTitle: 'iPhone 11, 128 ГБ',
   apiPrice: 25000,
+  apiMinPrice: null,
+  apiHasPriceList: false,
   apiLocation: 'Москва',
   apiDescriptionPreview: 'Состояние отличное',
   apiPublished: null,
@@ -238,7 +240,7 @@ check('remove-reserved drops the reserved rows of the requested page', async () 
     searchUrl: REQUESTED, page: 2, 'remove-reserved': true,
   });
   assert(result.length === 1 && result[0].itemId === ROW.apiItemId, `unexpected rows: ${JSON.stringify(result.map((r) => r.itemId))}`);
-  assert(!('isReserved' in result[0]), 'the flag must stay out of the 12-key row contract');
+  assert(!('isReserved' in result[0]), 'the flag must stay out of the row contract');
   assertRow(COMMAND, result[0]);
 
   const whole = await COMMAND.run(pageStub(observedPage(rows)), { searchUrl: REQUESTED, page: 2 });
