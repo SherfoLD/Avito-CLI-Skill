@@ -49,7 +49,7 @@ check('a row schema must be strict, so an undeclared key cannot pass through', (
   refusesDescriptor({ row: z.strictObject({}) }, /declares no columns/);
 });
 
-check('a column is a scalar, a list or map of scalars, or a table of flat records', () => {
+check('a column holds whatever its schema declares, tables and trees alike', () => {
   const accepted = defineCommand({
     ...base,
     row: z.strictObject({
@@ -59,36 +59,14 @@ check('a column is a scalar, a list or map of scalars, or a table of flat record
       attributes: z.record(text(), text()),
       role: z.enum(['a', 'b']),
       priceList: z.array(z.strictObject({ title: text(), price: text() })).nullable(),
+      // Nesting past a table is the schema author's call, not the runtime's.
+      groups: z.array(z.strictObject({ values: z.array(z.strictObject({ title: text() })) })),
+      rows: z.array(z.array(z.string())),
+      seller: z.object({ name: text() }),
+      nested: z.record(text(), z.strictObject({ title: text() })),
     }),
   });
-  assert(accepted.columns.length === 6, 'a row of six columns must be accepted');
-
-  // A record one level down is declared the way the row is, so an undeclared key
-  // fails there too.
-  refusesDescriptor(
-    { row: z.strictObject({ sellers: z.array(z.object({ name: text() })) }) },
-    /column "sellers" has a type this contract cannot describe/,
-  );
-  refusesDescriptor(
-    { row: z.strictObject({ seller: z.object({ name: text() }) }) },
-    /column "seller" has a type this contract cannot describe/,
-  );
-  refusesDescriptor(
-    { row: z.strictObject({ rows: z.array(z.array(z.string())) }) },
-    /column "rows" has a type this contract cannot describe/,
-  );
-  refusesDescriptor(
-    {
-      row: z.strictObject({
-        groups: z.array(z.strictObject({ values: z.array(z.strictObject({ title: text() })) })),
-      }),
-    },
-    /column "groups" has a type this contract cannot describe/,
-  );
-  refusesDescriptor(
-    { row: z.strictObject({ nested: z.record(text(), z.strictObject({ title: text() })) }) },
-    /column "nested" has a type this contract cannot describe/,
-  );
+  assert(accepted.columns.length === 10, 'a row of ten columns must be accepted');
 });
 
 check('a flat record is a column of its own, and it prints as one', () => {

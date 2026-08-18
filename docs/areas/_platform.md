@@ -79,10 +79,9 @@ The listing row is 14 keys, one schema — `LISTING_ROW` in
 `move-category` (D-048). The keys themselves are in `--help`, printed from the
 schema (D-053).
 
-- 16 keys is the ceiling (D-054). A column is a scalar, an array or record of
-  scalars, or an array of flat records — a table inside a row, and the only
-  nesting there is (D-055). Both rules are checked against the schema when the
-  module is imported.
+- 16 keys is the ceiling (D-054), checked against the schema when the module is
+  imported. What a column holds is the schema's own business — the runtime
+  refuses no shape a column declares.
 - `searchUrl` repeats in every row: the output is an array of rows with no
   metadata envelope.
 - Page size belongs to Avito (50 listings, 25 reviews). No command has a count
@@ -314,16 +313,6 @@ schema (D-053).
   reason for every deferred column, and four phases were bidding for the same two
   slots. Nothing about a wider row makes a column free: each one still has to
   answer what it means when the value is missing.
-
-- **D-055 — a column may be a table, and a table is a list of flat records.**
-  The owner's decision, taken for the service price list: `{ title, price }[]`
-  says what a `Record<title, price>` cannot — that two entries may share a title,
-  and that the order is Avito's. The grammar admits exactly one level of it. A
-  record inside a column is declared like the row itself, `strictObject` of
-  scalars, so an undeclared key fails one level down as well; a list of lists and
-  a record of records stay refused, because the shape they would describe is a
-  tree and a row holds a table. `-f table` prints the entry count, the way it
-  already prints one for `images`.
 
 - **D-056 — `price` is a price or it is `null`; anything advertised is
   `minPrice`.** The

@@ -29,12 +29,15 @@ regex: the same claim written twice drifts once.
 
 ## The ceiling and the shape
 
-16 top-level keys (D-054). A column is a scalar, an array or record of scalars,
-or an array of flat records — a table inside a row, and the only nesting there is
-(D-055). A record one level down is declared the way the row is, `strictObject`
-of scalars; a list of lists and a record of records are refused, because the
-shape they describe is a tree. All of it is checked against the schema when the
-module is imported, so a seventeenth column or a tree fails before anything runs.
+16 top-level keys (D-054), checked against the schema when the module is
+imported, so a seventeenth column fails before anything runs. That ceiling is the
+only shape rule the runtime holds: what a column holds is yours to declare, and
+`--help` prints whatever you declared.
+
+Flat is still the default, and going deeper is an argument you have to make. A
+caller reads a row of scalars, a list, a map and a table without being taught
+anything; a tree costs them a traversal for every value, and `-f table` has no
+notation for one at all.
 
 Headroom is not permission. A column costs meaning — what it says when the value
 is missing, which is a question every nullable column has to answer out loud —

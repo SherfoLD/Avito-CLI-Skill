@@ -175,7 +175,7 @@ against `sortRating` in the server's `nextPage`.
   the key is present and `null`. The rendered page prints the group entry for
   entry, so the API is the visible list. The command returns it flat, in Avito's
   order, with the group titles merged away — one group has ever been sent, and a
-  column holds a table rather than a tree (D-055).
+  tree of one branch reads worse than the table it is.
 
 - **F-081 — the card's price list and the listing page's disagree.** Same three
   items, both carriers read as JSON and both compared against their own rendered

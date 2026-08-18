@@ -34,7 +34,7 @@ read. Neither is urgent and neither is free.
 
 ## What a new column still costs
 
-The ceiling is 16 (D-054) and a column may be a table of flat records (D-055), so
+The ceiling is 16 (D-054) and a column holds whatever its schema declares, so
 the phases below no longer bid against one another for a slot: the listing row is
 at 14 and `get-item` at 14. What a column still costs is meaning — what it says
 when the value is missing — and payload, which every row pays on every page.
