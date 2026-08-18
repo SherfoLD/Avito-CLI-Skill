@@ -52,15 +52,15 @@ check('a decoder inlined into the prelude behaves like the imported one', () => 
 // A refusal has to keep travelling as a value across the inlined boundary, not
 // become a thrown error: the node half dispatches on stage and code.
 check('a refusal from an inlined decoder is still a value', () => {
-  const broken = { items: [{ ...item(), images: [{ thumb: `https://50.img.avito.st/image/1/x.jpg` }] }] };
+  const broken = { items: [{ ...item(), images: 'one photo' }] };
   let thrown = null;
   try {
     inPreludeScope('decodeCatalogRows')(broken, env);
   } catch (error) {
     thrown = error;
   }
-  assert(thrown != null && /recognizable size variant/.test(thrown.message),
-    'a photo with no size variant must fail closed inside the prelude too');
+  assert(thrown != null && /images are malformed/.test(thrown.message),
+    'a card whose photo list is not a list must fail closed inside the prelude too');
 
   const malformed = inPreludeScope('decodeCatalogRows')({ items: [{ type: 'item', id: 'x', title: 'y' }] }, env);
   assert(malformed.failure?.stage === 'catalog' && malformed.failure?.code === 'shape',
@@ -71,11 +71,13 @@ check('a value export survives as a constant', () => {
   assert(inPreludeScope('DOCUMENT_TIMEOUT_MS') === 20000, 'the document timeout did not survive inlining');
 });
 
-// Photos are the case where inlining could plausibly change behaviour: the
-// decoder compares size keys it has never been told the names of.
-check('the largest photo variant is chosen the same way inside the prelude', () => {
-  const largest = inPreludeScope('largestImageVariant')(cardPhoto('one'));
-  assert(largest.endsWith('one-636.jpg'), `expected the largest variant, got ${largest}`);
+// The SSR catalog sends its cards past the twentieth without a photo block at
+// all, and that is not a listing without photos (F-089).
+check('the photo count separates an empty list from a card that carries no list', () => {
+  const count = inPreludeScope('itemImageCount');
+  assert(count({ images: [cardPhoto('one'), cardPhoto('two')] }) === 2, 'two photos must count as two');
+  assert(count({ images: [] }) === 0, 'a listing Avito says has no photos counts zero');
+  assert(count({ title: 'no photo block' }) === null, 'a card without the key must not count as zero');
 });
 
 export default await run('browser prelude');

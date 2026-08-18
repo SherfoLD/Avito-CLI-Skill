@@ -19,7 +19,10 @@ export const rows = z.array(z.looseObject({
   priceList: z.array(z.unknown()).length(0),
   sellerRating: z.number().positive(),
   sellerReviewsCount: z.number().positive(),
-  images: z.array(z.string()).min(1),
+  // The gallery is read on every run; the files are only written when the run
+  // asked for them, and this one does not.
+  imageCount: z.number().int().positive(),
+  images: z.null(),
   attributes: z.record(z.string(), z.string()).refine(
     (attributes) => Object.keys(attributes).length > 0,
     'this listing prints a characteristics table',

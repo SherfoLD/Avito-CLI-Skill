@@ -52,7 +52,7 @@ avito search "ddr5 32gb" --location-id 637640       → rows + searchUrl
 avito get-filters <searchUrl>                       → keys, options, what is applied
 avito apply-filters <searchUrl> --set 'price=1000..5000'  → rows + a new searchUrl
 avito get-page <searchUrl> --page 2                 → the next page
-avito get-item <url>                                → full text and original photos
+avito get-item <url> --images-dir <dir>             → full text, and the photos as files
 ```
 
 One ordering rule: `apply-filters` and `move-category` accept page 1 only and
@@ -77,7 +77,7 @@ moving into one of them is how you choose.
 | `apply-filters <searchUrl> --set <selections>` | a search URL | the narrowed listing and a new `searchUrl` |
 | `get-categories <searchUrl>` | a search URL | where you can move from here; feed a `name` into `move-category` |
 | `move-category <searchUrl> --to <name>` | a search URL | the listing in another category |
-| `get-item <url>` | a listing URL | the full description, the original-size photos and a service's price table |
+| `get-item <url>` | a listing URL | the full description, a service's price table, and the original photos written to a directory you name |
 | `get-seller-reviews <itemUrl>` | a listing URL | the seller's review feed |
 | `get-location <query>` | a city or region name | the location ID `search` needs, and metro/district IDs |
 | `get-coords <address>` | an address | the coordinate pair `--coords` needs |
@@ -88,11 +88,20 @@ what a type cannot say.
 
 ## Reading the output
 
-**A listing row is a card, not a listing.** Two of its columns are deliberately
-partial: `descriptionPreview` is text Avito already truncated for the card, and
-`imagesPreviews` are catalog-size previews. The originals come only from
-`get-item`, and neither can be derived from a row — every photo size has its own
-opaque URL.
+**A listing row is a card, not a listing.** `descriptionPreview` is text Avito
+already truncated for the card, and `imageCount` is a number of photos, not the
+photos. Both are complete only in `get-item`, and neither can be derived from a
+row.
+
+**Some pages arrive complete for twenty rows and thin for the other thirty.**
+`get-page`, `move-category` and a `search` with no geo argument read the page
+Avito renders, and it carries only its first twenty cards in full: after that
+`descriptionPreview`, `location`, `sellerName` and `imageCount` are `null` — not
+because the listing lacks them, but because the page did not carry them.
+`itemId`, `title`, `price`, `published` and the URL are on every row regardless.
+A `search` with `--location-id` (or another geo argument) and `apply-filters` go
+through a different source and return all fifty complete, so narrowing a search
+also thickens it. If a thin row matters, open it with `get-item`.
 
 **`searchUrl` tells you what you actually got.** Avito canonicalises any query
 into a category route, and sometimes the text query dissolves into that category
@@ -123,6 +132,40 @@ Moscow time. If you need the date as a value, use the row.
 **A `null` the type allows is Avito withholding, not a gap in the decoding.**
 `sellerName` is null for private sellers when the browser session is not logged
 in — that is Avito hiding identity, and the rating still arrives beside it.
+
+## Photos
+
+You cannot read a photo out of any command's output, because no command returns
+one: a photo URL is a binary you have no way to open. `get-item` writes the files
+instead.
+
+```
+avito get-item <url> --images-dir /tmp/<your-own-dir> -f json
+```
+
+Pass a directory of your own that already exists, given as an absolute path — a
+temporary one you made for this task is exactly right. The command creates
+`<dir>/<itemId>/` inside it and fills that with `01.jpg`, `02.jpg` … in gallery
+order, so photos of different listings never mix, and puts the absolute paths in
+`images`. They are ordinary JPEGs; open them the way you open any local image.
+
+Two columns say two different things:
+
+- `imageCount` — how many photos the listing has. Every listing row carries it,
+  and so does `get-item`, whether or not you asked for the files. `null` is not
+  zero: in a listing row it means the page did not carry that card's photo block
+  (see the twenty/thirty split above), and in `get-item` it means the answer came
+  from the visible page, which does not open the gallery.
+- `images` — the files that were written. `null` means you did not pass
+  `--images-dir`, an empty list means the listing has no photos, and otherwise
+  it is one path per photo.
+
+So the cheap move is to read the listing first and only spend a download on the
+one or two candidates that survive the text.
+
+If any single photo cannot be fetched, the whole call fails rather than handing
+you part of a gallery. The text is one run away — repeat the command without
+`--images-dir` and you get everything but the files.
 
 ## Applying filters
 
@@ -187,8 +230,9 @@ retry through.
 - **Real estate, and vacancies in jobs**: `get-filters` refuses the whole
   category when Avito ships a named filter without a name. Flat rentals, garages
   and vacancies are the confirmed routes. Search itself works; narrowing does not.
-- **Résumés in jobs**: `search` refuses on a résumé card, whose placeholder photo
-  is served from outside Avito's image hosting.
+- **Jobs**: a query that mixes résumés and vacancies can refuse with "invalid
+  item URL". The résumé listing itself reads — reach it through its own route
+  rather than through a mixed query.
 
 Two more categories — business equipment and Business 360 — have never been
 checked, so anything there is unknown rather than known-good.

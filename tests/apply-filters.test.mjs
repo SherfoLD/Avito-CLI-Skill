@@ -107,7 +107,7 @@ check('the items API rows decode the visible price, metro line and card text', a
   assert(row.apiLocation === 'Китай-город, до 5 мин.', `location should match the card, got ${row.apiLocation}`);
   assert(row.apiDescriptionPreview?.startsWith('Авитодоставка открыта'), `description not decoded: ${row.apiDescriptionPreview}`);
   assert(row.apiSeller.name === 'AMD INTEL' && row.apiSeller.reviewsCount === 2015, 'seller not decoded');
-  assert(row.apiImages.length === 2 && row.apiUrl === `${ORIGIN}/moskva/tovary_dlya_kompyutera/ddr5_7881841669`, 'images/url not decoded');
+  assert(row.apiImageCount === 2 && row.apiUrl === `${ORIGIN}/moskva/tovary_dlya_kompyutera/ddr5_7881841669`, 'photo count/url not decoded');
 });
 
 check('a card without iva steps falls back to the flat items API fields', async () => {
@@ -651,37 +651,33 @@ check('every listing the items API returned is kept, never a local slice', async
   assert(result.apiRows.length === 50, `expected the whole page, got ${result.apiRows.length}`);
 });
 
-// The size keys belong to Avito, so the decoder takes the largest variant instead of
-// naming one. Until 2026-08-14 it read "208x208" only and silently returned no photos at
-// all if that key were ever renamed (F-047).
-check('the largest photo variant wins and an unknown size set fails closed', async () => {
+// A row carries how many photos the card has and not one photo URL: the sizes are
+// Avito's vocabulary and the originals belong to `get-item`. A card whose photo is
+// served from outside the photo CDN — every résumé — is readable because of that (F-087).
+check('the row counts the card photos, wherever they are hosted', async () => {
   const { fetch } = makeFetch([ssrRoute(), apiRoute()]);
   const result = await runEvaluate(baseArgs(), fetch);
   assert(result.success === true, `failed: ${result.message}`);
-  assert(result.apiRows[0].apiImages[0].endsWith('one-636.jpg'),
-    `the largest variant must win, got ${result.apiRows[0].apiImages[0]}`);
+  assert(result.apiRows[0].apiImageCount === 2,
+    `the card ships two photos, got ${result.apiRows[0].apiImageCount}`);
 
-  const renamed = makeFetch([ssrRoute(), apiRoute(apiState({
-    items: [item({ images: [{ '224x224': 'https://50.img.avito.st/image/1/renamed.jpg' }] })],
+  const elsewhere = makeFetch([ssrRoute(), apiRoute(apiState({
+    items: [item({ images: [{ '208x208': 'https://www.avito.st/s/common/resume-stub.svg' }] })],
   }))]);
-  const renamedResult = await runEvaluate(baseArgs(), renamed.fetch);
-  assert(renamedResult.success === true, 'a renamed size key must still be readable');
-  assert(renamedResult.apiRows[0].apiImages[0].endsWith('renamed.jpg'), 'the renamed variant must be used');
+  const elsewhereResult = await runEvaluate(baseArgs(), elsewhere.fetch);
+  assert(elsewhereResult.success === true, 'a photo outside the CDN must no longer refuse the page');
+  assert(elsewhereResult.apiRows[0].apiImageCount === 1, 'the photo must still be counted');
 
-  const unusable = makeFetch([ssrRoute(), apiRoute(apiState({
-    items: [item({ images: [{ thumb: 'https://50.img.avito.st/image/1/x.jpg' }] })],
-  }))]);
+  const malformed = makeFetch([ssrRoute(), apiRoute(apiState({ items: [item({ images: 'one photo' })] }))]);
   let stopped = false;
   try {
-    await runEvaluate(baseArgs(), unusable.fetch);
+    await runEvaluate(baseArgs(), malformed.fetch);
   } catch (error) {
-    stopped = /recognizable size variant/.test(String(error?.message ?? error));
+    stopped = /images are malformed/.test(String(error?.message ?? error));
   }
-  assert(stopped, 'a photo with no size variant must fail closed, not return no photos');
+  assert(stopped, 'a malformed photo list must fail closed, not count zero');
 });
 
-// Reservation is read only from the flat boolean the items API ships with every catalog
-// card; an absent key stays null so that only --remove-reserved can turn it into a stop.
 check('the reservation flag is decoded from the API card, and an absent key stays null', async () => {
   const items = [
     item({ id: '8329291056', isReserved: true }),
@@ -725,7 +721,7 @@ const ROW = {
   apiDescriptionPreview: 'Авитодоставка открыта',
   apiPublished: '2026-08-13T23:15:41Z',
   apiSeller: { name: 'AMD INTEL', rating: 5, reviewsCount: 2015 },
-  apiImages: [],
+  apiImageCount: 0,
   apiReserved: false,
   apiUrl: `${ORIGIN}/moskva/tovary_dlya_kompyutera/ddr5_8288791269`,
 };

@@ -10,18 +10,20 @@ Transport and the shared rules are in [_platform.md](_platform.md).
 columns are in `--help`, printed from the schema (D-053).
 
 The command is called for three of them: `description` — the full text instead
-of the truncated `descriptionPreview`; `images` — the original photographs
-(`1280x960`) instead of the catalog previews (`636x636`); and `priceList` — the
-price table of a service, which the listing row reports only the existence of
-(D-056). The rest are already in the listing row and do not justify a separate
-call.
+of the truncated `descriptionPreview`; the photographs, which exist at their
+original size here and nowhere else; and `priceList` — the price table of a
+service, which the listing row reports only the existence of (D-056). The rest
+are already in the listing row and do not justify a separate call.
+
+The photographs are files, not URLs. `--images-dir <dir>` takes a directory the
+caller owns, the command creates `<dir>/<itemId>/` and writes `01.jpg`, `02.jpg`
+… in gallery order, and `images` carries the absolute paths (D-059). Without the
+flag nothing is fetched and nothing is written.
 `publishedText` is the one column the listing row states more precisely: there
 the same date arrives as the machine-readable moment `published`, here only as a
 string, exactly as Avito prints it (F-059, D-039).
 
-`get-seller-reviews <itemUrl>` accepts the same listing URL. Columns:
-`reviewId`, `score`, `stage`, `rated`, `authorName`, `authorRole`, `itemTitle`,
-`text`, `answerText`, `answered`, `images`, `sellerReviewsCount`. Arguments:
+`get-seller-reviews <itemUrl>` accepts the same listing URL. Arguments:
 `--sort` (from the seller's own fresh vocabulary) and `--page` (turned into the
 server-side `offset = (page - 1) * 25`). Budget: exactly 3 requests.
 
@@ -55,14 +57,29 @@ against `sortRating` in the server's `nextPage`.
   `GET /items/ads{pathname}`, which yields structured fields without loading the
   listing page; the two fallback layers bound the risk of drift in an
   undocumented endpoint.
-- **D-017 — three flat nullable seller fields plus `images`, always an array.**
-  The fourth was `sellerId`, removed by D-038, and the freed slot went to
-  `publishedText` (D-039); `priceList` was the thirteenth column (D-056). Media is
-  accepted only from `*.img.avito.st`. The final DOM fallback deliberately returns
-  nullable seller fields and an empty `images` rather than opening the gallery,
+- **D-017 — three flat nullable seller fields.** The fourth was `sellerId`,
+  removed by D-038, and the freed slot went to `publishedText` (D-039);
+  `priceList` was the thirteenth column (D-056) and `imageCount` the fourteenth
+  (D-060). Media is accepted only from `*.img.avito.st`. The final DOM fallback
+  deliberately returns nullable seller fields rather than opening the gallery,
   and a `null` `priceList` rather than an empty one: the visible table is anchored
   by nothing but its own heading, so that path reports it did not read one instead
   of claiming there is none.
+- **D-059 — the photos are written to disk by this command and by no other.**
+  A URL to a binary is nothing a caller can open, so `--images-dir` writes the
+  files instead: an existing absolute directory is required and refused as an
+  argument before any request, `<dir>/<itemId>/` is the only thing created,
+  nothing is deleted and nothing is written outside it. The fetch is Node's
+  rather than the page's (F-085), and one unreadable photo of N ends the call —
+  a gallery missing its third picture is a fallback value, and the text is one
+  run without the flag away. Nothing converts an image: the request asks for
+  jpeg and gets it (F-086), and any other content type stops the command.
+- **D-060 — `imageCount` says what exists, `images` says what was written.**
+  Two nullable columns instead of one list of URLs: `imageCount` is `null` only
+  on the visible-page path, which does not open the gallery at all, and `images`
+  is `null` when no directory was named, `[]` when the listing has no photos,
+  and a list of paths otherwise. The listing row carries the count and nothing
+  else (D-061).
 - **D-021 — the review feed accepts a listing URL, and `get-item` does not
   change.** The option "replace one of `get-item`'s columns with `reviewsUrl`"
   was rejected: such a link would just be `<itemUrl>#open-reviews-list`, it
@@ -105,15 +122,23 @@ against `sortRating` in the server's `nextPage`.
   counts all: a private seller showed `summary="4 отзыва"` against seven returned
   records.
 - **F-075 — a review photo carries its own dimensions beside the size keys.**
-  Each entry of `images` is `{"1280x960": url, "640x480": url, "256x192": url,
-  "180x135": url, "originalSize": {"width": 720, "height": 960}}` — a structure,
-  not a scalar, under a key that is not a size. Item photos have no such
-  companion, so a decoder written from `item.imageUrls` refuses every review with
-  a photo. The size keys are the only ones read; what a size key may carry is
-  checked where the vocabulary is (a structure there is not a URL and must never
-  be stringified into one), and the rest of the entry is Avito's to change. The
-  variant that wins is the largest offered, and the URL under `1280x960` returns
-  the photo at its `originalSize` — 720×960, not 1280×960.
+  Each entry of the feed's `images` is `{"1280x960": url, "640x480": url,
+  "256x192": url, "180x135": url, "originalSize": {"width": 720, "height": 960}}`
+  — a structure, not a scalar, under a key that is not a size. Item photos have
+  no such companion, so a decoder written from `item.imageUrls` refuses every
+  review with a photo. `get-seller-reviews` no longer reads the key at all
+  (D-059 gave the photos to `get-item`), and this stays written down because the
+  shape is still in the payload for whoever reads it next.
+- **F-085 — the photo CDN answers anonymously, outside the browser session.**
+  `*.img.avito.st` returns `200` to a plain Node request with no cookies, no
+  referer and `access-control-allow-origin: *`, unlike `www.avito.ru`, whose
+  anonymous GET meets QRATOR. So the binary never crosses the CDP channel.
+  Replayed 2026-08-18, `evidence/photo-cdn-accept-202608181130.json`.
+- **F-086 — the format is negotiated on `Accept`, and jpeg is one header away.**
+  The same photo URL answers `image/webp` to a browser's
+  `image/avif,image/webp,image/apng,*/*` and `image/jpeg` to `image/jpeg,
+  image/png` or to no `Accept` at all. That is why no image decoder exists in
+  this repository: the format the caller can open is asked for, not produced.
 - **The sort vocabulary depends on `fromItem`** and comes from Avito itself: with
   it, `goods_relevant_desc` is available; without it, not. The availability of the
   "photos only" filter is dynamic too and differs between a private seller and a
@@ -164,6 +189,9 @@ against `sortRating` in the server's `nextPage`.
   `searchParametersV2`**, even with `requiredFilters`. If such a page is also the
   last one, the only way to confirm the sort is an extra request to the start of
   the feed — a fourth request for the call.
+- **A photo that fails to download ends the whole call**, text included. That is
+  D-059 working as written, and the caller's way out is a second run without
+  `--images-dir` — worth knowing before a script wraps the command.
 - **`publishedText` can be neither sorted nor compared.** It is a string Avito
   rendered, without a year and without seconds, in Moscow time; its year cannot be
   inferred. The vocabulary of forms is half collected: `14 августа в 02:15` was

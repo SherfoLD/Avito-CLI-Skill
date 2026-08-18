@@ -98,13 +98,29 @@ schema (D-053).
 - **D-023 — a photo size is never named in code.** Take the largest variant whose
   key parses as `<width>x<height>`; a record with no such key stops the command.
   Hardcoding `208x208` would produce `images: []` on every row the day the key is
-  renamed — indistinguishable from a listing with no photos.
+  renamed — indistinguishable from a listing with no photos. One decoder is left
+  holding this rule, `decodeItemImages` in `src/browser/prelude/item.mjs`; the
+  listing row and the review feed stopped reading photo URLs at all (D-061).
 - **D-028 — `sellerName` is nullable** in all five commands that return it.
   `null` means "Avito did not send a name", not "there is no seller". The name is
   left exactly as Avito sent it, placeholder `Пользователь` included.
-- **D-029 — `imagesPreviews`, not `images`**, in the listing row; `images` stays
-  with the full gallery in `get-item` and `get-seller-reviews`. One name stood
-  over both catalog previews (`636x636`) and originals (`1280x960`).
+- **D-029 — `imagesPreviews`, not `images`**, in the listing row while it carried
+  photo URLs at all; `images` stayed with the full gallery. One name over both
+  catalog previews (`636x636`) and originals (`1280x960`) was the mistake being
+  avoided, and D-061 removed the second name along with the column.
+- **D-062 — a count of zero is only ever Avito's zero.** `imageCount` is `null`
+  where the card carries no `images` key at all, which is every card past the
+  twentieth of a deep page (F-089), and `0` only where Avito sent an empty list.
+  Collapsing the two would have put a plausible wrong number in every row of the
+  tail of every deep page — the exact failure the rule about fallback values
+  exists to prevent.
+- **D-061 — photos live in one command, and the listing row counts them.**
+  `imagesPreviews` was five opaque URLs on each of fifty rows — the largest single
+  contribution to the payload of every search, and nothing an agent could open.
+  The column became `imageCount`, `get-seller-reviews` lost its `images`
+  entirely, and the originals are files written by `get-item --images-dir`
+  (D-059). Counting reads no URL, which is what reopened résumés (F-087): the
+  refusal that disabled them lived inside the row decoder's photo reader.
 - **D-031 — the surface is built for a consuming agent.** Grounds: real agents
   used two commands out of nine, navigating by `description` alone. Hence the
   verb-shaped names of all ten commands, one carrier of state (the canonical
@@ -370,9 +386,38 @@ schema (D-053).
   where it is visible: in the response to a data request and in the rendered page.
 - **F-047 — page size belongs to Avito.** There is no count parameter in the
   listing (50 rows; the UI changes only `p`) and none in the review feed
-  (`limit=2` returned 25 records). Checked against the source in passing: an
-  empty `imagesPreviews` on 9 of 50 rows is `images: []` in the SSR response
-  itself for one seller, not a decoder loss.
+  (`limit=2` returned 25 records). Checked against the source in passing: a photo
+  count of 0 on 9 of 50 rows is `images: []` in the SSR response itself for one
+  seller, not a decoder loss.
+- **F-089 — the SSR catalog ships twenty complete cards and thirty stubs; the
+  items API ships fifty complete ones.** In `loaderData.data.catalog.items` the
+  cards past index 20 are missing exactly two keys, `images` and `iva`, while
+  everything flat survives — id, title, `priceDetailed`, `sortTimeStamp`, the
+  seller's rating. What `iva` carries goes with it: `descriptionPreview`,
+  `location` and `sellerName` come back `null`, and `imageCount` is `null` rather
+  than `0` (D-062). `extraBlockItems` is empty, so the stubs are catalog rows and
+  not recommendations, and it is not a depth effect: page 1 of the same route
+  splits at 20 exactly like page 2, cache-busted and after the `?q=` hop alike.
+  So it is the carrier that differs, not the command — the same request through
+  `/web/1/js/items` answers with all fifty complete:
+
+  | carrier | commands | tail of the page |
+  |---|---|---|
+  | SSR catalog document | `search` with no geo argument, `get-page`, `move-category` | 20 complete, 30 stubs |
+  | items API `/web/1/js/items` | `search` with `--location-id` / `--metro` / `--district` / `--coords` / `--radius`, `apply-filters` | 50 complete |
+
+  Replayed 2026-08-18 on `…/operativnaya_pamyat-…?q=ddr5+32gb`. Whether Avito
+  hydrates the tail on scroll is not established, and this repository does not
+  scroll. The strict `get-page` fixture fails on it, which is F-041's guard doing
+  its job.
+- **F-087 — the résumé refusal was the photo reader's, and it is gone.** A résumé
+  card carries a placeholder served from `www.avito.st`, outside the photo CDN,
+  and the row decoder threw on it — one card killed the page, which disabled
+  résumés entirely. Replayed both ways on 2026-08-18 against
+  `/moskva/rezume?q=продавец`: before D-061 `get-page` ends with `item image URL
+  is outside Avito image hosting`, after it the page decodes and the placeholder
+  is simply counted. Jobs is not open on that evidence — the other half of the
+  category refuses elsewhere (F-088).
 - **F-049 — Avito withholds private-seller identity from an anonymous session.**
   In the catalog, `iva.UserInfoStep` arrives as an empty array (14 of 50 and 22
   of 50 rows on two pages); in the item API every profile link is empty and the

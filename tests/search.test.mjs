@@ -21,7 +21,7 @@ const ROW = {
   apiDescriptionPreview: 'Авитодоставка открыта',
   apiPublished: '2026-08-13T23:15:41Z',
   apiSeller: { name: 'AMD INTEL', rating: 5, reviewsCount: 2015 },
-  apiImages: ['https://50.img.avito.st/image/1/one.jpg'],
+  apiImageCount: 1,
   apiUrl: 'https://www.avito.ru/moskva/tovary_dlya_kompyutera/ddr5_7881841669',
 };
 

@@ -27,7 +27,6 @@ import { defineCommand } from '../runtime/command.mjs';
 import {
   count,
   decode,
-  httpsUrl,
   optionalText,
   requiredText,
   text,
@@ -40,12 +39,10 @@ import { readJsonResponse } from '../browser/prelude/json.mjs';
 // scripts, images and telemetry for the sake of one JSON blob in the markup.
 const ORIGIN_BOOTSTRAP_URL = 'https://www.avito.ru/robots.txt';
 const AVITO_HOSTS = new Set(['avito.ru', 'www.avito.ru']);
-const IMAGE_HOST_SUFFIX = '.img.avito.st';
 // Avito serves the feed in fixed pages of 25 and ignores a smaller limit (F-046), so the
 // page size is a property of the server, not an argument.
 const FEED_PAGE_SIZE = 25;
 const MAX_FEED_ENTRIES = 200;
-const MAX_REVIEW_IMAGES = 20;
 
 /**
  * The rating context of the listing: the feed key and the visible review count.
@@ -63,15 +60,6 @@ const RATING_CONTEXT = z.object({
 });
 
 /**
- * One photo as Avito ships it: the same picture under several size keys, beside
- * companion metadata of Avito's own — `originalSize` is an object of `width` and
- * `height` (F-075). Only the size keys are read, so nothing else is constrained
- * here; what a size key is allowed to carry is checked where the size vocabulary
- * lives, in `decodeReviewImages`.
- */
-const IMAGE_VARIANTS = z.record(z.string(), z.unknown());
-
-/**
  * One visible review. A review without a score is a real class, not missing
  * data: Avito prints those under its own "Отзывы без оценки" divider and keeps
  * them out of the rating, so the score stays null instead of collapsing to 0
@@ -87,7 +75,6 @@ const REVIEW = z.object({
   itemTitle: optionalText(),
   textSections: z.array(z.object({ text: optionalText() })).default([]),
   answer: z.object({ text: optionalText(), answered: optionalText() }).nullish(),
-  images: z.array(IMAGE_VARIANTS).max(MAX_REVIEW_IMAGES).nullable().default([]),
 });
 
 function cleanText(value) {
@@ -221,52 +208,6 @@ function decodeReviewSummary(summary) {
   return parsed;
 }
 
-/**
- * Avito owns the set of size keys, so the largest offered variant wins instead
- * of a named pair: a renamed key then costs nothing, while an entry carrying no
- * size at all fails closed rather than dropping a photo silently (F-047).
- */
-function decodeReviewImages(variantSets, position) {
-  const images = [];
-  const seen = new Set();
-  for (const variants of variantSets) {
-    let source = null;
-    let sourceArea = -1;
-    for (const [key, value] of Object.entries(variants)) {
-      const size = /^(\d+)x(\d+)$/.exec(key);
-      // A size key that carries anything but text is not a photo URL: `String()` of a
-      // structure is `[object Object]`, which is non-empty and would pass for one.
-      if (!size || typeof value !== 'string') continue;
-      const url = cleanText(value);
-      if (!url) continue;
-      const area = Number(size[1]) * Number(size[2]);
-      if (area > sourceArea) {
-        sourceArea = area;
-        source = url;
-      }
-    }
-    if (!source) {
-      throw new CommandExecutionError(`Avito review ${position} carries a photo with no recognizable size variant`);
-    }
-
-    let parsed;
-    try {
-      parsed = new URL(source);
-    } catch {
-      throw new CommandExecutionError(`Avito review ${position} carries a malformed photo URL`);
-    }
-    if (parsed.protocol !== 'https:' || !parsed.hostname.endsWith(IMAGE_HOST_SUFFIX)) {
-      throw new CommandExecutionError(`Avito review ${position} carries a photo outside Avito image hosting`);
-    }
-
-    if (!seen.has(parsed.href)) {
-      seen.add(parsed.href);
-      images.push(parsed.href);
-    }
-  }
-  return images;
-}
-
 function decodeReviewRow(entry, sellerReviewsCount, position) {
   const review = decode(REVIEW, entry?.value, `Avito review ${position}`);
   const textParts = review.textSections.map((section) => section.text).filter(Boolean);
@@ -282,7 +223,6 @@ function decodeReviewRow(entry, sellerReviewsCount, position) {
     text: textParts.join('\n') || null,
     answerText: review.answer?.text ?? null,
     answered: review.answer?.answered ?? null,
-    images: decodeReviewImages(review.images ?? [], position),
     sellerReviewsCount,
   };
 }
@@ -375,7 +315,6 @@ export default defineCommand({
     text: text().nullable(),
     answerText: text().nullable(),
     answered: text().nullable(),
-    images: z.array(httpsUrl()),
     sellerReviewsCount: count().nullable(),
   }),
   run: async (page, args) => {

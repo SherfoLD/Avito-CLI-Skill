@@ -7,16 +7,16 @@ How each command is built is in its domain file, [docs/areas/](areas/).
 
 ## Commands
 
-Ten commands, all read-only. `npm run check` is green; the offline suite is 213
-checks across sixteen suites. All ten fixtures pass live against the descriptor
-schemas (D-048, D-049).
+Ten commands, all read-only. `npm run check` is green; the offline suite is 216
+checks across sixteen suites. Nine of the ten fixtures pass live against the
+descriptor schemas (D-048, D-049); `get-page` does not — see the risks.
 
 The row contract is a `z.strictObject` in each descriptor: `columns` is derived
 from it, the CLI parses every row through it before printing, the offline suites
 run the same parse, and `--help` prints the schema itself as a type (D-053).
 A row holds at most 16 columns (D-054), and a column is a scalar, a list or map
 of scalars, or a table of flat records (D-055): the listing row declares 14,
-`get-item` 13 and `get-categories` 10. A `verify/<command>.mjs` fixture is a schema over the whole
+`get-item` 14 and `get-categories` 10. A `verify/<command>.mjs` fixture is a schema over the whole
 returned array, saying what that one request must answer with. What neither can
 express is four ESLint rules over the AST (`npm run lint`).
 
@@ -34,7 +34,7 @@ interruption left is the one approval prompt per connection (F-071, F-073).
 | Command | Domain | Strict live verify |
 |---|---|---|
 | `search` | [search](areas/search.md) | 2026-08-18 |
-| `get-page` | [search](areas/search.md) | 2026-08-18 |
+| `get-page` | [search](areas/search.md) | fails 2026-08-18 (F-089) |
 | `get-filters` | [filters](areas/filters.md) | 2026-08-16 |
 | `apply-filters` | [filters](areas/filters.md) | 2026-08-18 |
 | `get-categories` | [categories](areas/categories.md) | 2026-08-18 |
@@ -52,8 +52,14 @@ search <query> --location-id    → rows + searchUrl
 get-filters <searchUrl>         → keys, options, what is already applied
 apply-filters <searchUrl> --set → rows + a new searchUrl
 get-page <searchUrl> --page 2   → the next page
-get-item <url>                  → the full text and the original photos
+get-item <url>                  → the full text, and the photos as files
 ```
+
+Photos are the one thing this CLI writes rather than returns. `get-item
+--images-dir <dir>` fills `<dir>/<itemId>/` with `01.jpg`, `02.jpg` … in gallery
+order and puts the paths in `images`; every other command reports `imageCount`
+and nothing more (D-059, D-061). No image is converted: the CDN answers jpeg to a
+request that asks for jpeg (F-086).
 
 One exception to "any `searchUrl` is good input for the next step":
 `apply-filters` and `move-category` accept page 1 only and reject a URL carrying
@@ -69,9 +75,9 @@ the call — you cannot see it coming from the listing.
 | Class | Whose shape it is | What it disables | Where it gets fixed |
 |---|---|---|---|
 | `get-filters`: a named filter with no `defaultTitle` | the category's | vacancies, flat rentals, garages | phases 13, 14 |
-| row decoder: an image on `www.avito.st` | the category's | résumés entirely | phase 14 |
+| row decoder: an item URL it will not accept | the category's | a jobs query mixing résumés and vacancies (F-088) | phase 14 |
 
-Three classes left this list, and each time it was wrong not about the defect
+Four classes left this list, and each time it was wrong not about the defect
 existing but about what the defect disabled.
 
 - The storefront slug with a dot in the `sellerId` decoder — the only one whose
@@ -85,6 +91,10 @@ existing but about what the defect disabled.
   shut: `bannerCheckBoxWithImage` is present on all 12 routes checked. It turned
   out to be a checkbox with no vocabulary, applied with the value `1`
   (D-041, F-062).
+- The résumé refusal was not fixed but removed: it lived in the row decoder's
+  photo reader, and the photos left the listing row (D-061, F-087). What that
+  freed is one route of Jobs, not the category — the same query mixed with
+  vacancies refuses on something else entirely (F-088).
 
 Hence how to read this table: the "what it disables" column lists where the
 class was observed, not the boundary of its effect. For each remaining class the
@@ -107,7 +117,7 @@ category counts as walked when all ten commands pass on its routes, not just
 | Animals | walked on one route (dogs) — topped up in phase 18 |
 | Transport | walked (cars, motorcycles, trucks and machinery, watercraft, cross-enduro) |
 | Real estate | fails on `get-filters` — phase 13; `search` reads rentals and sales, and the daily-rental route is not a catalog at all (F-082) |
-| Jobs | fails with two different refusals in its two halves — phase 14 |
+| Jobs | résumé listings read since D-061; `get-filters` and a mixed résumé/vacancy query still refuse, each for its own reason — phase 14 |
 | Services | walked (cleaning — all ten commands; movers, health, computer help, roofing, category root) |
 | Parts and accessories | walked (tyres, rims, wheels, car parts and by make, truck parts, mats, all eight subcategories of the root) |
 | Business and equipment | never checked — phase 17 |
@@ -133,6 +143,16 @@ Cross-cutting. Risks specific to one command are in its domain file.
 - A safe request rate has never been measured, and the fixed gaps between
   requests were removed (D-035). The first candidate measurement turned out to
   be a refusal on the page past the last one, not a rate limit (F-061).
+- **The SSR catalog carries only twenty complete cards of the fifty it returns.**
+  Past index 20 the card arrives without `iva` and without `images`, so
+  `descriptionPreview`, `location`, `sellerName` and `imageCount` are `null` on
+  thirty of fifty rows — for `get-page`, `move-category` and a `search` with no
+  geo argument. The same page through the items API is complete, which is why
+  `apply-filters` and a geo `search` are unaffected (F-089). Nothing returns a
+  wrong value — `imageCount` says "not sent" rather than zero (D-062) — but half
+  of a `get-page` page is now thinner than the same page from `apply-filters`,
+  and the `get-page` fixture refuses it. Both the fixture and the question
+  "should these three commands read the API instead" are open.
 - **`price` still does not say what it counts.** A floor travels as `minPrice`
   and a table as `hasPriceList` (D-056), but a rate does not: «150 ₽ за м²» is
   `price: 150`, the unit sits in the payload and in no column (F-077). Nothing

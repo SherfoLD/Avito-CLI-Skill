@@ -119,6 +119,14 @@ the old pathname.
   the search index's and it disagrees with the one the listing page prints
   (F-081), so the caller who needs the prices reads them with `get-item`.
 
+- **F-088 — a jobs query refuses on a card URL, not on a photo.** `search "резюме
+  продавец" --location-id 637640` ends with `Avito catalog contains an invalid
+  item URL` (2026-08-18), while `search "продавец"` on the same city returns rows
+  and `get-page` on `/moskva/rezume?q=продавец` decodes its fifty. Which card
+  carries the URL is not established: the route that would show it answered with
+  an access challenge, and a challenge is a full stop. So this is a second jobs
+  class, separate from the photo one that left with D-061 (F-087), and unowned
+  until someone replays it.
 - **F-082 — the daily-rental route is a different product, not an empty
   category.** `/moskva/kvartiry/sdam/posutochno` answers `200` with
   «Авито Путешествия» in the title and carries no `script[data-mfe-state]` at

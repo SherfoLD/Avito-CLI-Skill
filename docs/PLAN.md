@@ -4,9 +4,10 @@ Updated: 2026-08-18
 
 The future only. What is already done is in [STATUS.md](STATUS.md) and in git.
 
-Two blocks, and the first one comes first. Phases 25–29 are what one consumer
-session found by using the skill blind on a real task — a services search in
-Moscow — and every claim in them was replayed live before it was written down.
+Two blocks, and the first one comes first. Phases 25, 27, 28 and 29 are what one
+consumer session found by using the skill blind on a real task — a services
+search in Moscow — and every claim in them was replayed live before it was
+written down.
 Phases 13–21 are the category walk: the unit of work there is a top-level Avito
 category, not a command, because data shape belongs to the category. Eight of
 twelve are walked, four are not.
@@ -33,20 +34,22 @@ read. Neither is urgent and neither is free.
 
 The ceiling is 16 (D-054) and a column may be a table of flat records (D-055), so
 the phases below no longer bid against one another for a slot: the listing row is
-at 14 and `get-item` at 13. What a column still costs is meaning — what it says
+at 14 and `get-item` at 14. What a column still costs is meaning — what it says
 when the value is missing — and payload, which every row pays on every page.
 `-f table` prints a record as `[object Object]`; `attributes` has done that since
 it existed, and any second record column inherits it.
 
 ## Phase 25 — Partial degradation of an optional field
 
-The review images defect is fixed (F-075), the class behind it is not. One
-optional media field of one element killed a page of 25 reviews whose text was
-intact and was the whole point of the request.
+The class has no live instance left. The review photos it was written around are
+gone with D-061, and the one place a caller can now lose part of an answer is
+`get-item --images-dir`, where a single unreadable photo of twelve ends a call
+whose text was the point (D-059). That is the same question in a place where the
+caller can at least re-run without the flag, which is why this sits below the
+category walk rather than above it.
 
-The rule stands — a command returns correct data or throws — and the fix does not
-weaken it: a review without its photo is not a lie, it is a review with a photo
-we could not read. What is missing is a way to say that.
+The rule stands — a command returns correct data or throws. What is missing is a
+way to say "this element is here, one optional part of it is not".
 
 - [ ] Draw the line where it belongs: the shape of the response and the required
       fields of an element fail closed as today; an optional media field of one
@@ -56,33 +59,9 @@ we could not read. What is missing is a way to say that.
       the element without its photos is the fallback value this repository does
       not do. A column states it in the contract; a typed warning on stderr is
       part of no contract yet. This one is a stop-and-ask.
-- [ ] Do it in one place. Phase 21 already has the three copies of the
-      largest-variant rule with three failure contracts (`card.mjs` throws,
-      `item.mjs` returns `null`, `get-seller-reviews` throws typed) — that
-      inventory is the input to this decision, and this decision is what tells
-      the three copies apart or merges them.
-
-## Phase 26 — Images cost more than they return
-
-`imagesPreviews` is five opaque URLs per row and fifty rows per search: it
-dominates the payload of every `search`, and a text task uses none of them. The
-originals are only in `get-item` anyway, so the previews buy nothing but volume.
-
-Owner's proposal, to be discussed before it is built: drop the image columns from
-the output and add `--with-images <dir>`, where the caller passes a private tmp
-path and the command downloads the photos there, converted to png, so a human can
-look at them. The same flag for every command that has images.
-
-- [ ] Discuss it first. This is the first command that writes to disk, the first
-      that fetches a binary, and png conversion needs a decoder this repository
-      does not have. "Read-only" currently means "read-only against Avito" and
-      would come to mean something else.
-- [ ] Decide what the row says instead. A count, a file path per image, or
-      nothing — and what happens when one photo of five fails to download, which
-      is phase 25's question in another shape.
-- [ ] Decide it on the payload, not on the column budget: D-054 freed four
-      slots, and dropping the images is now worth doing only if the volume is
-      the reason.
+- [ ] Decide it against `get-item --images-dir`, which is the only carrier of
+      the class now: eleven files on disk and one refusal is a shape a column
+      could state, and today it is a refusal instead.
 
 ## Phase 27 — The seller as an entity
 
@@ -146,11 +125,41 @@ six round trips from the most common flow there is.
 - [ ] Decide what a batch does when one URL of seven fails. Fail-closed says the
       call ends; the value of the batch says the other six are still true. This is
       phase 25's line drawn on a different axis, and the two answers should not
-      contradict each other.
+      contradict each other — `--images-dir` already answers it one way for one
+      photo of twelve (D-059).
 - [ ] Count the requests before promising the saving. `get-item` falls back from
       the item API to a rendered page, and seven renders in one call is a
       different load profile from seven commands — the untested question of a
       safe request rate sits under this one.
+
+## Phase 30 — Half a page is a stub, and the API has the whole one
+
+`get-page`, `move-category` and a `search` with no geo argument read the SSR
+catalog document, which carries only its first twenty cards in full: the
+remaining thirty arrive without `iva` and without `images`, so
+`descriptionPreview`, `location`, `sellerName` and `imageCount` are `null` on
+thirty rows of fifty. The same page through `/web/1/js/items` is complete on all
+fifty, which is why `apply-filters` and a geo `search` are unaffected (F-089).
+
+So a caller gets a different listing depending on which command asked, and the
+`get-page` fixture refuses its own page — correctly.
+
+- [ ] Move `get-page` to the items API, the carrier `apply-filters` already uses,
+      and answer what that costs before writing it: `get-page`'s postconditions
+      are the canonical pathname, the preserved query pairs and `p`, and the API
+      is addressed by `categoryId` / `locationId` / `name` / `params[...]` rather
+      than by a URL. What proves "this is page 2 of that search" there is the
+      first question, not the last.
+- [ ] Decide what `move-category` does. It reads two documents, and the second is
+      the page it returns; the same reasoning applies, but its postcondition is a
+      category change rather than a page number.
+- [ ] Only then the fixture. With a complete page it goes back to requiring a
+      non-empty `descriptionPreview` on every row; if the carrier stays as it is,
+      the fixture states the split instead. Either way the fact is written down
+      before the fixture moves, not after.
+- [ ] Replay it first. Everything above rests on one route replayed on
+      2026-08-18; whether the split is always at twenty, and whether it holds for
+      a route that is not goods, is unmeasured.
 
 ## Phase 13 — Real estate
 
@@ -183,17 +192,21 @@ Confirmed on flat rentals (`снять квартиру 2 комнатную`) a
 
 ## Phase 14 — Jobs
 
-Fails entirely, but with two different refusals in the two halves of the category.
+The résumé listing reads since D-061. What is left refuses in two more places,
+and neither is the photo rule.
 
 - [ ] Vacancies: `get-filters` stops on an unnamed `multiselect` `params[110693]`
       with five values. The hidden `params[196930…196932]` and `params[198006]`
       dropped out of the list after D-037, but that did not open the category.
       Same defect as phase 13; fix it once.
-- [ ] Résumés: `search` stops on `item image URL is outside Avito image hosting`.
-      Résumé cards carry placeholders on `www.avito.st` (46 URLs out of 288 on a
-      page) while the rule admits only `(^|\.)img\.avito\.st$`. `get-filters` on
-      résumés passes. The fix lives in the shared row decoder that serves four
-      listing commands, so its price is a regression risk on all four.
+- [ ] A query that mixes the two halves refuses on a card URL: `search "резюме
+      продавец" --location-id 637640` ends with `Avito catalog contains an
+      invalid item URL` while `search "продавец"` returns rows and `get-page` on
+      `/moskva/rezume?q=продавец` decodes fifty (F-088). Find the card. The route
+      that would show it answered with a challenge on 2026-08-18, so start from a
+      cold session and stop again if one appears.
+- [ ] Then walk the rest of the ten commands on résumés — `get-page` alone is not
+      a walked category.
 - [ ] After the fixes, close the case that exists nowhere else, on vacancies:
       three single-value `params[...]` on one route (`196929` radio "Поиск по
       приоритетам", `172815` radio "Формат работы", `827` `select` "Опыт
@@ -252,14 +265,9 @@ Two things they exposed rather than solved:
       applied `user=2` visible in the `apply-filters` searchUrl, does the
       `get-filters` route carry a `price` row, is the `get-page` count the same
       as page 1's. None of those may be guessed.
-- [ ] The largest-image-variant rule exists in three copies with three failure
-      contracts: `largestImageVariant` in `src/browser/prelude/card.mjs` throws,
-      `decodeItemImages` in `src/browser/prelude/item.mjs` returns `null` for the whole
-      item, and `decodeReviewImages` in `get-seller-reviews` now throws a typed
-      error. The rule is the same in all three (F-047); only what a caller does
-      about a violation differs. Decide whether that difference is real before
-      unifying them — the browser half cannot import from Node, which is half the
-      reason there are three.
+- [ ] The `get-page` fixture is failing live, and the cause is phase 30's, not a
+      fixture's. Leave it red until the carrier changes; the fixture is right
+      until proven otherwise.
 
 ## Open questions
 

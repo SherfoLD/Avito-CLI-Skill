@@ -1,7 +1,13 @@
-// Offline checks for the buyerItem decoder, against synthetic payloads.
+// Offline checks for the buyerItem decoder, against synthetic payloads, and for the
+// photo writer, against a stubbed CDN and a temporary directory.
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
+
 import { parseHTML } from 'linkedom';
-import { loadCommand, readCommandSource, readPageSource, runner } from './harness.mjs';
+import { assertRow, loadCommand, readCommandSource, readPageSource, runner } from './harness.mjs';
 import { decodeBuyerItemInBrowser } from '../src/browser/prelude/item.mjs';
+import { assertPhotoDirectory, savePhotos } from '../src/site/photos.mjs';
 
 // The decoder parses description markup with the browser's DOMParser. A browser puts a bare
 // fragment into <body>; linkedom returns a document without one, so the shim adds the
@@ -13,12 +19,15 @@ const env = { DOMParser: class {
   }
 } };
 
-const { decodeVisiblePrice, normalizeItemUrl } = await loadCommand(
+const { COMMAND, decodeVisiblePrice, normalizeItemUrl } = await loadCommand(
   'get-item',
   ['decodeVisiblePrice', 'normalizeItemUrl'],
 );
 
 const ITEM_ID = '7950831088';
+const ITEM_URL = `https://www.avito.ru/moskva/tovary_dlya_kompyutera/ddr5_${ITEM_ID}`;
+const PHOTO_A = 'https://20.img.avito.st/image/1/first.jpg';
+const PHOTO_B = 'https://50.img.avito.st/image/1/second.jpg';
 
 // Shapes copied from the live carrier: the page prints formattedPrice.string, while
 // formattedPrice.value and item.price keep the base price.
@@ -246,6 +255,153 @@ check('the primed origin is never text-scanned for a challenge, the API response
   assert(!/looksLikeChallenge/.test(source), 'the primed page must not be scanned for challenge text');
   assert(browserSource.includes('accessChallenge: response.status === 429'), 'the API response must carry the challenge verdict');
   assert(source.includes('apiAttempt?.accessChallenge'), 'a challenged API response must stop the command');
+});
+
+/** A CDN answer: the status, the one header that decides the file, and the bytes. */
+function answer(contentType, body = 'jpeg bytes', status = 200) {
+  return {
+    status,
+    headers: { get: (name) => (name.toLowerCase() === 'content-type' ? contentType : null) },
+    arrayBuffer: async () => new TextEncoder().encode(body).buffer,
+  };
+}
+
+const temporaryDirectory = () => fs.mkdtempSync(path.join(os.tmpdir(), 'avito-photos-'));
+
+/** The item API answered, and nothing else in the command has to run. */
+const apiPage = (decodedBuyerItem) => ({
+  goto: async () => {},
+  wait: async () => {},
+  evaluateWithArgs: async () => ({
+    responseOk: true,
+    responseStatus: 200,
+    responseContentType: 'application/json',
+    decodedBuyerItem,
+  }),
+});
+
+const twoPhotos = () => decode({
+  imageUrls: [{ '1280x960': PHOTO_A }, { '1280x960': PHOTO_B }],
+});
+
+async function refusal(promise) {
+  try {
+    await promise;
+  } catch (error) {
+    return error;
+  }
+  throw new Error('the call was expected to fail and did not');
+}
+
+check('the photo directory is an argument, and is checked before anything is fetched', () => {
+  const existing = temporaryDirectory();
+  try {
+    assert(assertPhotoDirectory(existing) === existing, 'an existing absolute directory must be accepted');
+    for (const [requested, expected] of [
+      ['', /directory path/],
+      ['photos', /absolute path/],
+      [path.join(existing, 'missing'), /does not exist/],
+      [path.join(existing, 'file.txt'), /not a directory/],
+    ]) {
+      if (requested.endsWith('file.txt')) fs.writeFileSync(requested, 'x');
+      let refused = null;
+      try {
+        assertPhotoDirectory(requested);
+      } catch (error) {
+        refused = error;
+      }
+      assert(refused?.code === 'ARGUMENT' && expected.test(refused.message),
+        `${JSON.stringify(requested)} produced ${refused?.code}: ${refused?.message}`);
+    }
+  } finally {
+    fs.rmSync(existing, { recursive: true, force: true });
+  }
+});
+
+// Nothing converts an image here, so the request is what makes the file readable: the CDN
+// picks the format from `Accept` and answers jpeg to a header that asks for one (F-086).
+check('photos land in gallery order, in a directory named after the item', async () => {
+  const root = temporaryDirectory();
+  try {
+    const asked = [];
+    const files = await savePhotos([PHOTO_A, PHOTO_B], {
+      directory: root,
+      itemId: ITEM_ID,
+      fetchImpl: async (url, init) => {
+        asked.push(init.headers.accept);
+        return answer('image/jpeg', url);
+      },
+    });
+    assert(files.length === 2, `expected two files, got ${files.length}`);
+    assert(files[0] === path.join(root, ITEM_ID, '01.jpg'), `unexpected first path ${files[0]}`);
+    assert(files[1] === path.join(root, ITEM_ID, '02.jpg'), `unexpected second path ${files[1]}`);
+    assert(fs.readFileSync(files[1], 'utf8') === PHOTO_B, 'the second file holds the second photo');
+    assert(asked.every((accept) => accept === 'image/jpeg, image/png'),
+      `the request must ask for a format nothing has to convert, asked ${asked.join(' | ')}`);
+    assert(fs.readdirSync(root).length === 1, 'only the item subdirectory may be created');
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+// One photo of five is phase 25's question, and the answer here is the rule: no partial
+// gallery, and the text of the listing is one run without the flag away.
+check('anything but a photo this CLI can hand over stops the call, leaving no partial gallery', async () => {
+  const root = temporaryDirectory();
+  try {
+    const cases = [
+      [async () => answer('image/webp'), /converts an image/],
+      [async () => answer('text/html', 'nope', 404), /HTTP 404/],
+      [async () => answer('image/jpeg', ''), /came back empty/],
+      [async () => { throw new Error('socket hang up'); }, /could not be fetched: socket hang up/],
+    ];
+    for (const [fetchImpl, expected] of cases) {
+      const error = await refusal(savePhotos([PHOTO_A], { directory: root, itemId: ITEM_ID, fetchImpl }));
+      assert(error.code === 'COMMAND_EXEC' && expected.test(error.message),
+        `expected ${expected}, got ${error.code}: ${error.message}`);
+      assert(error.message.includes('photo 1 of 1'), `the refusal must name the photo, got ${error.message}`);
+      assert(fs.readdirSync(path.join(root, ITEM_ID)).length === 0, 'a refused gallery must leave no file behind');
+    }
+
+    // The URLs come out of the page, so the host rule is checked again on this side —
+    // it is the only thing standing between page output and a request of our own.
+    const foreign = await refusal(savePhotos(['https://evil.example.com/photo.jpg'], {
+      directory: root,
+      itemId: ITEM_ID,
+      fetchImpl: async () => answer('image/jpeg'),
+    }));
+    assert(/outside Avito photo hosting/.test(foreign.message), `unexpected refusal ${foreign.message}`);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+check('get-item writes the gallery only when it was asked to, and the row says which', async () => {
+  const root = temporaryDirectory();
+  const realFetch = globalThis.fetch;
+  try {
+    let requests = 0;
+    globalThis.fetch = async (url) => {
+      requests += 1;
+      return answer('image/jpeg', url);
+    };
+
+    const [written] = await COMMAND.run(apiPage(twoPhotos()), { url: ITEM_URL, 'images-dir': root });
+    const row = assertRow(COMMAND, written);
+    assert(row.imageCount === 2, `expected two photos, got ${row.imageCount}`);
+    assert(row.images.length === 2 && row.images[0] === path.join(root, ITEM_ID, '01.jpg'),
+      `unexpected paths ${JSON.stringify(row.images)}`);
+    assert(requests === 2, `expected one request per photo, got ${requests}`);
+
+    const [plain] = await COMMAND.run(apiPage(twoPhotos()), { url: ITEM_URL });
+    const plainRow = assertRow(COMMAND, plain);
+    assert(plainRow.images === null, 'without the flag the row states that nothing was written');
+    assert(plainRow.imageCount === 2, 'the count is read from the item either way');
+    assert(requests === 2, 'a run without the flag must not touch the photo CDN');
+  } finally {
+    globalThis.fetch = realFetch;
+    fs.rmSync(root, { recursive: true, force: true });
+  }
 });
 
 export default await run('item decoder (browser-side function)');

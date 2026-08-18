@@ -321,7 +321,7 @@ const ROW = {
   apiDescriptionPreview: 'Новый, запечатан',
   apiPublished: null,
   apiSeller: { name: 'AMD INTEL', rating: 5, reviewsCount: 2015 },
-  apiImages: [],
+  apiImageCount: 0,
   apiReserved: false,
   apiUrl: `${ORIGIN}/moskva/telefony/redmi_8288791269`,
 };

@@ -176,33 +176,6 @@ export function itemSeller(item) {
 }
 
 /**
- * Avito ships every card photo in several sizes, each with its own opaque URL,
- * so a bigger variant cannot be derived from a smaller one. Take the largest
- * one offered instead of naming a size: a renamed key then costs nothing, while
- * an entry carrying no size at all is schema drift, not a photo-less listing
- * (D-023).
- */
-export function largestImageVariant(variants) {
-  if (!variants || typeof variants !== 'object' || Array.isArray(variants)) {
-    throw new Error('item image variants are malformed');
-  }
-  let best = null;
-  let bestArea = -1;
-  for (const [key, value] of Object.entries(variants)) {
-    const url = cleanText(value);
-    const size = /^(\d+)x(\d+)$/.exec(key);
-    if (!url || !size) continue;
-    const area = Number(size[1]) * Number(size[2]);
-    if (area > bestArea) {
-      bestArea = area;
-      best = url;
-    }
-  }
-  if (!best) throw new Error('item image carries no recognizable size variant');
-  return best;
-}
-
-/**
  * Avito prints "Забронировано" on a reserved card. The machine-readable carrier
  * is the flat boolean the catalog ships with every item; nothing here infers
  * reservation from badges or card text. A card that stops carrying the boolean
@@ -213,24 +186,20 @@ export function itemReserved(item) {
   return typeof item?.isReserved === 'boolean' ? item.isReserved : null;
 }
 
-/** A listing without photos stays visible as an empty array (F-047). */
-export function itemImages(item) {
-  if (item?.images == null) return [];
+/**
+ * How many photos the card carries. Nothing here reads a photo URL: the sizes
+ * are Avito's vocabulary, the originals are `get-item`'s, and a card whose
+ * placeholder is served from outside the photo CDN — every résumé — stays
+ * readable because of it.
+ *
+ * An empty list is a listing with no photos (F-047); the key missing altogether
+ * is Avito not sending the block, which is every card past the twentieth of the
+ * SSR catalog (F-089). Those are different answers and 0 is only the first.
+ */
+export function itemImageCount(item) {
+  if (item?.images == null) return null;
   if (!Array.isArray(item.images)) throw new Error('item images are malformed');
-  const result = [];
-  const seen = new Set();
-  for (const image of item.images) {
-    const source = largestImageVariant(image);
-    const parsed = new URL(source);
-    if (parsed.protocol !== 'https:' || !/(^|\.)img\.avito\.st$/.test(parsed.hostname)) {
-      throw new Error('item image URL is outside Avito image hosting');
-    }
-    if (!seen.has(parsed.href)) {
-      seen.add(parsed.href);
-      result.push(parsed.href);
-    }
-  }
-  return result;
+  return item.images.length;
 }
 
 /**
@@ -284,7 +253,7 @@ export function decodeCatalogRows(catalog, env) {
       apiDescriptionPreview: itemDescription(item, env),
       apiPublished: itemPublished(item),
       apiSeller: itemSeller(item),
-      apiImages: itemImages(item),
+      apiImageCount: itemImageCount(item),
       apiReserved: itemReserved(item),
       apiUrl: itemUrl,
     });

@@ -188,52 +188,21 @@ check('rows decode the visible review, and an unscored review keeps score null',
   assert(unscored.answered === '21 октября 2022', 'the answer date was lost');
 });
 
-check('review photos keep the high-resolution Avito variants and reject foreign hosts', async () => {
-  // `originalSize` is Avito's own companion metadata beside the size keys (F-075): the
-  // photo is read past it, and its structure is not a value the decoder may stringify.
+// Photos left this command with the size vocabulary they needed: a review that still
+// ships them decodes as text, and the key is passed over rather than refused.
+check('a review that ships photos decodes without them', async () => {
   const withImages = reviewEntry({
     images: [
       {
         '1280x960': 'https://50.img.avito.st/image/1/big.jpg',
-        '640x480': 'https://50.img.avito.st/image/1/small.jpg',
         originalSize: { width: 720, height: 960 },
       },
-      { '640x480': 'https://20.img.avito.st/image/1/only-small.jpg', originalSize: { width: 640, height: 480 } },
     ],
   });
   const page = makePage(defaultResponder(feedPayload({ entries: [scoreBlock(), withImages] })));
   const [row] = await COMMAND.run(page, { itemUrl: ITEM_URL });
-  assert(row.images.length === 2, `expected two photos, got ${row.images.length}`);
-  assert(row.images[0] === 'https://50.img.avito.st/image/1/big.jpg', 'the 1280x960 variant must win');
-  assert(row.images[1] === 'https://20.img.avito.st/image/1/only-small.jpg', 'the 640x480 fallback was lost');
-
-  // Avito owns the size vocabulary: the largest offered variant wins, a renamed key still
-  // works, and keys that are not sizes at all fail closed instead of dropping the photo.
-  const renamed = reviewEntry({ images: [{ '1440x1080': 'https://50.img.avito.st/image/1/renamed.jpg' }] });
-  const renamedPage = makePage(defaultResponder(feedPayload({ entries: [scoreBlock(), renamed] })));
-  const [renamedRow] = await COMMAND.run(renamedPage, { itemUrl: ITEM_URL });
-  assert(renamedRow.images[0].endsWith('renamed.jpg'), 'a renamed size key must still be readable');
-
-  const unusable = reviewEntry({ images: [{ thumb: 'https://50.img.avito.st/image/1/x.jpg' }] });
-  const unusablePage = makePage(defaultResponder(feedPayload({ entries: [unusable] })));
-  const unusableError = await failure(COMMAND.run(unusablePage, { itemUrl: ITEM_URL }));
-  assert(unusableError.code === 'COMMAND_EXEC', `a photo with no size variant produced ${unusableError.code}`);
-
-  // A size key holding a structure is not a URL, and `[object Object]` must not become one.
-  const structured = reviewEntry({ images: [{ '1280x960': { url: 'https://50.img.avito.st/image/1/x.jpg' } }] });
-  const structuredPage = makePage(defaultResponder(feedPayload({ entries: [structured] })));
-  const structuredError = await failure(COMMAND.run(structuredPage, { itemUrl: ITEM_URL }));
-  assert(structuredError.code === 'COMMAND_EXEC', `a structured size value produced ${structuredError.code}`);
-
-  const notAnObject = reviewEntry({ images: [['https://50.img.avito.st/image/1/x.jpg']] });
-  const notAnObjectPage = makePage(defaultResponder(feedPayload({ entries: [notAnObject] })));
-  const notAnObjectError = await failure(COMMAND.run(notAnObjectPage, { itemUrl: ITEM_URL }));
-  assert(notAnObjectError.code === 'COMMAND_EXEC', `an image that is not an object produced ${notAnObjectError.code}`);
-
-  const foreign = reviewEntry({ images: [{ '1280x960': 'https://evil.example.com/photo.jpg' }] });
-  const badPage = makePage(defaultResponder(feedPayload({ entries: [foreign] })));
-  const error = await failure(COMMAND.run(badPage, { itemUrl: ITEM_URL }));
-  assert(error.code === 'COMMAND_EXEC', `a foreign image host produced ${error.code}`);
+  assert(!('images' in row), 'a review row must carry no photo column');
+  assert(row.text.length > 0, 'the review text must survive a payload that carries photos');
 });
 
 check('a seller without a rating is an empty result, not an empty success', async () => {

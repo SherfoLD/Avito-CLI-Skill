@@ -9,7 +9,6 @@
 import { CommandExecutionError, EmptyResultError } from '../runtime/errors.mjs';
 import {
   count,
-  httpsUrl,
   idString,
   itemUrl,
   searchUrl,
@@ -27,6 +26,8 @@ import {
  *   published      a card can arrive without the stamp Avito sorts by (F-059)
  *   sellerName     an anonymous session gets no seller-info step for a private
  *                  seller, while the flat rating survives (F-049, D-028)
+ *   imageCount     the SSR catalog sends no photo block past its twentieth card,
+ *                  which is not a listing without photos (F-089)
  */
 export const LISTING_ROW = z.strictObject({
   itemId: idString(),
@@ -44,7 +45,8 @@ export const LISTING_ROW = z.strictObject({
   sellerName: text().nullable(),
   sellerRating: z.number().min(0).max(5).nullable(),
   sellerReviewsCount: count().nullable(),
-  imagesPreviews: z.array(httpsUrl()),
+  imageCount: count().nullable()
+    .meta({ note: 'null where Avito sent no photo block at all (F-089); the photos themselves are get-item --images-dir' }),
   url: itemUrl(),
   searchUrl: searchUrl(),
 });
@@ -66,7 +68,7 @@ export function listingRows(apiRows, resultSearchUrl) {
     sellerName: row.apiSeller.name,
     sellerRating: row.apiSeller.rating,
     sellerReviewsCount: row.apiSeller.reviewsCount,
-    imagesPreviews: row.apiImages,
+    imageCount: row.apiImageCount,
     url: row.apiUrl,
     searchUrl: resultSearchUrl,
   }));

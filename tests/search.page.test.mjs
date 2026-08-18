@@ -59,7 +59,7 @@ check('two hops decode SSR rows with the visible price, metro line and card text
   assert(row.apiLocation === 'Китай-город, до 5 мин.', `location should match the card, got ${row.apiLocation}`);
   assert(row.apiDescriptionPreview.startsWith('Авитодоставка открыта'), 'description not decoded');
   assert(row.apiSeller.name === 'AMD INTEL' && row.apiSeller.reviewsCount === 2015, 'seller not decoded');
-  assert(row.apiImages.length === 2 && row.apiUrl === `${ORIGIN}/moskva/tovary_dlya_kompyutera/ddr5_7881841669`, 'images/url not decoded');
+  assert(row.apiImageCount === 2 && row.apiUrl === `${ORIGIN}/moskva/tovary_dlya_kompyutera/ddr5_7881841669`, 'photo count/url not decoded');
 });
 
 check('a card without a bonus price or geo reference falls back to base fields', async () => {
@@ -242,54 +242,64 @@ check('every listing Avito put on the page is returned, never a local slice', as
   assert(result.resultRows.length === 50, `expected the whole page, got ${result.resultRows.length}`);
 });
 
-// The size keys belong to Avito, so the decoder takes the largest variant instead of
-// naming one. Until 2026-08-14 it read "208x208" only and silently returned no photos at
-// all if that key were ever renamed (F-047).
-check('the largest photo variant wins and an unknown size set fails closed', async () => {
+// A row carries how many photos the card has and not one photo URL: the sizes are
+// Avito's vocabulary and the originals belong to `get-item`. A card whose photo is
+// served from outside the photo CDN — every résumé — is readable because of that (F-087).
+check('the row counts the card photos, wherever they are hosted', async () => {
   const { fetch } = makeFetch([
     { match: `${ORIGIN}/?q=`, body: bootstrapHtml(redirectState(CANONICAL)) },
     { match: `${ORIGIN}/moskva/tovary`, body: bootstrapHtml(catalogState()), responseUrl: ORIGIN + CANONICAL },
   ]);
   const result = await runEvaluate(baseArgs(), fetch);
   assert(result.success === true, `failed: ${result.message}`);
-  assert(result.resultRows[0].apiImages[0].endsWith('one-636.jpg'),
-    `the largest variant must win, got ${result.resultRows[0].apiImages[0]}`);
+  assert(result.resultRows[0].apiImageCount === 2,
+    `the card ships two photos, got ${result.resultRows[0].apiImageCount}`);
 
-  const renamed = [{ '224x224': 'https://50.img.avito.st/image/1/renamed.jpg' }];
-  const drifted = makeFetch([
+  const elsewhere = makeFetch([
     { match: `${ORIGIN}/?q=`, body: bootstrapHtml(redirectState(CANONICAL)) },
     {
       match: `${ORIGIN}/moskva/tovary`,
-      body: bootstrapHtml(catalogState({ items: [item({ images: renamed })] })),
+      body: bootstrapHtml(catalogState({
+        items: [item({ images: [{ '208x208': 'https://www.avito.st/s/common/resume-stub.svg' }] })],
+      })),
       responseUrl: ORIGIN + CANONICAL,
     },
   ]);
-  const renamedResult = await runEvaluate(baseArgs(), drifted.fetch);
-  assert(renamedResult.success === true, 'a renamed size key must still be readable');
-  assert(renamedResult.resultRows[0].apiImages[0].endsWith('renamed.jpg'), 'the renamed variant must be used');
+  const elsewhereResult = await runEvaluate(baseArgs(), elsewhere.fetch);
+  assert(elsewhereResult.success === true, 'a photo outside the CDN must no longer refuse the page');
+  assert(elsewhereResult.resultRows[0].apiImageCount === 1, 'the photo must still be counted');
 
-  const unusable = makeFetch([
+  const unsent = makeFetch([
     { match: `${ORIGIN}/?q=`, body: bootstrapHtml(redirectState(CANONICAL)) },
     {
       match: `${ORIGIN}/moskva/tovary`,
-      body: bootstrapHtml(catalogState({ items: [item({ images: [{ thumb: 'https://50.img.avito.st/image/1/x.jpg' }] })] })),
+      body: bootstrapHtml(catalogState({ items: [item({ images: null })] })),
       responseUrl: ORIGIN + CANONICAL,
     },
   ]);
-  // A photo whose keys are not sizes at all is schema drift: the decoder must stop the
-  // command instead of quietly reporting a listing with no photos.
+  const unsentResult = await runEvaluate(baseArgs(), unsent.fetch);
+  assert(unsentResult.resultRows[0].apiImageCount === null,
+    'a card Avito sent without its photo block must not count as zero (F-089)');
+
+  const malformed = makeFetch([
+    { match: `${ORIGIN}/?q=`, body: bootstrapHtml(redirectState(CANONICAL)) },
+    {
+      match: `${ORIGIN}/moskva/tovary`,
+      body: bootstrapHtml(catalogState({ items: [item({ images: 'one photo' })] })),
+      responseUrl: ORIGIN + CANONICAL,
+    },
+  ]);
+  // A photo list that is not a list is schema drift: the decoder must stop the command
+  // instead of reporting a listing with no photos.
   let stopped = false;
   try {
-    await runEvaluate(baseArgs(), unusable.fetch);
+    await runEvaluate(baseArgs(), malformed.fetch);
   } catch (error) {
-    stopped = /recognizable size variant/.test(String(error?.message ?? error));
+    stopped = /images are malformed/.test(String(error?.message ?? error));
   }
-  assert(stopped, 'a photo with no size variant must fail closed, not return no photos');
+  assert(stopped, 'a malformed photo list must fail closed, not count zero');
 });
 
-// The reserved marker is the flat boolean Avito puts on every catalog card, not a badge or
-// a piece of card text. The decoder reads it for every row and reports an absent key as
-// null instead of "not reserved", so the command can refuse the filter later (F-048).
 check('the reservation flag is decoded from the card, and an absent key stays null', async () => {
   const items = [
     item({ id: '8329291056', isReserved: true }),

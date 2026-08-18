@@ -26,6 +26,11 @@ assembled by hand.
   the catalog page, which pulls scripts, images and telemetry.
 - An anonymous direct GET from Node answers `HTTP 429` with `server: QRATOR` and
   a CAPTCHA. The browser context is the only path.
+- The photo CDN is the exception, and only for photos: `*.img.avito.st` answers
+  `200` to a plain Node request with no cookies and no referer, and sends
+  `access-control-allow-origin: *`. It also negotiates the format on `Accept` —
+  a browser's header returns `image/webp`, `image/jpeg` returns jpeg — so a
+  client that needs a widely readable file asks for one instead of converting it.
 
 ## Known endpoints
 

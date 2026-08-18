@@ -16,12 +16,12 @@ import {
 import { defineCommand } from '../runtime/command.mjs';
 import {
   count,
-  httpsUrl,
   idString,
   itemUrl,
   text,
   z,
 } from '../runtime/schema.mjs';
+import { assertPhotoDirectory, savePhotos } from '../site/photos.mjs';
 import { readItemApi, readItemPage } from '../browser/commands/get-item.mjs';
 
 // Origin priming only: the body is never read. Rendering the catalog would pull its
@@ -89,7 +89,7 @@ function asExecutionError(error, action) {
   throw new CommandExecutionError(`${action} failed: ${message}`);
 }
 
-function toOutputRow(decodedItem, normalizedUrl) {
+function toOutputRow(decodedItem, normalizedUrl, imageFiles) {
   return {
     itemId: decodedItem.decodedItemId,
     title: decodedItem.decodedTitle,
@@ -102,7 +102,8 @@ function toOutputRow(decodedItem, normalizedUrl) {
     sellerName: decodedItem.decodedSellerName,
     sellerRating: decodedItem.decodedSellerRating,
     sellerReviewsCount: decodedItem.decodedSellerReviewsCount,
-    images: decodedItem.decodedImages,
+    imageCount: decodedItem.decodedImages.length,
+    images: imageFiles,
     url: normalizedUrl,
   };
 }
@@ -127,12 +128,17 @@ export function describeApiFailure(apiAttempt) {
 
 export default defineCommand({
   name: 'get-item',
-  description: 'Get one listing in full: the complete description, the original-size photos and a service price list, none of which a search row carries',
+  description: 'Get one listing in full: the complete description, a service price list and, on request, the original photos written to a directory you name — none of which a search row carries',
   access: 'read',
-  example: 'avito get-item <url> -f json',
+  example: 'avito get-item <url> --images-dir /tmp/photos -f json',
   domain: 'www.avito.ru',
   args: [
     { name: 'url', type: 'string', required: true, positional: true, help: 'Full https://www.avito.ru item URL from avito search' },
+    {
+      name: 'images-dir',
+      type: 'string',
+      help: 'Existing absolute directory to write the photos into; the command creates <dir>/<itemId>/ and fills it with 01.jpg, 02.jpg … in gallery order',
+    },
   ],
   // The listing row of `search`, minus what belongs to a card (`minPrice`,
   // `hasPriceList`, `searchUrl`) and plus what only the listing page has: the
@@ -154,11 +160,25 @@ export default defineCommand({
     sellerName: text().nullable(),
     sellerRating: z.number().min(0).max(5).nullable(),
     sellerReviewsCount: count().nullable(),
-    images: z.array(httpsUrl()),
+    imageCount: count().nullable()
+      .meta({ note: 'null when the answer came from the visible page, which does not open the gallery' }),
+    // The two empties are different answers, as with `priceList`.
+    images: z.array(text()).nullable()
+      .meta({ note: 'files written by --images-dir, gallery order; null when it was not passed, [] when the listing has no photos' }),
     url: itemUrl(),
   }),
   run: async (page, args) => {
     const { normalizedUrl, normalizedItemId, itemApiUrl } = normalizeItemUrl(args.url);
+    const photoDirectory = args['images-dir'] == null ? null : assertPhotoDirectory(args['images-dir']);
+
+    // The photos are fetched once the item is decoded, and only then: a run
+    // without the flag makes no request to the photo CDN at all.
+    const withPhotos = async (decodedItem) => {
+      const imageFiles = photoDirectory === null
+        ? null
+        : await savePhotos(decodedItem.decodedImages, { directory: photoDirectory, itemId: normalizedItemId });
+      return [toOutputRow(decodedItem, normalizedUrl, imageFiles)];
+    };
 
     let apiContextReady = false;
     let apiFailureReason = 'Avito API context was unavailable';
@@ -202,7 +222,7 @@ export default defineCommand({
         && !apiAttempt.redirectUrl
         && apiAttempt.decodedBuyerItem
       ) {
-        return [toOutputRow(apiAttempt.decodedBuyerItem, normalizedUrl)];
+        return withPhotos(apiAttempt.decodedBuyerItem);
       }
       apiFailureReason = describeApiFailure(apiAttempt);
     }
@@ -227,7 +247,7 @@ export default defineCommand({
       );
     }
     if (fallbackObserved?.decodedHydrationItem) {
-      return [toOutputRow(fallbackObserved.decodedHydrationItem, normalizedUrl)];
+      return withPhotos(fallbackObserved.decodedHydrationItem);
     }
     if (fallbackObserved?.itemUnavailable) {
       throw new EmptyResultError('avito get-item', `Item ${normalizedItemId} is unavailable`);
@@ -252,7 +272,11 @@ export default defineCommand({
       sellerName: null,
       sellerRating: null,
       sellerReviewsCount: null,
-      images: [],
+      // The gallery lives behind the viewer this path deliberately does not open,
+      // so the count is unread rather than zero and no file is written even when
+      // a directory was named.
+      imageCount: null,
+      images: null,
       url: normalizedUrl,
     }];
   },

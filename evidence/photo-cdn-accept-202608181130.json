@@ -1,0 +1,44 @@
+{
+  "what": "Avito photo CDN, format negotiation and anonymous access",
+  "observed": "2026-08-18",
+  "how": "curl from the shell, no cookies, no browser session",
+  "url": "https://50.img.avito.st/image/1/1._NAk_La4UDkSS9I0ULvsiBxcUj-aXdIvElBSO5RVWDOS.BLpu-9K9pckxhduTFVaIlKRzwcv_RPv5Rw3SHja3e-s",
+  "responses": [
+    {
+      "request_accept": null,
+      "response": {
+        "status": "HTTP/2 200",
+        "server": "nginx",
+        "content-type": "image/jpeg",
+        "content-length": "98300",
+        "cache-control": "public,max-age=7776000",
+        "vary": "Origin",
+        "access-control-allow-origin": "*"
+      }
+    },
+    {
+      "request_accept": "image/avif,image/webp,image/apng,*/*",
+      "response": {
+        "status": "HTTP/2 200",
+        "server": "nginx",
+        "content-type": "image/webp",
+        "content-length": "70046",
+        "cache-control": "public,max-age=7776000",
+        "vary": "Origin",
+        "access-control-allow-origin": "*"
+      }
+    },
+    {
+      "request_accept": "image/jpeg, image/png",
+      "response": {
+        "status": "HTTP/2 200",
+        "server": "nginx",
+        "content-type": "image/jpeg",
+        "content-length": "101404",
+        "cache-control": "public,max-age=7776000",
+        "vary": "Origin",
+        "access-control-allow-origin": "*"
+      }
+    }
+  ]
+}
