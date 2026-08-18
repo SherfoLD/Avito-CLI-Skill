@@ -23,6 +23,14 @@ documents, which is why it is here and not there.
 | `filters.mjs` | the `filtersV2` tree: the walk, and the options of one filter |
 | `rubricator.mjs` | what a node of the category sidebar means (D-046) |
 | `card.mjs` | the catalog-card decoder shared by the four listing commands |
+| `items.mjs` | the items API: building the request from a `searchCore`, reading the answer, and what must have survived it |
+
+`prelude/items.mjs` is the other half of what every listing command does. The
+four of them read rows from `/web/1/js/items` and postconditions from the SSR
+document (D-063), and two of them also refine the request — `search` replaces the
+location and adds geo, `apply-filters` replaces `params[...]` and the short keys.
+So the carry, the request and the preserved-field checks are shared, and what
+each command overrides on top stays in its own file.
 
 `prelude/filters.mjs` is the one file with two kinds of caller. `get-filters` and
 `apply-filters` read the tree as data; `get-page` and `move-category` walk it

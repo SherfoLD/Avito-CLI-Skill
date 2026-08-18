@@ -16,7 +16,7 @@ what `move-category --to` accepts.
 
 `move-category <searchUrl> --to <name>` moves the listing into another category
 by its visible name and returns that category's rows. Accepts page 1. Plus
-`--remove-reserved`. Budget: 3 requests.
+`--remove-reserved`. Budget: 4 requests.
 
 The move changes both the listing and the set of available filters, so the
 previous category's `params[...]` are invalid afterwards and `get-filters` must
@@ -39,7 +39,10 @@ several same-named candidates both yield an `ArgumentError` listing the visible
 names. Silently picking the first row is forbidden. The target URL is never
 constructed — only taken from Avito's own state. After the move, the target's SSR
 document is read and cross-checked fail-closed: the route must be the one Avito
-named, the page must be the first, the location must be unchanged.
+named, the page must be the first, the location must be unchanged. That document
+proves the move; the rows of the category it landed on come from the items API,
+addressed by its own `searchCore` and `context` (D-063). So a move costs three
+same-origin calls: the sidebar, the target, its rows.
 
 Query preservation is checked twice: by the URL before the move and by
 `searchCore.query` of the response after it. The URL promises, the state proves.

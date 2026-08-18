@@ -20,24 +20,39 @@ it changes whenever that build does.
 On this site the ranking is already settled by evidence, and you should have a
 reason before departing from it:
 
-- The SSR bootstrap is the primary carrier for listings, filters and the category
-  tree. One document fetch gives rows, postconditions, the filter schema and the
-  navigation tree at once.
+- The SSR bootstrap is the primary carrier for postconditions, filters and the
+  category tree. One document fetch gives the canonical URL, `searchCore`, the
+  filter schema and the navigation tree at once, and it is the only carrier that
+  can be addressed by a URL at all.
+- **Rows are the exception, and it is measured.** That same document's
+  `catalog.items` is complete only in its first twenty of fifty (F-089), so the
+  four listing commands read the postconditions from it and the rows from
+  `/web/1/js/items` (D-063). The API is not a substitute for the document — it is
+  asked in the terms of a `searchCore` only the document has (F-090).
 - The seven internal JSON endpoints are `internal-unstable` by declaration. They
   are validated fail-closed, called once, and never retried.
 - The visible DOM is the final fallback in `get-item` and nowhere else.
 
 ## Why the ranking is not "API first"
 
-An internal endpoint is not more reliable for being JSON. On this site the
-document carries strictly more than the endpoint does, at the same cost, and
-`/web/1/js/items` is the one that answers `429`. "Fetch the JSON API" would have
-been the natural instinct and it would have been the fragile choice.
+An internal endpoint is not more reliable for being JSON. The document is what
+has a contract with a human reader, it is what a URL addresses, and it is what
+proves a request did what was asked. "Fetch the JSON API" is the natural instinct
+and it is still the wrong default.
 
-The one thing an internal endpoint does buy is applying state that a URL cannot
-express. A city cannot be applied by editing a URL — the pathname wins and
-`locationId` is silently ignored — so geo has to go through the items API. That
-is a reason. "It returns JSON" is not.
+Two things an internal endpoint does buy here, and both are reasons a claim about
+JSON is not:
+
+- **State a URL cannot express.** A city cannot be applied by editing a URL — the
+  pathname wins and `locationId` is silently ignored — so geo has to go through
+  the items API.
+- **A field the document truncates.** The document's catalog stops being complete
+  after twenty cards, and the endpoint answers with all fifty (F-089). A ranking
+  of carriers rests on what each one actually carries, so it is re-measured by
+  reading both side by side rather than inherited — this one held for everything
+  in the document except its rows.
+
+Neither reason retires the document. Both add a second call to it.
 
 ## Postconditions belong to the carrier note
 

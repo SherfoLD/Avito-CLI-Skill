@@ -7,9 +7,9 @@ How each command is built is in its domain file, [docs/areas/](areas/).
 
 ## Commands
 
-Ten commands, all read-only. `npm run check` is green; the offline suite is 216
-checks across sixteen suites. Nine of the ten fixtures pass live against the
-descriptor schemas (D-048, D-049); `get-page` does not — see the risks.
+Ten commands, all read-only. `npm run check` is green; the offline suite is 219
+checks across sixteen suites. All ten fixtures pass live against the descriptor
+schemas (D-048, D-049).
 
 The row contract is a `z.strictObject` in each descriptor: `columns` is derived
 from it, the CLI parses every row through it before printing, the offline suites
@@ -34,7 +34,7 @@ interruption left is the one approval prompt per connection (F-071, F-073).
 | Command | Domain | Strict live verify |
 |---|---|---|
 | `search` | [search](areas/search.md) | 2026-08-18 |
-| `get-page` | [search](areas/search.md) | fails 2026-08-18 (F-089) |
+| `get-page` | [search](areas/search.md) | 2026-08-18 |
 | `get-filters` | [filters](areas/filters.md) | 2026-08-16 |
 | `apply-filters` | [filters](areas/filters.md) | 2026-08-18 |
 | `get-categories` | [categories](areas/categories.md) | 2026-08-18 |
@@ -43,6 +43,11 @@ interruption left is the one approval prompt per connection (F-071, F-073).
 | `get-coords` | [geo](areas/geo.md) | 2026-08-15 |
 | `get-item` | [item](areas/item.md) | 2026-08-18 |
 | `get-seller-reviews` | [item](areas/item.md) | 2026-08-17 |
+
+Every command that returns a catalog page reads two carriers: the SSR document
+for the postconditions and the items API for the rows, because that document's
+catalog is complete only in its first twenty cards (F-089, D-063). A page is
+fifty complete rows on all four, and the same fifty whichever command asked.
 
 The consumer flow is one chain around one carrier of state, the canonical `searchUrl`:
 
@@ -143,16 +148,6 @@ Cross-cutting. Risks specific to one command are in its domain file.
 - A safe request rate has never been measured, and the fixed gaps between
   requests were removed (D-035). The first candidate measurement turned out to
   be a refusal on the page past the last one, not a rate limit (F-061).
-- **The SSR catalog carries only twenty complete cards of the fifty it returns.**
-  Past index 20 the card arrives without `iva` and without `images`, so
-  `descriptionPreview`, `location`, `sellerName` and `imageCount` are `null` on
-  thirty of fifty rows — for `get-page`, `move-category` and a `search` with no
-  geo argument. The same page through the items API is complete, which is why
-  `apply-filters` and a geo `search` are unaffected (F-089). Nothing returns a
-  wrong value — `imageCount` says "not sent" rather than zero (D-062) — but half
-  of a `get-page` page is now thinner than the same page from `apply-filters`,
-  and the `get-page` fixture refuses it. Both the fixture and the question
-  "should these three commands read the API instead" are open.
 - **`price` still does not say what it counts.** A floor travels as `minPrice`
   and a table as `hasPriceList` (D-056), but a rate does not: «150 ₽ за м²» is
   `price: 150`, the unit sits in the payload and in no column (F-077). Nothing

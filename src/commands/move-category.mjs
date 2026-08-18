@@ -25,6 +25,7 @@ const MAX_SIDE_NODES = 200;
 const MAX_DEPTH = 20;
 const MAX_NAME_LENGTH = 300;
 const MAX_PARAMS = 400;
+const MAX_PARAM_VALUES = 2000;
 
 function normalizeCatalogUrl(value) {
   const raw = String(value ?? '').trim();
@@ -141,6 +142,7 @@ export default defineCommand({
         MAX_DEPTH,
         MAX_NAME_LENGTH,
         MAX_PARAMS,
+        MAX_PARAM_VALUES,
       });
     } catch (error) {
       asExecutionError(error, 'moving the Avito category');

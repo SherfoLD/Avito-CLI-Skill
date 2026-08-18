@@ -373,7 +373,6 @@ export default defineCommand({
     // moved to `avito apply-filters`, where they are ordinary filter keys next to
     // params[...] (D-031).
     const refinement = {
-      apply: requestedLocationId != null || geoMode != null || requestedRadius != null,
       locationRequested: requestedLocationId != null,
       locationId: requestedLocationId,
       geoMode,

@@ -29,12 +29,27 @@ is closed, and nothing here works around that.
 
 ## Carrier of state
 
-A search route hands over everything needed in one SSR document:
+A search route hands over almost everything in one SSR document:
 `script[type="mime/invalid"][data-mfe-state="true"]` → `loaderData.data`. From
-there: `catalog.items` (rows), `searchCore` (postconditions), `filtersV2` (the
-filter schema), `rubricators.side.nodes` (the category tree).
+there: `searchCore` (postconditions), `filtersV2` (the filter schema),
+`rubricators.side.nodes` (the category tree), `context` (the opaque string that
+addresses the items API), and `catalog.items` — which is the one thing it does
+not hand over whole, being complete only in its first twenty cards (F-089).
 
-After hydration the live DOM **does not contain** that carrier — neither
+So the four commands that return a catalog page read two carriers, and which one
+answers what is fixed (D-063):
+
+| Carrier | Answers | Read by |
+|---|---|---|
+| SSR document | the search: `searchCore`, `filtersV2`, the sidebar, the canonical URL | all four, first |
+| items API `/web/1/js/items` | the rows, all fifty complete | all four, second |
+
+The API is not addressable on its own — it is asked in the terms of a
+`searchCore` only a document has (F-090) — so this is not a carrier swap. It is
+one document read followed by one API call, and the document keeps every
+postcondition it ever proved.
+
+After hydration the live DOM **does not contain** the document carrier — neither
 `script[data-mfe-state]` nor `searchCore`. The schema cannot be read from a
 loaded document, only from a separate same-origin SSR fetch.
 
@@ -396,20 +411,48 @@ schema (D-053).
   seller's rating. What `iva` carries goes with it: `descriptionPreview`,
   `location` and `sellerName` come back `null`, and `imageCount` is `null` rather
   than `0` (D-062). `extraBlockItems` is empty, so the stubs are catalog rows and
-  not recommendations, and it is not a depth effect: page 1 of the same route
-  splits at 20 exactly like page 2, cache-busted and after the `?q=` hop alike.
-  So it is the carrier that differs, not the command — the same request through
-  `/web/1/js/items` answers with all fifty complete:
+  not recommendations.
 
-  | carrier | commands | tail of the page |
-  |---|---|---|
-  | SSR catalog document | `search` with no geo argument, `get-page`, `move-category` | 20 complete, 30 stubs |
-  | items API `/web/1/js/items` | `search` with `--location-id` / `--metro` / `--district` / `--coords` / `--radius`, `apply-filters` | 50 complete |
+  The split is at exactly twenty, the complete cards are contiguous from the
+  first, and it is neither a depth nor a vertical effect. Replayed 2026-08-18 on
+  six pages, cache-busted:
 
-  Replayed 2026-08-18 on `…/operativnaya_pamyat-…?q=ddr5+32gb`. Whether Avito
-  hydrates the tail on scroll is not established, and this repository does not
-  scroll. The strict `get-page` fixture fails on it, which is F-041's guard doing
-  its job.
+  | route | vertical | page 1 | page 2 |
+  |---|---|---|---|
+  | `videokarty-…?q=видеокарта rtx 4060` | goods | 20 of 50 | 20 of 50 |
+  | `kvartiry/sdam/na_dlitelnyy_srok-…` | real estate | 20 of 50 | 20 of 50 |
+  | `/moskva/rezume?q=продавец` | jobs | 20 of 50 | 20 of 50 |
+
+  The same page through `/web/1/js/items` answers with all fifty complete, and it
+  is the same fifty: read fresh, both carriers return the same IDs in the same
+  order (résumés, page 2, three interleaved reads, 50/50 identical). An earlier
+  divergence on that route was the HTTP cache of the probe, not Avito.
+
+  Whether Avito hydrates the tail on scroll is not established, and this
+  repository does not scroll — it asks the API instead (D-063).
+- **F-090 — the items API is not addressable on its own.** `/web/1/js/items`
+  is asked in the terms of a whole `searchCore` — `categoryId`, `locationId`,
+  `name`, every `params[...]` — and none of that is derivable from a URL. The
+  document that carries it therefore always comes first, and the API answers
+  about the state that document was in. That is why moving the rows onto the API
+  costs one extra request rather than replacing one.
+- **F-091 — the items API takes a page number, and answers cleanly past the
+  last page.** `p=<n>` and `page=<n>` are both honoured and both come back
+  normalized to `p=<n>` in the server-generated `url`, with `searchCore.page`
+  equal to the request. A key it does not know is ignored in silence: the control
+  `pp=3` answered page 1, which is what makes the other two an application rather
+  than a coincidence. Page 1 is the request without the key, exactly as it is the
+  URL without `p`. Past the end of the results it answers `200` with an empty
+  `catalog.items` — not the `429` the SSR document gives at the same boundary
+  (F-061). Replayed 2026-08-18 on videocards (928 results: pages 2, 3 and 25 of
+  19), on flat rentals, and in `evidence/catalog-carriers-202608181900.json`
+  (3 199 results: page 70 of 63 answers 200 with an empty catalog).
+- **F-092 — only a page-1 document ships the opaque `context`, and the API does
+  not need it.** `loaderData.data.context` is present on page 1 and the key is
+  absent altogether from the document of page 2. Sent or omitted, the API answers
+  the same page with the same first ID, so `get-page` carries the context when
+  its document has one and simply does not when it has not. Replayed 2026-08-18
+  on `…/operativnaya_pamyat-…?q=ddr5+32gb`.
 - **F-087 — the résumé refusal was the photo reader's, and it is gone.** A résumé
   card carries a placeholder served from `www.avito.st`, outside the photo CDN,
   and the row decoder threw on it — one card killed the page, which disabled

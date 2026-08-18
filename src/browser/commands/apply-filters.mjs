@@ -15,14 +15,20 @@
 import { fail } from '../prelude/refusal.mjs';
 import { decodeCatalogRows } from '../prelude/card.mjs';
 import { normalizeSearchUrl, readDocument } from '../prelude/document.mjs';
+import {
+  ITEMS_API_PATH,
+  carrySearchCore,
+  itemsApiState,
+  preservedCoreDrift,
+  preservedParamsDrift,
+  readItemsApi,
+  sealItemsApiUrl,
+} from '../prelude/items.mjs';
 import { filterOptions, flattenFilters } from '../prelude/filters.mjs';
 import {
-  addParamValues,
   addScalar,
   cleanText,
   isCleared,
-  normalizeValues,
-  sameParamValue,
   sameRange,
   sameValues,
 } from '../prelude/text.mjs';
@@ -223,29 +229,18 @@ export async function applyFilters(input, env) {
     return selection.values[0];
   };
 
-  const apiUrl = new URL('/web/1/js/items', env.location.origin);
+  // Geo belongs to avito search, but it must survive a refinement of the URL it
+  // produced: metro, districts, the point and the radius are carried unchanged and
+  // verified as preserved below.
+  const apiUrl = new URL(ITEMS_API_PATH, env.location.origin);
   try {
-    addScalar(apiUrl, 'categoryId', sourceCore.categoryId);
-    addScalar(apiUrl, 'locationId', sourceCore.locationId);
-    addScalar(apiUrl, 'name', sourceCore.query);
-    // Geo belongs to avito search, but it must survive a refinement of the URL it
-    // produced: metro, districts, the point and the radius are carried unchanged and
-    // verified as preserved below.
-    normalizeValues(sourceCore.metroId).forEach((entry, index) => {
-      apiUrl.searchParams.append('metro[' + index + ']', entry);
-    });
-    normalizeValues(sourceCore.districtId).forEach((entry, index) => {
-      apiUrl.searchParams.append('district[' + index + ']', entry);
-    });
-    if (Array.isArray(sourceCore.geoCoords) && sourceCore.geoCoords.length === 2) {
-      addScalar(apiUrl, 'geoCoords', sourceCore.geoCoords.join(','));
-      addScalar(apiUrl, 'radius', sourceCore.searchRadius);
-    }
-    addScalar(apiUrl, 'cd', sourceCore.correctorMode ?? 0);
-    for (const [attrId, value] of sourceParamEntries) {
-      if (changedParamIds.has(attrId)) continue;
-      addParamValues(apiUrl, attrId, value, MAX_PARAM_VALUES);
-    }
+    carrySearchCore(apiUrl, sourceCore, MAX_PARAM_VALUES, changedParamIds);
+    // A short key this call replaces is set over the carried value, and a cleared
+    // one is removed: sending it empty is not the same request as not sending it.
+    const replace = (key, value) => {
+      if (value == null || value === '') apiUrl.searchParams.delete(key);
+      else addScalar(apiUrl, key, value);
+    };
     for (const selection of selections) {
       if (!selection.attrId || selection.clear) continue;
       if (selection.kind === 'range') {
@@ -265,86 +260,28 @@ export async function applyFilters(input, env) {
         apiUrl.searchParams.set(selection.key + '[' + index + ']', entry);
       });
     }
-    addScalar(apiUrl, 'verticalCategoryId', sourceCore.verticalCategoryId);
-    addScalar(apiUrl, 'rootCategoryId', sourceCore.rootCategoryId);
-    addScalar(apiUrl, 'localPriority', carried('localPriority', sourceCore.localPriority));
+    replace('localPriority', carried('localPriority', sourceCore.localPriority));
     const priceSelection = shortSelections.get('price');
     if (priceSelection) {
-      addScalar(apiUrl, 'pmin', priceSelection.clear ? null : priceSelection.from);
-      addScalar(apiUrl, 'pmax', priceSelection.clear ? null : priceSelection.to);
-    } else {
-      addScalar(apiUrl, 'pmin', sourceCore.priceMin);
-      addScalar(apiUrl, 'pmax', sourceCore.priceMax);
+      replace('pmin', priceSelection.clear ? null : priceSelection.from);
+      replace('pmax', priceSelection.clear ? null : priceSelection.to);
     }
-    addScalar(apiUrl, 'user', carried('user', sourceCore.owner));
-    addScalar(apiUrl, 'd', carried('d', sourceCore.withDeliveryOnly));
-    addScalar(apiUrl, 's', carried('sort', sourceCore.sort));
-
-    const subscription = loaderState.subscription;
-    if (subscription && typeof subscription === 'object' && !Array.isArray(subscription)) {
-      for (const key of ['visible', 'isShowSavedTooltip', 'isErrorSaved', 'isAuthenticated']) {
-        if (subscription[key] != null) addScalar(apiUrl, 'subscription[' + key + ']', subscription[key]);
-      }
-    }
-    addScalar(apiUrl, 'proprofile', loaderState.meta?.proprofile);
-    apiUrl.searchParams.set('useReload', 'true');
-    apiUrl.searchParams.set('spaFlow', 'true');
-    if (typeof loaderState.context !== 'string' || !loaderState.context || loaderState.context.length > 10000) {
-      throw new Error('Avito SSR state has no usable opaque context');
-    }
-    apiUrl.searchParams.set('context', loaderState.context);
+    replace('user', carried('user', sourceCore.owner));
+    replace('d', carried('d', sourceCore.withDeliveryOnly));
+    replace('s', carried('sort', sourceCore.sort));
+    sealItemsApiUrl(apiUrl, loaderState, true);
   } catch (error) {
     return fail('schema', 'shape', String(error?.message || error));
   }
 
-  const apiController = new AbortController();
-  const apiTimer = setTimeout(() => apiController.abort(), 20000);
-  let apiResponse;
-  let data;
-  try {
-    apiResponse = await env.fetch(apiUrl.href, {
-      credentials: 'include',
-      referrer: schema.responseUrl,
-      headers: {
-        Accept: 'application/json',
-        'X-Requested-With': 'XMLHttpRequest',
-        'X-Source': 'client-browser',
-      },
-      signal: apiController.signal,
-    });
-    const text = await apiResponse.text();
-    try {
-      data = JSON.parse(text);
-    } catch {
-      return fail('api', 'parse', 'Avito items API returned malformed JSON', { status: apiResponse.status });
-    }
-  } catch (error) {
-    return fail('api', 'transport', String(error?.message || error));
-  } finally {
-    clearTimeout(apiTimer);
-  }
-
-  if (apiResponse.status === 429 || data?.['too-many-requests'] || data?.firewallCaptcha || data?.captcha) {
-    return fail('api', 'access', 'Avito rate limit or access challenge', { status: apiResponse.status });
-  }
-  if (!apiResponse.ok || apiResponse.status !== 200) {
-    return fail('api', 'http', 'Avito items API request failed', { status: apiResponse.status });
-  }
-  if (!(apiResponse.headers.get('content-type') || '').toLowerCase().includes('application/json')) {
-    return fail('api', 'content_type', 'Avito items API response is not JSON');
-  }
-
-  const resultCore = data?.searchCore;
-  const resultCatalog = data?.catalog;
-  const resultSections = data?.filtersV2?.Sections;
-  if (
-    !resultCore || typeof resultCore !== 'object'
-    || !resultCatalog || typeof resultCatalog !== 'object'
-    || !Array.isArray(resultSections)
-    || typeof data?.url !== 'string'
-  ) {
-    return fail('api', 'shape', 'Avito items API response is missing required state');
-  }
+  const api = await readItemsApi(apiUrl, schema.responseUrl, env);
+  if (api.failure) return api.failure;
+  const apiState = itemsApiState(api.data);
+  if (apiState.failure) return apiState.failure;
+  const data = api.data;
+  const resultCore = apiState.core;
+  const resultCatalog = apiState.catalog;
+  const resultSections = apiState.sections;
 
   // Everything the call did not change must come back unchanged, geo included: this
   // command is the refinement step of a URL that avito search may have created with
@@ -362,10 +299,9 @@ export async function applyFilters(input, env) {
       preservedCore.push(descriptor.core);
     }
   }
-  for (const field of preservedCore) {
-    if (!sameValues(sourceCore[field], resultCore[field])) {
-      return fail('postcondition', 'drift', 'Avito changed preserved search field ' + field);
-    }
+  const driftedField = preservedCoreDrift(sourceCore, resultCore, preservedCore);
+  if (driftedField) {
+    return fail('postcondition', 'drift', 'Avito changed preserved search field ' + driftedField);
   }
   if (Number(resultCore.page) !== 1) {
     return fail('postcondition', 'drift', 'Avito returned an unexpected page');
@@ -375,11 +311,12 @@ export async function applyFilters(input, env) {
   if (!resultParams || typeof resultParams !== 'object' || Array.isArray(resultParams)) {
     return fail('postcondition', 'shape', 'Avito response searchCore params are malformed');
   }
-  for (const [attrId, value] of sourceParamEntries) {
-    if (changedParamIds.has(attrId)) continue;
-    if (!sameParamValue(value, resultParams[attrId])) {
-      return fail('postcondition', 'drift', 'Avito changed preserved params[' + attrId + ']');
-    }
+  const driftedParam = preservedParamsDrift(
+    sourceParamEntries.filter(([attrId]) => !changedParamIds.has(attrId)),
+    resultParams,
+  );
+  if (driftedParam) {
+    return fail('postcondition', 'drift', 'Avito changed preserved params[' + driftedParam + ']');
   }
 
   let resultFilters;

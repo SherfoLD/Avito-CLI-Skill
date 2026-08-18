@@ -135,6 +135,27 @@ export const searchCore = (overrides = {}) => ({
   ...overrides,
 });
 
+export const ITEMS_API_PATH = '/web/1/js/items';
+
+/**
+ * The items API response: the carrier the four catalog commands read their rows
+ * from, because the SSR catalog ships only its first twenty cards in full
+ * (F-089). `url` is Avito's own server-generated one, context included.
+ */
+export const itemsApiResponse = ({
+  items = [item()],
+  core = {},
+  filters = FILTERS,
+  url = `${ORIGIN}/moskva/tovary_dlya_kompyutera/komplektuyuschie/operativnaya_pamyat-ASgB?q=ddr5+32gb`,
+  count = null,
+} = {}) => ({
+  searchCore: searchCore(core),
+  filtersV2: filters,
+  catalog: { items },
+  url,
+  ...(count == null ? {} : { count }),
+});
+
 /** Stubbed browser `fetch`: routes are matched by URL prefix and every call is recorded. */
 export function makeFetch(routes) {
   const calls = [];

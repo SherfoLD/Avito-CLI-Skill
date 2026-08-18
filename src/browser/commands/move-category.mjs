@@ -1,7 +1,8 @@
 /**
- * The browser half of `avito move-category`. Two documents: the route the caller
- * passed, read for its category sidebar, and the category Avito named there,
- * read for the rows and the proof that the move happened.
+ * The browser half of `avito move-category`. Two documents and one API call: the
+ * route the caller passed, read for its category sidebar; the category Avito
+ * named there, read for the proof that the move happened; and the items API,
+ * addressed by that second document, read for the rows (F-089).
  *
  * No category route is ever built here. The target URL is always one Avito
  * printed in its own navigation state, so a name that is not in that sidebar is
@@ -17,11 +18,23 @@
 import { fail } from '../prelude/refusal.mjs';
 import { decodeCatalogRows } from '../prelude/card.mjs';
 import { readDocument } from '../prelude/document.mjs';
+import {
+  ITEMS_API_PATH,
+  PRESERVED_CORE_FIELDS,
+  carrySearchCore,
+  itemsApiState,
+  preservedCoreDrift,
+  preservedParamsDrift,
+  readItemsApi,
+  sealItemsApiUrl,
+} from '../prelude/items.mjs';
 import { isFollowableNode, sidebarRole } from '../prelude/rubricator.mjs';
 import { cleanText, comparableText } from '../prelude/text.mjs';
 
 export async function moveCategory(input, env) {
-  const { requestedUrl, target, MAX_SIDE_NODES, MAX_DEPTH, MAX_NAME_LENGTH, MAX_PARAMS } = input;
+  const {
+    requestedUrl, target, MAX_SIDE_NODES, MAX_DEPTH, MAX_NAME_LENGTH, MAX_PARAMS, MAX_PARAM_VALUES,
+  } = input;
 
   // The sidebar hangs relative URLs off the route that rendered it, and Avito
   // writes some of them without the `www`. Both are the same site; a host that
@@ -151,8 +164,8 @@ export async function moveCategory(input, env) {
   }
   const targetUrl = new URL(targets[0]);
 
-  // Hop two: the category Avito named. Its own SSR state carries both the rows and
-  // the postconditions, so nothing about the move is assumed.
+  // Hop two: the category Avito named. Its own SSR state carries the postconditions,
+  // so nothing about the move is assumed.
   const moved = await readDocument(targetUrl.href, 'target', env);
   if (moved.failure) return moved.failure;
   const movedState = moved.payload?.data;
@@ -206,11 +219,53 @@ export async function moveCategory(input, env) {
   if (!resultCore.params || typeof resultCore.params !== 'object' || Array.isArray(resultCore.params)) {
     return fail('postcondition', 'shape', 'Avito searchCore params are malformed after the move');
   }
-  if (Object.keys(resultCore.params).length > MAX_PARAMS) {
+  const resultParamEntries = Object.entries(resultCore.params);
+  if (resultParamEntries.length > MAX_PARAMS) {
     return fail('postcondition', 'shape', 'Avito searchCore has an implausible params count');
   }
 
-  const decodedItems = decodeCatalogRows(resultCatalog, env);
+  // The move is proved; the rows are asked for separately, because the SSR
+  // catalog of the target route ships only its first twenty cards in full (F-089).
+  const apiUrl = new URL(ITEMS_API_PATH, env.location.origin);
+  try {
+    carrySearchCore(apiUrl, resultCore, MAX_PARAM_VALUES, null);
+    sealItemsApiUrl(apiUrl, movedState, true);
+  } catch (error) {
+    return fail('target', 'shape', String(error?.message || error));
+  }
+
+  const api = await readItemsApi(apiUrl, moved.responseUrl, env);
+  if (api.failure) return api.failure;
+  const apiState = itemsApiState(api.data);
+  if (apiState.failure) return apiState.failure;
+
+  const driftedField = preservedCoreDrift(resultCore, apiState.core, [
+    ...PRESERVED_CORE_FIELDS, 'locationId', 'metroId', 'districtId',
+  ]);
+  if (driftedField) {
+    return fail('postcondition', 'drift', 'Avito changed preserved search field ' + driftedField);
+  }
+  if (Number(apiState.core.page) !== 1) {
+    return fail('postcondition', 'drift', 'Avito items API returned an unexpected page');
+  }
+  if (!apiState.core.params || typeof apiState.core.params !== 'object' || Array.isArray(apiState.core.params)) {
+    return fail('postcondition', 'shape', 'Avito items API searchCore params are malformed');
+  }
+  const driftedParam = preservedParamsDrift(resultParamEntries, apiState.core.params);
+  if (driftedParam) {
+    return fail('postcondition', 'drift', 'Avito changed preserved params[' + driftedParam + ']');
+  }
+  let apiPathname;
+  try {
+    apiPathname = normalizeUrl(apiState.url, env.location.origin).pathname;
+  } catch (error) {
+    return fail('postcondition', 'shape', String(error?.message || error));
+  }
+  if (apiPathname !== targetUrl.pathname) {
+    return fail('postcondition', 'drift', 'Avito items API answered on a different route');
+  }
+
+  const decodedItems = decodeCatalogRows(apiState.catalog, env);
   if (decodedItems.failure) return decodedItems.failure;
   if (decodedItems.rows.length === 0) {
     return fail('catalog', 'empty', 'The target Avito category has no listings');

@@ -100,7 +100,8 @@ check('the catalog filter flags are gone and never reach the browser context', a
     query: 'ddr5 32gb', sort: 'date', 'price-max': 30000, seller: 'company', 'delivery-only': true,
   });
   const { refinement } = page.calls.evaluateWithArgs[0].args;
-  assert(refinement.apply === false, 'an unknown flag still triggered the items API');
+  assert(refinement.locationRequested === false && refinement.geoMode === null && refinement.radiusRequested === false,
+    'a filter flag was mistaken for a geo refinement');
   for (const gone of ['sortRequested', 'priceRequested', 'sellerRequested', 'deliveryOnly', 'localPriority']) {
     assert(!(gone in refinement), `${gone} still travels to the browser context`);
   }
@@ -257,7 +258,8 @@ check('remove-reserved drops reserved rows without asking Avito to refine anythi
   assert(result.length === 1 && result[0].itemId === '8288791269', `unexpected rows: ${JSON.stringify(result.map((r) => r.itemId))}`);
   assert(!('isReserved' in result[0]), 'the flag must stay out of the row contract');
   const passed = page.calls.evaluateWithArgs[0].args;
-  assert(passed.refinement.apply === false, 'remove-reserved must not trigger the items API');
+  assert(passed.refinement.locationRequested === false && passed.refinement.geoMode === null,
+    'remove-reserved must not look like a geo refinement');
   assert(!('removeReserved' in passed.refinement), 'remove-reserved must not look like a server-applied key');
 });
 

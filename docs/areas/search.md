@@ -21,20 +21,28 @@ therefore only good input for `get-page` and `get-filters`: `apply-filters` and
 Both return the listing row and the canonical `searchUrl` of the listing they
 produced, in every row.
 
-Request budget for `search`: 3 with no geo (`/robots.txt`, the `?q=` redirect
-payload, the canonical SSR document); 4 with `--location-id`; 5 with `--coords` /
-`--radius`; 6 with `--metro` / `--district`, where the location directory costs
-two more. A city cannot be applied by editing a URL, so any geo goes through the
-same items API. Budget for `get-page`: 2.
+Request budget for `search`: 4 with no geo and 4 with `--location-id`
+(`/robots.txt`, the `?q=` redirect payload, the canonical SSR document, the items
+API); 5 with `--coords` / `--radius`; 6 with `--metro` / `--district`, where the
+location directory costs two more. A city cannot be applied by editing a URL, so
+any geo goes through the same items API — which every search now ends with in any
+case, because the rows are there (D-063). Budget for `get-page`: 3.
 
 ## How it works
 
 `search` does not render the catalog. One same-origin read of
 `https://www.avito.ru/?q=<query>` returns a pure redirect payload naming the
-canonical route; a second read fetches that route, which is where the rows come
-from (`loaderData.data.catalog.items`) along with `searchCore` and `filtersV2`
-for the postconditions. The visible form is not used and the session's region is
-preserved.
+canonical route; a second read fetches that route, which carries `searchCore`,
+`filtersV2` and `context` for the postconditions and for the request that
+follows. The rows come from a third call, to the items API (D-063). The visible
+form is not used and the session's region is preserved.
+
+Geo of the route the query landed on is carried into that request and confirmed
+as preserved, the same way `apply-filters` treats it — losing it would widen the
+search in silence. The one exception is `--location-id`: a metro or district ID
+means nothing outside its own location and Avito accepts a foreign one without a
+word (F-037), so a requested city discards the landed geo instead of inheriting
+it.
 
 The acceptance postcondition: our own `?q=` request landed on a non-homepage
 route of `www.avito.ru`, and if `q` survived, it is exactly the requested one.
@@ -45,7 +53,9 @@ its own.
 `get-page` builds its transition only from the current canonical `searchUrl` and
 cross-checks `searchCore.page`, the pathname and every input query pair except
 `p`. DOM pagination links are not used: after an SPA location update they keep
-the old pathname.
+the old pathname. That document is what proves the page; its rows are then asked
+for separately, and the answer is cross-checked against it field by field before
+a single row is decoded.
 
 ## Decisions
 
@@ -58,10 +68,25 @@ the old pathname.
   dissolved" marker was not added as its own column: the category route is
   visible in the canonical `searchUrl` already. One bounded
   navigation retry is allowed if the redirect did not complete.
-- **D-019 — rows are read from the SSR catalog.** The DOM scrape was deleted
+- **D-019 — rows are never scraped from the DOM.** The scrape was deleted
   entirely: rendering the catalog existed only to serve it, and without it a
-  query costs three light calls and `search` stops depending on CSS-module
+  query costs light same-origin calls and `search` stops depending on CSS-module
   prefixes.
+- **D-063 — the document proves the page, the items API answers it.** All four
+  listing commands read rows from `/web/1/js/items` and postconditions from the
+  SSR document, because that document's catalog is complete only in its first
+  twenty cards (F-089). This is not the ranking in
+  `carrier-selection.md` being overturned: the document is still the primary
+  carrier and still the only one that can be addressed by URL, so every
+  postcondition it proved is kept and the API is cross-checked against it —
+  preserved `searchCore` fields, preserved `params[...]`, the page number, and
+  the route in the URL it generated. The cost is one extra request per call, and
+  the alternative was `get-page` answering with thirty rows out of fifty stripped
+  of `descriptionPreview`, `location`, `sellerName` and `imageCount`.
+
+  It also removes a fork inside one command: `search` used to answer from the
+  document when it was given no geo argument and from the API when it was, so the
+  same query returned two different qualities of row depending on a flag.
 - **D-024 — reservation is a flag, not a column.** `--remove-reserved` is a
   declared local predicate over the page that came back, not an Avito filter
   (no server-side reservation filter exists). The three rules are identical in
@@ -150,7 +175,10 @@ the old pathname.
   a rate limit** (F-061). Reproduced on two categories, between successful
   requests to the same routes. A caller who reaches the end of the results gets a
   diagnosis about protection instead of "there are no more pages", and has no way
-  to tell the two apart. Taken apart in phase 20.
+  to tell the two apart. It is the document that answers `429` there, and the
+  document is still what `get-page` reads first, so D-063 did not fix this — but
+  the items API answers `200` with an empty catalog at the same boundary (F-091),
+  which is the material phase 20 now has to work with.
 - Sort order is not an output column, so there is nothing to confirm it with in
   `get-page`. The former guard over four hardcoded Russian labels was deleted — it
   would have killed pagination on a legitimately sorted URL (F-051).

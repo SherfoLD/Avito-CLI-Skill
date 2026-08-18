@@ -22,6 +22,7 @@ const ORIGIN_BOOTSTRAP_URL = 'https://www.avito.ru/robots.txt';
 const AVITO_HOSTS = new Set(['avito.ru', 'www.avito.ru']);
 const MAX_FILTERS = 400;
 const MAX_PARAMS = 400;
+const MAX_PARAM_VALUES = 2000;
 
 function normalizeCatalogUrl(value) {
   const raw = String(value ?? '').trim();
@@ -114,6 +115,7 @@ export default defineCommand({
         requestedPage,
         MAX_FILTERS,
         MAX_PARAMS,
+        MAX_PARAM_VALUES,
       });
     } catch (error) {
       asExecutionError(error, 'reading the Avito result page');

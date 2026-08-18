@@ -5,7 +5,8 @@
 // slug, so the checks below are about refusing every ambiguous or non-navigable answer.
 import { assertRow, loadCommand, runner } from './harness.mjs';
 import {
-  FILTERS, ORIGIN, bootstrapHtml, evaluateRunner, item, makeFetch, searchCore,
+  FILTERS, ITEMS_API_PATH, ORIGIN, bootstrapHtml, evaluateRunner, item, itemsApiResponse,
+  makeFetch, searchCore,
 } from './carrier.mjs';
 import { moveCategory } from '../src/browser/commands/move-category.mjs';
 
@@ -46,14 +47,26 @@ const sourceState = ({ core = {}, nodes = SIDE_NODES, breadcrumbs = BREADCRUMBS 
   },
 });
 
-const targetState = ({ items = [item()], core = {} } = {}) => ({
+const targetState = ({ core = {} } = {}) => ({
   loaderData: {
     data: {
       searchCore: searchCore({ query: 'xiaomi', categoryId: 100, ...core }),
       filtersV2: FILTERS,
-      catalog: { items },
+      catalog: { items: [] },
+      context: 'opaque-context',
     },
   },
+});
+
+// The rows of the moved-to category, on the carrier that ships all fifty complete (F-089).
+const targetApi = ({ items = [item()], core = {} } = {}) => ({
+  match: `${ORIGIN}${ITEMS_API_PATH}`,
+  contentType: 'application/json',
+  body: itemsApiResponse({
+    items,
+    core: { query: 'xiaomi', categoryId: 100, ...core },
+    url: TARGET,
+  }),
 });
 
 const sourceRoute = (state = sourceState()) => ({ match: SOURCE, body: bootstrapHtml(state) });
@@ -72,17 +85,19 @@ const baseArgs = (target = 'Мобильные телефоны', overrides = {}
   MAX_DEPTH: 20,
   MAX_NAME_LENGTH: 300,
   MAX_PARAMS: 400,
+  MAX_PARAM_VALUES: 2000,
   ...overrides,
 });
 
 const { check, assert, run } = runner();
 
 check('a visible sidebar option resolves to its Avito route and returns its listings', async () => {
-  const { fetch, calls } = makeFetch([sourceRoute(), targetRoute()]);
+  const { fetch, calls } = makeFetch([sourceRoute(), targetRoute(), targetApi()]);
   const result = await runEvaluate(baseArgs(), fetch);
   assert(result.success === true, `failed: ${result.message}`);
-  assert(calls.length === 2 && calls[0] === SOURCE && calls[1] === TARGET,
-    `expected the source then the target, got ${JSON.stringify(calls)}`);
+  assert(calls.length === 3 && calls[0] === SOURCE && calls[1] === TARGET
+    && calls[2].startsWith(`${ORIGIN}${ITEMS_API_PATH}`),
+  `expected the source, the target and its rows, got ${JSON.stringify(calls)}`);
   assert(result.resultSearchUrl === TARGET, `unexpected searchUrl: ${result.resultSearchUrl}`);
   const row = result.resultRows[0];
   assert(row.apiPrice === 43691, `the shared card decoder must be used, got ${row.apiPrice}`);
@@ -95,7 +110,7 @@ check('a visible sidebar option resolves to its Avito route and returns its list
 // row (F-059). A card without the stamp keeps its row and reports null, while a stamp in a
 // shape no clock produces is drift and stops the call.
 check('the publication stamp decodes to the instant Avito prints, and drift stops the call', async () => {
-  const routes = (rows) => [sourceRoute(), targetRoute(targetState({ items: rows }))];
+  const routes = (rows) => [sourceRoute(), targetRoute(), targetApi({ items: rows })];
   const result = await runEvaluate(baseArgs(), makeFetch(routes([item()])).fetch);
   assert(result.success === true, `failed: ${result.message}`);
   assert(result.resultRows[0].apiPublished === '2026-08-13T23:15:41Z', `expected the UTC instant, got ${result.resultRows[0].apiPublished}`);
@@ -142,6 +157,10 @@ check('a query-less search widens through the sidebar back rows', async () => {
   const { fetch, calls } = makeFetch([
     { match: `${ORIGIN}${SOURCE_PATH}`, body: bootstrapHtml(browse) },
     { match: backTarget, body: bootstrapHtml(targetState({ core: { query: '' } })) },
+    { ...targetApi({ core: { query: '' } }), body: itemsApiResponse({
+      core: { query: '', categoryId: 100 },
+      url: backTarget,
+    }) },
   ]);
   const result = await runEvaluate(
     baseArgs('Телефоны', { requestedUrl: `${ORIGIN}${SOURCE_PATH}` }),
@@ -193,6 +212,10 @@ check('a group head that carries a route is followed like any other row', async 
   // The city root is a prefix of every route below it, so the stub matches the
   // head first; live, the two are separate documents.
   const { fetch, calls } = makeFetch([
+    { ...targetApi({ core: { categoryId: 114 } }), body: itemsApiResponse({
+      core: { query: 'xiaomi', categoryId: 114 },
+      url: `${ORIGIN}${withQuery(headPath)}`,
+    }) },
     { match: `${ORIGIN}${headPath}`, body: bootstrapHtml(targetState({ core: { categoryId: 114 } })) },
     {
       match: `${ORIGIN}${rootPath}`,
@@ -205,6 +228,7 @@ check('a group head that carries a route is followed like any other row', async 
   );
   assert(result.success === true, `the head was not followed: ${JSON.stringify(result)}`);
   assert(calls[1] === `${ORIGIN}${withQuery(headPath)}`, `the head route must be followed, got ${calls[1]}`);
+  assert(calls[2].startsWith(`${ORIGIN}${ITEMS_API_PATH}`), `the rows must come from the API, got ${calls[2]}`);
   assert(result.resultSearchUrl === `${ORIGIN}${withQuery(headPath)}`, `unexpected searchUrl: ${result.resultSearchUrl}`);
 });
 
@@ -240,13 +264,13 @@ check('the same route reached twice is not treated as ambiguous', async () => {
       sideNode({ id: 3, name: 'Мобильные телефоны', url: withQuery(TARGET_PATH) }),
     ] }),
   ];
-  const { fetch } = makeFetch([sourceRoute(sourceState({ nodes: duplicated, breadcrumbs: [] })), targetRoute()]);
+  const { fetch } = makeFetch([sourceRoute(sourceState({ nodes: duplicated, breadcrumbs: [] })), targetRoute(), targetApi()]);
   const result = await runEvaluate(baseArgs(), fetch);
   assert(result.success === true, `one destination must resolve: ${result.message}`);
 });
 
 check('the name match ignores case and surrounding spaces only', async () => {
-  const { fetch } = makeFetch([sourceRoute(), targetRoute()]);
+  const { fetch } = makeFetch([sourceRoute(), targetRoute(), targetApi()]);
   const result = await runEvaluate(baseArgs('  мобильные ТЕЛЕФОНЫ  '), fetch);
   assert(result.success === true, `a case-different name must resolve: ${result.message}`);
 
@@ -298,7 +322,7 @@ check('a deep page and a challenge stop before the move', async () => {
 });
 
 check('a target category with no listings is a typed empty result', async () => {
-  const { fetch } = makeFetch([sourceRoute(), targetRoute(targetState({ items: [] }))]);
+  const { fetch } = makeFetch([sourceRoute(), targetRoute(), targetApi({ items: [] })]);
   const result = await runEvaluate(baseArgs(), fetch);
   assert(result.success === false && result.code === 'empty', `unexpected: ${JSON.stringify(result)}`);
 });

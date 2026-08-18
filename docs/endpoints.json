@@ -114,18 +114,19 @@
       "required": [
         "fresh searchCore category/location/query/params context",
         "useReload=true",
-        "spaFlow=true",
-        "one validated params[id][0] selection or an allowlisted search short-key refinement",
-        "opaque context copied from the current SSR state"
+        "spaFlow=true"
       ],
       "optional": [
+        "p=<n> for a page other than the first",
+        "one validated params[id][0] selection or an allowlisted search short-key refinement",
+        "opaque context copied from the current SSR state",
         "current subscription/proprofile state",
         "current or requested price/seller/delivery/local-priority/sort values"
       ]
     },
     "response": "200 application/json with searchCore, catalog, filtersV2 and server-generated url",
-    "verified_at": "2026-08-14",
-    "notes": "Undocumented internal endpoint. Generic params refinement and combined search short-key refinement are live-verified. Runtime validates every requested key/type/value against fresh source filtersV2, preserves page-1 context and params, accepts only the server URL, stops on 429/CAPTCHA, and never retries the API or persists opaque context. Response searchCore is authoritative for short-key application because result filtersV2 currentValue may be omitted or stale. Generic filter accepts params[id] keys only; search owns price/user/d/localPriority/sort. This is also the only way to change the city: locationId sent here is honored and returns a server URL on the new region pathname, while the same parameter on an SSR document route is silently ignored. Geo selections travel as indexed metro[n]/district[n] and come back dash-joined in the server URL; locationId stops being an unconditionally preserved field exactly when the caller requested a new one. No page-size parameter exists: the catalog page is fixed at 50 rows and the Avito UI varies only p, so the adapter returns the whole page and never sends a count of its own."
+    "verified_at": "2026-08-18",
+    "notes": "Undocumented internal endpoint. Generic params refinement and combined search short-key refinement are live-verified. Runtime validates every requested key/type/value against fresh source filtersV2, preserves params, accepts only the server URL, stops on 429/CAPTCHA and never retries the API. Response searchCore is authoritative for short-key application because result filtersV2 currentValue may be omitted or stale. Generic filter accepts params[id] keys only; search owns price/user/d/localPriority/sort. This is also the only way to change the city: locationId sent here is honored and returns a server URL on the new region pathname, while the same parameter on an SSR document route is silently ignored. Geo selections travel as indexed metro[n]/district[n] and come back dash-joined in the server URL; locationId stops being an unconditionally preserved field exactly when the caller requested a new one. The page is p=<n>, page 1 being the request without the key; page=<n> is accepted as a synonym and both come back normalized to p in the server URL, while an unknown key is ignored in silence (F-091). Past the last page it answers 200 with an empty catalog rather than the 429 the SSR document gives there. The opaque context is sent when the source document carries one; only a page-1 document does, and the API answers the same page without it (F-092). The server URL it returns carries that context, so a searchUrl produced here has one in it. No page-size parameter exists: the catalog page is fixed at 50 rows and the Avito UI varies only p, so the adapter returns the whole page and never sends a count of its own."
   },
   "querySearchEntry": {
     "url": "https://www.avito.ru/?q=<query>",

@@ -132,35 +132,6 @@ six round trips from the most common flow there is.
       different load profile from seven commands — the untested question of a
       safe request rate sits under this one.
 
-## Phase 30 — Half a page is a stub, and the API has the whole one
-
-`get-page`, `move-category` and a `search` with no geo argument read the SSR
-catalog document, which carries only its first twenty cards in full: the
-remaining thirty arrive without `iva` and without `images`, so
-`descriptionPreview`, `location`, `sellerName` and `imageCount` are `null` on
-thirty rows of fifty. The same page through `/web/1/js/items` is complete on all
-fifty, which is why `apply-filters` and a geo `search` are unaffected (F-089).
-
-So a caller gets a different listing depending on which command asked, and the
-`get-page` fixture refuses its own page — correctly.
-
-- [ ] Move `get-page` to the items API, the carrier `apply-filters` already uses,
-      and answer what that costs before writing it: `get-page`'s postconditions
-      are the canonical pathname, the preserved query pairs and `p`, and the API
-      is addressed by `categoryId` / `locationId` / `name` / `params[...]` rather
-      than by a URL. What proves "this is page 2 of that search" there is the
-      first question, not the last.
-- [ ] Decide what `move-category` does. It reads two documents, and the second is
-      the page it returns; the same reasoning applies, but its postcondition is a
-      category change rather than a page number.
-- [ ] Only then the fixture. With a complete page it goes back to requiring a
-      non-empty `descriptionPreview` on every row; if the carrier stays as it is,
-      the fixture states the split instead. Either way the fact is written down
-      before the fixture moves, not after.
-- [ ] Replay it first. Everything above rests on one route replayed on
-      2026-08-18; whether the split is always at twenty, and whether it holds for
-      a route that is not goods, is unmeasured.
-
 ## Phase 13 — Real estate
 
 Fails entirely on `get-filters`: `Avito filter <key> has no stable name`.
@@ -245,6 +216,15 @@ in between (F-061).
       Avito answers `429` to an out-of-range page specifically for a
       cookie-poor session, or the command's context differs in some other way.
       Until that is separated, this is not a rate-limit measurement.
+- [ ] Decide with the second carrier in hand. Since D-063 `get-page` reads the
+      document first and the items API second, and the two disagree at exactly
+      this boundary: page 25 of a 19-page result answers `200` with an empty
+      catalog on the API and `429` on the document (F-091). So "there is no such
+      page" is already answerable — the question is whether `get-page` may reach
+      it, which means reading the page-1 document for the search and letting the
+      API answer for the page. That trades one postcondition: today the document
+      proves the page number and the API confirms it, and there it would be the
+      API alone. The API also returns `count`, which no command exposes.
 - [ ] Type the refusal on the strength of the answer. If it means "there is no
       such page", the caller needs `EmptyResultError` and not a diagnosis about
       CAPTCHA; if it is protection, the message is right, but then every request
@@ -265,9 +245,11 @@ Two things they exposed rather than solved:
       applied `user=2` visible in the `apply-filters` searchUrl, does the
       `get-filters` route carry a `price` row, is the `get-page` count the same
       as page 1's. None of those may be guessed.
-- [ ] The `get-page` fixture is failing live, and the cause is phase 30's, not a
-      fixture's. Leave it red until the carrier changes; the fixture is right
-      until proven otherwise.
+- [ ] Now that the carriers are settled (D-063), tighten what the four listing
+      fixtures claim about a complete page. Each asserts a non-empty
+      `descriptionPreview`; none yet asserts that the page is fifty rows, or that
+      `location` and `sellerName` survive where Avito sends them — which is what
+      would catch a silent return to the document catalog.
 
 ## Open questions
 

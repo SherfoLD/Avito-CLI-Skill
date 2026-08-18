@@ -1,21 +1,40 @@
 /**
- * The browser half of `avito get-page`, which is the postconditions.
+ * The browser half of `avito get-page`: two carriers, and the postconditions
+ * that tie them to one another.
  *
- * Avito canonicalizes the URL it is given, and a search URL that quietly lost a
- * filter still returns fifty perfectly plausible listings — nothing in the rows
- * would show it. So the canonical URL is compared pair by pair against the
- * requested one with `p` excluded, and `searchCore.page` must be the requested
- * number rather than merely a number.
+ * The document is what proves the page. Avito canonicalizes the URL it is given,
+ * and a search URL that quietly lost a filter still returns fifty perfectly
+ * plausible listings — nothing in the rows would show it. So the canonical URL
+ * is compared pair by pair against the requested one with `p` excluded, and
+ * `searchCore.page` must be the requested number rather than merely a number.
+ *
+ * The rows come from the items API, which the document's own `searchCore` and
+ * `context` address: the SSR catalog carries only its first twenty cards in
+ * full, and the same page through the API is complete on all fifty (F-089).
  */
 
 import { fail } from '../prelude/refusal.mjs';
 import { decodeCatalogRows } from '../prelude/card.mjs';
 import { readDocument } from '../prelude/document.mjs';
 import { flattenFilters } from '../prelude/filters.mjs';
+import {
+  ITEMS_API_PATH,
+  PRESERVED_CORE_FIELDS,
+  addItemsApiPage,
+  carrySearchCore,
+  itemsApiState,
+  itemsApiUrlPage,
+  preservedCoreDrift,
+  preservedParamsDrift,
+  readItemsApi,
+  sealItemsApiUrl,
+} from '../prelude/items.mjs';
 import { cleanText, comparableText, normalizeScalar } from '../prelude/text.mjs';
 
 export async function paginate(input, env) {
-  const { requestedUrl, requestedPage, MAX_FILTERS, MAX_PARAMS } = input;
+  const {
+    requestedUrl, requestedPage, MAX_FILTERS, MAX_PARAMS, MAX_PARAM_VALUES,
+  } = input;
 
   // A pair list of everything except the page number, so the comparison below
   // is about the search and not about the hop. The NUL join keeps `a=b&c` from
@@ -75,36 +94,36 @@ export async function paginate(input, env) {
     );
   }
 
-  const resultCore = loaderState.searchCore;
-  const resultCatalog = loaderState.catalog;
-  const resultSections = loaderState.filtersV2.Sections;
+  const documentCore = loaderState.searchCore;
+  const documentSections = loaderState.filtersV2.Sections;
   if (
-    !resultCore || typeof resultCore !== 'object'
-    || !resultCatalog || typeof resultCatalog !== 'object'
-    || !Array.isArray(resultSections)
+    !documentCore || typeof documentCore !== 'object'
+    || !loaderState.catalog || typeof loaderState.catalog !== 'object'
+    || !Array.isArray(documentSections)
   ) {
     return fail('schema', 'shape', 'Avito SSR page state is malformed');
   }
-  if (Number(resultCore.page) !== requestedPage) {
+  if (Number(documentCore.page) !== requestedPage) {
     return fail('postcondition', 'drift', 'Avito searchCore returned an unexpected page');
   }
 
-  const locationId = Number(resultCore.locationId);
-  const searchLocation = cleanText(resultCore.locationName);
+  const locationId = Number(documentCore.locationId);
+  const searchLocation = cleanText(documentCore.locationName);
   if (!Number.isInteger(locationId) || locationId <= 0 || !searchLocation) {
     return fail('schema', 'shape', 'Avito searchCore has an invalid location');
   }
   const requestedQuery = sourceUrl.searchParams.get('q');
-  if (requestedQuery != null && comparableText(resultCore.query) !== comparableText(requestedQuery)) {
+  if (requestedQuery != null && comparableText(documentCore.query) !== comparableText(requestedQuery)) {
     return fail('postcondition', 'drift', 'Avito changed the preserved search query');
   }
-  if (!resultCore.params || typeof resultCore.params !== 'object' || Array.isArray(resultCore.params)) {
+  if (!documentCore.params || typeof documentCore.params !== 'object' || Array.isArray(documentCore.params)) {
     return fail('schema', 'shape', 'Avito searchCore params are malformed');
   }
-  if (Object.keys(resultCore.params).length > MAX_PARAMS) {
+  const documentParamEntries = Object.entries(documentCore.params);
+  if (documentParamEntries.length > MAX_PARAMS) {
     return fail('schema', 'shape', 'Avito searchCore has an implausible params count');
   }
-  for (const [attrId, value] of Object.entries(resultCore.params)) {
+  for (const [attrId, value] of documentParamEntries) {
     if (!/^\d+$/.test(attrId)) {
       return fail('schema', 'shape', 'Avito searchCore contains a malformed params key');
     }
@@ -117,12 +136,63 @@ export async function paginate(input, env) {
   // Walked only to fail closed on a malformed schema: this command reads no
   // filter, it just pages the URL it was given.
   try {
-    flattenFilters(resultSections, MAX_FILTERS);
+    flattenFilters(documentSections, MAX_FILTERS);
   } catch (error) {
     return fail('schema', 'shape', String(error?.message || error));
   }
 
-  const decodedItems = decodeCatalogRows(resultCatalog, env);
+  const apiUrl = new URL(ITEMS_API_PATH, env.location.origin);
+  try {
+    carrySearchCore(apiUrl, documentCore, MAX_PARAM_VALUES, null);
+    addItemsApiPage(apiUrl, requestedPage);
+    // Page 1 ships a context and a missing one there is drift; a deeper document
+    // has no such key at all (F-092).
+    sealItemsApiUrl(apiUrl, loaderState, requestedPage === 1);
+  } catch (error) {
+    return fail('schema', 'shape', String(error?.message || error));
+  }
+
+  const api = await readItemsApi(apiUrl, document.responseUrl, env);
+  if (api.failure) return api.failure;
+  const apiState = itemsApiState(api.data);
+  if (apiState.failure) return apiState.failure;
+
+  // Nothing about the page may change on the way to the second carrier: the
+  // document already named the search, and the API is being asked for its rows.
+  const driftedField = preservedCoreDrift(documentCore, apiState.core, [
+    ...PRESERVED_CORE_FIELDS, 'locationId', 'metroId', 'districtId',
+  ]);
+  if (driftedField) {
+    return fail('postcondition', 'drift', 'Avito changed preserved search field ' + driftedField);
+  }
+  if (Number(apiState.core.page) !== requestedPage) {
+    return fail('postcondition', 'drift', 'Avito items API returned an unexpected page');
+  }
+  if (!apiState.core.params || typeof apiState.core.params !== 'object' || Array.isArray(apiState.core.params)) {
+    return fail('postcondition', 'shape', 'Avito items API searchCore params are malformed');
+  }
+  const driftedParam = preservedParamsDrift(documentParamEntries, apiState.core.params);
+  if (driftedParam) {
+    return fail('postcondition', 'drift', 'Avito changed preserved params[' + driftedParam + ']');
+  }
+
+  let apiPathname;
+  let apiPage;
+  try {
+    const parsed = new URL(apiState.url, env.location.origin);
+    apiPathname = parsed.pathname;
+    apiPage = itemsApiUrlPage(apiState.url, env);
+  } catch (error) {
+    return fail('postcondition', 'shape', String(error?.message || error));
+  }
+  if (apiPathname !== sourceUrl.pathname) {
+    return fail('postcondition', 'drift', 'Avito items API answered on a different route');
+  }
+  if (apiPage !== requestedPage) {
+    return fail('postcondition', 'drift', 'Avito items API returned an unexpected page number in its URL');
+  }
+
+  const decodedItems = decodeCatalogRows(apiState.catalog, env);
   if (decodedItems.failure) return decodedItems.failure;
   if (decodedItems.rows.length === 0) {
     return fail('catalog', 'empty', 'The requested Avito result page has no listings');
@@ -131,6 +201,8 @@ export async function paginate(input, env) {
   return {
     success: true,
     resultSearchLocation: searchLocation,
+    // The document's canonical URL, not the API's: this is the URL the next
+    // command pages, and the API answers about a route rather than to one.
     resultSearchUrl: resultUrl.href,
     resultRows: decodedItems.rows,
   };

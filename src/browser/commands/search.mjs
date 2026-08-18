@@ -1,19 +1,28 @@
 /**
- * The browser half of `avito search`: two document hops, the guards on the
- * canonical target, the items API request a geo refinement costs, and the
- * postconditions on what came back.
+ * The browser half of `avito search`: two document hops for the canonical target
+ * and its guards, then the items API for the rows. The document names the search
+ * and the API answers it — geo is the one thing a URL cannot apply, and the SSR
+ * catalog is complete only in its first twenty cards (F-089).
  */
 
 import { fail } from '../prelude/refusal.mjs';
 import { decodeCatalogRows } from '../prelude/card.mjs';
 import { normalizeSearchUrl, readDocument } from '../prelude/document.mjs';
 import {
-  addParamValues,
+  ITEMS_API_PATH,
+  PRESERVED_CORE_FIELDS,
+  carrySearchCore,
+  itemsApiState,
+  preservedCoreDrift,
+  preservedParamsDrift,
+  readItemsApi,
+  sealItemsApiUrl,
+} from '../prelude/items.mjs';
+import {
   addScalar,
   cleanText,
   comparableText,
   normalizeValues,
-  sameParamValue,
   sameValues,
 } from '../prelude/text.mjs';
 
@@ -98,26 +107,6 @@ export async function searchContext(input, env) {
     return fail('schema', 'shape', 'Avito SSR search state has unsupported effective context');
   }
 
-  if (!refinement.apply) {
-    if (!loaderState.catalog || typeof loaderState.catalog !== 'object') {
-      return fail('schema', 'shape', 'Avito SSR search state has no catalog');
-    }
-    const sourceItems = decodeCatalogRows(loaderState.catalog, env);
-    if (sourceItems.failure) return sourceItems.failure;
-    if (sourceItems.rows.length === 0) {
-      return fail('catalog', 'empty', 'No listings match the requested query');
-    }
-    return {
-      success: true,
-      refined: false,
-      resultSearchLocation: sourceSearchLocation,
-      resultSearchUrl: normalizeSearchUrl(schemaResponseUrl, env),
-      contextLocationId: sourceCore.locationId ?? null,
-      contextPage: sourceCore.page ?? null,
-      resultRows: sourceItems.rows,
-    };
-  }
-
   const sourceParams = sourceCore.params;
   if (!sourceParams || typeof sourceParams !== 'object' || Array.isArray(sourceParams)) {
     return fail('schema', 'shape', 'Avito searchCore params are malformed');
@@ -127,113 +116,77 @@ export async function searchContext(input, env) {
     return fail('schema', 'shape', 'Avito searchCore has an implausible params count');
   }
 
-  const apiUrl = new URL('/web/1/js/items', env.location.origin);
+  // The catalog filters of this route are carried unchanged: this command only
+  // creates the context, and every refinement of it lives in avito apply-filters.
+  // Geo is the exception, because it is the one thing a URL cannot apply.
+  const apiUrl = new URL(ITEMS_API_PATH, env.location.origin);
   try {
-    addScalar(apiUrl, 'categoryId', sourceCore.categoryId);
-    addScalar(apiUrl, 'locationId', refinement.locationRequested ? refinement.locationId : sourceCore.locationId);
+    carrySearchCore(apiUrl, sourceCore, MAX_PARAM_VALUES, null);
+    // Geo arrives as indexed keys, so a carried selection and a requested one
+    // would stack into one repeated key instead of replacing it.
+    const dropCarriedGeoIds = () => {
+      for (const key of [...apiUrl.searchParams.keys()]) {
+        if (key.startsWith('metro[') || key.startsWith('district[')) apiUrl.searchParams.delete(key);
+      }
+    };
+    if (refinement.locationRequested) {
+      addScalar(apiUrl, 'locationId', refinement.locationId);
+      // A metro, district or point of the landed route describes nothing in the
+      // city the caller just named, and Avito accepts a foreign ID without a word
+      // (F-037), so a new city discards the old geo rather than inheriting it.
+      dropCarriedGeoIds();
+      apiUrl.searchParams.delete('geoCoords');
+      apiUrl.searchParams.delete('radius');
+    }
     if (refinement.geoMode) {
+      dropCarriedGeoIds();
       refinement.geoIds.forEach((geoId, index) => {
         apiUrl.searchParams.append(refinement.geoMode + '[' + index + ']', geoId);
       });
     }
-    addScalar(apiUrl, 'name', sourceCore.query);
     // A radius without a point is silently dropped, so the two always travel together.
     if (refinement.radiusRequested) {
       addScalar(apiUrl, 'geoCoords', refinement.coords);
       addScalar(apiUrl, 'radius', refinement.radius);
-    } else if (Array.isArray(sourceCore.geoCoords) && sourceCore.geoCoords.length === 2) {
-      addScalar(apiUrl, 'geoCoords', sourceCore.geoCoords.join(','));
     }
-    addScalar(apiUrl, 'cd', sourceCore.correctorMode ?? 0);
-    for (const [attrId, value] of sourceParamEntries) addParamValues(apiUrl, attrId, value, MAX_PARAM_VALUES);
-    addScalar(apiUrl, 'verticalCategoryId', sourceCore.verticalCategoryId);
-    addScalar(apiUrl, 'rootCategoryId', sourceCore.rootCategoryId);
-    // The catalog filters of this route are carried unchanged: this command only
-    // creates the context, and every refinement of it lives in avito apply-filters.
-    addScalar(apiUrl, 'localPriority', sourceCore.localPriority);
-    addScalar(apiUrl, 'pmin', sourceCore.priceMin);
-    addScalar(apiUrl, 'pmax', sourceCore.priceMax);
-    addScalar(apiUrl, 'user', sourceCore.owner);
-    addScalar(apiUrl, 'd', sourceCore.withDeliveryOnly);
-    addScalar(apiUrl, 's', sourceCore.sort);
-
-    const subscription = loaderState.subscription;
-    if (subscription && typeof subscription === 'object' && !Array.isArray(subscription)) {
-      for (const key of ['visible', 'isShowSavedTooltip', 'isErrorSaved', 'isAuthenticated']) {
-        if (subscription[key] != null) addScalar(apiUrl, 'subscription[' + key + ']', subscription[key]);
-      }
-    }
-    addScalar(apiUrl, 'proprofile', loaderState.meta?.proprofile);
-    apiUrl.searchParams.set('useReload', 'true');
-    apiUrl.searchParams.set('spaFlow', 'true');
-    if (typeof loaderState.context !== 'string' || !loaderState.context || loaderState.context.length > 10000) {
-      throw new Error('Avito SSR state has no usable opaque context');
-    }
-    apiUrl.searchParams.set('context', loaderState.context);
+    sealItemsApiUrl(apiUrl, loaderState, true);
   } catch (error) {
     return fail('schema', 'shape', String(error?.message || error));
   }
 
-  const apiController = new AbortController();
-  const apiTimer = setTimeout(() => apiController.abort(), 20000);
-  let apiResponse;
-  let data;
-  try {
-    apiResponse = await env.fetch(apiUrl.href, {
-      credentials: 'include',
-      referrer: schemaResponseUrl,
-      headers: {
-        Accept: 'application/json',
-        'X-Requested-With': 'XMLHttpRequest',
-        'X-Source': 'client-browser',
-      },
-      signal: apiController.signal,
-    });
-    const text = await apiResponse.text();
-    try {
-      data = JSON.parse(text);
-    } catch {
-      return fail('api', 'parse', 'Avito items API returned malformed JSON', { status: apiResponse.status });
-    }
-  } catch (error) {
-    return fail('api', 'transport', String(error?.message || error));
-  } finally {
-    clearTimeout(apiTimer);
-  }
+  const api = await readItemsApi(apiUrl, schemaResponseUrl, env);
+  if (api.failure) return api.failure;
+  const apiState = itemsApiState(api.data);
+  if (apiState.failure) return apiState.failure;
+  const data = api.data;
+  const resultCore = apiState.core;
+  const resultCatalog = apiState.catalog;
 
-  if (apiResponse.status === 429 || data?.['too-many-requests'] || data?.firewallCaptcha || data?.captcha) {
-    return fail('api', 'access', 'Avito rate limit or access challenge', { status: apiResponse.status });
-  }
-  if (!apiResponse.ok || apiResponse.status !== 200) {
-    return fail('api', 'http', 'Avito items API request failed', { status: apiResponse.status });
-  }
-  if (!(apiResponse.headers.get('content-type') || '').toLowerCase().includes('application/json')) {
-    return fail('api', 'content_type', 'Avito items API response is not JSON');
-  }
-
-  const resultCore = data?.searchCore;
-  const resultCatalog = data?.catalog;
-  const resultSections = data?.filtersV2?.Sections;
-  if (
-    !resultCore || typeof resultCore !== 'object'
-    || !resultCatalog || typeof resultCatalog !== 'object'
-    || !Array.isArray(resultSections)
-    || typeof data?.url !== 'string'
-  ) {
-    return fail('api', 'shape', 'Avito items API response is missing required state');
-  }
-
-  const alwaysPreserved = [
-    'verticalCategoryId', 'rootCategoryId', 'categoryId', 'query',
-    'priceMin', 'priceMax', 'owner', 'withDeliveryOnly', 'localPriority', 'sort',
-  ];
-  for (const field of alwaysPreserved) {
-    if (!sameValues(sourceCore[field], resultCore[field])) {
-      return fail('postcondition', 'drift', 'Avito changed preserved search field ' + field);
-    }
+  const driftedField = preservedCoreDrift(sourceCore, resultCore, PRESERVED_CORE_FIELDS);
+  if (driftedField) {
+    return fail('postcondition', 'drift', 'Avito changed preserved search field ' + driftedField);
   }
   if (!refinement.locationRequested && !sameValues(sourceCore.locationId, resultCore.locationId)) {
     return fail('postcondition', 'drift', 'Avito changed preserved search field locationId');
+  }
+  // Geo the caller did not touch belongs to the route the query landed on and has
+  // to survive, the same way it does through avito apply-filters. A requested city
+  // is the one case where it is discarded rather than preserved.
+  if (!refinement.locationRequested) {
+    if (
+      !refinement.geoMode
+      && !(sameValues(sourceCore.metroId, resultCore.metroId)
+        && sameValues(sourceCore.districtId, resultCore.districtId))
+    ) {
+      return fail('postcondition', 'drift', 'Avito changed the preserved geo selection');
+    }
+    if (
+      !refinement.radiusRequested
+      && !(sameValues(sourceCore.geoCoords, resultCore.geoCoords)
+        && sameValues(sourceCore.searchRadius, resultCore.searchRadius))
+    ) {
+      return fail('postcondition', 'drift', 'Avito changed the preserved search point');
+    }
   }
   if (Number(resultCore.page) !== 1) {
     return fail('postcondition', 'drift', 'Avito returned an unexpected page');
@@ -274,10 +227,9 @@ export async function searchContext(input, env) {
   if (!resultParams || typeof resultParams !== 'object' || Array.isArray(resultParams)) {
     return fail('postcondition', 'shape', 'Avito response searchCore params are malformed');
   }
-  for (const [attrId, value] of sourceParamEntries) {
-    if (!sameParamValue(value, resultParams[attrId])) {
-      return fail('postcondition', 'drift', 'Avito changed preserved params[' + attrId + ']');
-    }
+  const driftedParam = preservedParamsDrift(sourceParamEntries, resultParams);
+  if (driftedParam) {
+    return fail('postcondition', 'drift', 'Avito changed preserved params[' + driftedParam + ']');
   }
 
   let resultSearchUrl;
@@ -303,7 +255,6 @@ export async function searchContext(input, env) {
 
   return {
     success: true,
-    refined: true,
     resultSearchLocation,
     resultSearchUrl,
     contextLocationId: resultCore.locationId ?? null,
