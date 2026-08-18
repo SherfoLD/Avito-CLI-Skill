@@ -79,8 +79,8 @@ the call — you cannot see it coming from the listing.
 
 | Class | Whose shape it is | What it disables | Where it gets fixed |
 |---|---|---|---|
-| `get-filters`: a named filter with no `defaultTitle` | the category's | vacancies, flat rentals, garages | phases 13, 14 |
-| row decoder: an item URL it will not accept | the category's | a jobs query mixing résumés and vacancies (F-088) | phase 14 |
+| `get-filters`: a named filter with no `defaultTitle` | the category's | flat rentals, garages (and vacancies, out of scope) | phase 13 |
+| row decoder: an item URL it will not accept | the category's | a jobs query mixing résumés and vacancies (F-088) | not planned — Jobs is out of scope |
 
 Four classes left this list, and each time it was wrong not about the defect
 existing but about what the defect disabled.
@@ -99,7 +99,8 @@ existing but about what the defect disabled.
 - The résumé refusal was not fixed but removed: it lived in the row decoder's
   photo reader, and the photos left the listing row (D-061, F-087). What that
   freed is one route of Jobs, not the category — the same query mixed with
-  vacancies refuses on something else entirely (F-088).
+  vacancies refuses on something else entirely (F-088), and Jobs is no longer on
+  the plan.
 
 Hence how to read this table: the "what it disables" column lists where the
 class was observed, not the boundary of its effect. For each remaining class the
@@ -109,27 +110,30 @@ asked separately.
 ## Category coverage
 
 The unit of work is a top-level Avito category, not a command: data shape belongs
-to the category, so "works" only means something per category. There are 12. A
-category counts as walked when all ten commands pass on its routes, not just
-`search`.
+to the category, so "works" only means something per category. There are 12, and
+three of them are out of scope by decision, not by defect — Jobs, Business and
+equipment, Business 360 are not planned and will not be walked. Of the nine that
+remain, a category counts as walked when all ten commands pass on its routes, not
+just `search`.
 
 | Category | State |
 |---|---|
-| Electronics | walked (phones, consumer electronics, audio/video, RAM, GPUs) |
-| Hobby and leisure | walked (bicycles, sport, tools, tickets) |
+| Transport | walked (cars, motorcycles, trucks and machinery, watercraft, cross-enduro) |
+| Real estate | partial — `search` reads rentals and sales, `get-filters` fails on the category (phase 13); the daily-rental route is not a catalog at all (F-082) |
+| Jobs | out of scope — not planned |
+| Services | walked (cleaning — all ten commands; movers, health, computer help, roofing, category root) |
 | Personal items | walked (clothing, prams, category root) |
 | Home and garden | walked (furniture, appliances, category root) |
-| Animals | walked on one route (dogs) — topped up in phase 18 |
-| Transport | walked (cars, motorcycles, trucks and machinery, watercraft, cross-enduro) |
-| Real estate | fails on `get-filters` — phase 13; `search` reads rentals and sales, and the daily-rental route is not a catalog at all (F-082) |
-| Jobs | résumé listings read since D-061; `get-filters` and a mixed résumé/vacancy query still refuse, each for its own reason — phase 14 |
-| Services | walked (cleaning — all ten commands; movers, health, computer help, roofing, category root) |
 | Parts and accessories | walked (tyres, rims, wheels, car parts and by make, truck parts, mats, all eight subcategories of the root) |
-| Business and equipment | never checked — phase 17 |
-| Business 360 | never checked — phase 17 |
+| Electronics | walked (phones, consumer electronics, audio/video, RAM, GPUs) |
+| Hobby and leisure | walked (bicycles, sport, tools, tickets) |
+| Animals | walked (dogs); a second subcategory is topped up in phase 18 |
+| Business and equipment | out of scope — not planned |
+| Business 360 | out of scope — not planned |
 
 57 routes walked; that is a lower bound, not full coverage even of the green
-categories.
+categories. The same table, in Russian and without the route detail, is in the
+[README](../README.md#покрытие-категорий).
 
 The same rule applies inside a category. "Parts and accessories" was recorded as
 "`get-filters` open" on the strength of one branch — tyres — while a neighbouring
@@ -162,8 +166,8 @@ Cross-cutting. Risks specific to one command are in its domain file.
   `EMPTY_RESULT: No listings match the requested query`, which is the same wrong
   diagnosis in another place: the route carries no catalog at all (F-082), and
   the listing is not empty.
-- Two categories are entirely unavailable and two more were never checked, and
-  the refusal only arrives on the call — see the register above.
+- One category is partly unavailable and three are out of scope, and a refusal
+  only arrives on the call — see the register above.
 - Every command depends on the undocumented internal shape of the SSR bootstrap
   and on seven undocumented endpoints. Any drift must end fail-closed.
 - The shared row decoder serves four listing commands; its drift shows up as

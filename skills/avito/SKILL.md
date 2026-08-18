@@ -219,19 +219,26 @@ something to retry around.
 
 ## Known rough edges
 
-Three, and none of them corrupts what you get — each either refuses or hands you
-the wrong reason for a refusal. Read them as "expected here", not as something to
+Two, and neither corrupts what you get — each either refuses or hands you the
+wrong reason for a refusal. Read them as "expected here", not as something to
 retry through.
 
 - **`get-page` past the last page of results** reports a CAPTCHA or a rate-limit
   cooldown when it usually means there is no such page. Check the row count of
   the page you have before asking for the next one.
-- **Real estate, and vacancies in jobs**: `get-filters` refuses the whole
-  category when Avito ships a named filter without a name. Flat rentals, garages
-  and vacancies are the confirmed routes. Search itself works; narrowing does not.
-- **Jobs**: a query that mixes résumés and vacancies can refuse with "invalid
-  item URL". The résumé listing itself reads — reach it through its own route
-  rather than through a mixed query.
+- **Real estate**: `get-filters` refuses the whole category when Avito ships a
+  named filter without a name — flat rentals and garages are the confirmed
+  routes. Search itself works; narrowing does not.
 
-Two more categories — business equipment and Business 360 — have never been
-checked, so anything there is unknown rather than known-good.
+## Category coverage
+
+Eight top-level categories are covered end to end: Transport, Services, Personal
+items, Home and garden, Parts and accessories, Electronics, Hobby and leisure,
+Animals. Real estate is covered apart from `get-filters` above.
+
+Three are **out of scope**: Jobs, Business and equipment, and Business 360. They
+are not supported and not planned. Nothing stops a query from landing in one, and
+what comes back there is unknown rather than known-good — a jobs query mixing
+résumés and vacancies, for instance, refuses with "invalid item URL". If the task
+is about one of these three, say so to the user rather than working around the
+refusals.

@@ -9,8 +9,10 @@ consumer session found by using the skill blind on a real task — a services
 search in Moscow — and every claim in them was replayed live before it was
 written down.
 Phases 13–21 are the category walk: the unit of work there is a top-level Avito
-category, not a command, because data shape belongs to the category. Eight of
-twelve are walked, four are not.
+category, not a command, because data shape belongs to the category. Of twelve
+categories, three are out of scope by decision and will not be walked — Jobs,
+Business and equipment, Business 360. Eight of the remaining nine are walked;
+Real estate is the one left, and it is phase 13.
 
 Order between the blocks is fixed; inside a block the order between phases is
 free, and inside a phase it is top to bottom.
@@ -142,7 +144,7 @@ Confirmed on flat rentals (`снять квартиру 2 комнатную`) a
       as a matter of course: `categoryId` (`select`, 7 values), `params[201]`
       (`select`, 4), `params[504]` (`multiselect`, 2) on rentals, `params[204]`
       on garages. Today only single-option filters survive, by accident — the
-      name is borrowed from the name of that one option. Shared with phase 14.
+      name is borrowed from the name of that one option.
       Since D-037, unnamed `hidden` filters no longer kill the command because
       they are no longer returned, which leaves exactly the case of a named
       filter with options.
@@ -161,37 +163,6 @@ Confirmed on flat rentals (`снять квартиру 2 комнатную`) a
       (F-079). Commercial rent is the one route where a rate («₽ за м²», F-077)
       is likely, and it is the one that has not been read.
 
-## Phase 14 — Jobs
-
-The résumé listing reads since D-061. What is left refuses in two more places,
-and neither is the photo rule.
-
-- [ ] Vacancies: `get-filters` stops on an unnamed `multiselect` `params[110693]`
-      with five values. The hidden `params[196930…196932]` and `params[198006]`
-      dropped out of the list after D-037, but that did not open the category.
-      Same defect as phase 13; fix it once.
-- [ ] A query that mixes the two halves refuses on a card URL: `search "резюме
-      продавец" --location-id 637640` ends with `Avito catalog contains an
-      invalid item URL` while `search "продавец"` returns rows and `get-page` on
-      `/moskva/rezume?q=продавец` decodes fifty (F-088). Find the card. The route
-      that would show it answered with a challenge on 2026-08-18, so start from a
-      cold session and stop again if one appears.
-- [ ] Then walk the rest of the ten commands on résumés — `get-page` alone is not
-      a walked category.
-- [ ] After the fixes, close the case that exists nowhere else, on vacancies:
-      three single-value `params[...]` on one route (`196929` radio "Поиск по
-      приоритетам", `172815` radio "Формат работы", `827` `select` "Опыт
-      работы"). Check both applying them one at a time and all three in one call.
-- [ ] Check the semantics of the listing row on vacancies and résumés: `price` is
-      a salary, `sellerName` is an employer or a candidate.
-
-## Phase 17 — Business and equipment, Business 360
-
-- [ ] Walk both categories the same way (one SSR fetch per route, no render) and
-      record the result. Not a single route in either has been checked.
-- [ ] Avito marks "Business 360" as new, so its shape cannot be inferred from
-      neighbouring categories: check it separately, not in passing.
-
 ## Phase 18 — Topping up the walked categories
 
 - [ ] Animals is confirmed on one route (dogs). Walk a second subcategory: until
@@ -200,7 +171,7 @@ and neither is the photo rule.
       against a route. For each remaining failure class, ask whose shape it is —
       the category's or the seller's — and count a green mark as proof only for
       the former (F-057).
-- [ ] After phases 13–17, walk all 57 routes again and record how many pass.
+- [ ] After phase 13, walk all 57 routes again and record how many pass.
       A cheap regression: one SSR fetch per route.
 
 ## Phase 20 — The page past the last one answers `429`
