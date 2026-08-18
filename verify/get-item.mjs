@@ -14,8 +14,7 @@ export const rows = z.array(z.looseObject({
   // The context token in the argument must not survive into the canonical URL.
   url: z.string().regex(/^https:\/\/www\.avito\.ru\/[^?#]+_8030214066$/),
   price: z.number().positive(),
-  // A sofa is priced with a number, so the table is empty rather than absent:
-  // `null` here would mean the answer came from the visible page.
+  // A sofa is priced with a number, so its table is empty (F-080).
   priceList: z.array(z.unknown()).length(0),
   sellerRating: z.number().positive(),
   sellerReviewsCount: z.number().positive(),

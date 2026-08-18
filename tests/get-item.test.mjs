@@ -19,10 +19,7 @@ const env = { DOMParser: class {
   }
 } };
 
-const { COMMAND, decodeVisiblePrice, normalizeItemUrl } = await loadCommand(
-  'get-item',
-  ['decodeVisiblePrice', 'normalizeItemUrl'],
-);
+const { COMMAND, normalizeItemUrl } = await loadCommand('get-item', ['normalizeItemUrl']);
 
 const ITEM_ID = '7950831088';
 const ITEM_URL = `https://www.avito.ru/moskva/tovary_dlya_kompyutera/ddr5_${ITEM_ID}`;
@@ -137,15 +134,6 @@ check('a price table replaces the price, and a listing priced by a number keeps 
   }
 });
 
-check('decodeVisiblePrice reads one number and fails closed on anything else', () => {
-  assert(decodeVisiblePrice('46 882 ₽') === 46882, 'a single spaced number must be read');
-  assert(decodeVisiblePrice('46\u00a0882\u00a0₽') === 46882, 'non-breaking spaces must be handled');
-  assert(decodeVisiblePrice('46 882 ₽ 46 999 ₽') === null, 'two numbers must fail closed');
-  assert(decodeVisiblePrice('Цена договорная') === null, 'text without digits must be null');
-  assert(decodeVisiblePrice('') === null && decodeVisiblePrice(null) === null, 'empty input must be null');
-  assert(decodeVisiblePrice('46 882 ₽ 46 882 ₽') === 46882, 'the same number twice is not ambiguous');
-});
-
 check('a WYSIWYG description keeps its visible line breaks and drops markup', () => {
   const decoded = decode({ descriptionHtml: '<p>Первая строка</p><p>Вторая <b>строка</b></p>' });
   assert(decoded.decodedDescription === 'Первая строка\nВторая строка', `unexpected description: ${JSON.stringify(decoded.decodedDescription)}`);
@@ -231,20 +219,19 @@ check('the input URL must be a full Avito item URL', () => {
   }
 });
 
-check('the visible-page fallback primes robots.txt and reads the marked price node', () => {
-  // These read the DOM of a real listing, which cannot be built here, so the current
-  // source is asserted directly instead of executed. The split between the two halves is
-  // why there are two sources now: the navigation belongs to the command, the selectors
-  // to the browser half.
+check('the fallback primes robots.txt and reads the hydration state, never the DOM', () => {
+  // A rendered listing cannot be built here, so the current source is asserted directly
+  // instead of executed. The split between the two halves is why there are two sources:
+  // the navigation belongs to the command, the carrier to the browser half.
   const source = readCommandSource('get-item');
   const browserSource = readPageSource('get-item');
   assert(source.includes("const ORIGIN_BOOTSTRAP_URL = 'https://www.avito.ru/robots.txt'"), 'priming must use the lightweight origin');
   assert(source.includes('page.goto(ORIGIN_BOOTSTRAP_URL'), 'the API context must be primed through robots.txt, not the homepage');
-  assert(browserSource.includes('[data-marker="item-view/item-price"]'), 'the fallback must read the marked price node');
-  assert(source.includes('price: decodeVisiblePrice(fallbackObserved.domObservedPriceText)'), 'the fallback price must go through the fail-closed parser');
-  // The page prints the same string the item API ships, with a leading middot.
-  assert(browserSource.includes('[data-marker="item-view/item-date"]'), 'the fallback must read the marked date node');
-  assert(source.includes('publishedText: fallbackObserved.domObservedPublishedText'), 'the fallback must carry the date it read');
+  assert(browserSource.includes('__staticRouterHydrationData'), 'the fallback must read the hydration state of the rendered page');
+  assert(source.includes('fallbackObserved.decodedHydrationItem'), 'the fallback row must come from the shared decoder');
+  // Both carriers are the same object, so both rows have one meaning per column (D-064).
+  assert(!/querySelector|data-marker=/.test(browserSource), 'the rendered page must not be read through DOM anchors');
+  assert(!/domObserved/.test(source), 'no column may be assembled from the visible page');
 });
 
 check('the primed origin is never text-scanned for a challenge, the API response is', () => {

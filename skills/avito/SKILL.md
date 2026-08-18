@@ -152,10 +152,9 @@ order, so photos of different listings never mix, and puts the absolute paths in
 Two columns say two different things:
 
 - `imageCount` — how many photos the listing has. Every listing row carries it,
-  and so does `get-item`, whether or not you asked for the files. `null` is not
-  zero: in a listing row it means the page did not carry that card's photo block
-  (see the twenty/thirty split above), and in `get-item` it means the answer came
-  from the visible page, which does not open the gallery.
+  and so does `get-item`, whether or not you asked for the files. In a listing
+  row `null` is not zero: it means the page did not carry that card's photo block
+  (see the twenty/thirty split above). `get-item` always reads the count.
 - `images` — the files that were written. `null` means you did not pass
   `--images-dir`, an empty list means the listing has no photos, and otherwise
   it is one path per photo.

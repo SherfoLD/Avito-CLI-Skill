@@ -5,8 +5,8 @@
  * item API has failed. Two functions, in the order they are tried:
  *
  *   readItemApi    one same-origin JSON read of /items/ads{pathname}
- *   readItemPage   the rendered listing, read twice over: first the hydration
- *                  state it still carries, then the visible DOM
+ *   readItemPage   the same object out of the hydration state the rendered
+ *                  listing still carries
  *
  * Neither throws for something Avito is allowed to answer. `readItemApi`
  * reports what came back and lets the node half decide; the shared decoder
@@ -63,41 +63,7 @@ export async function readItemApi(input, env) {
 export function readItemPage(input, env) {
   const { expectedItemId } = input;
   const { document } = env;
-  const clean = (value) => String(value || '').replace(/\s+/g, ' ').trim();
   const pageText = document.title + '\n' + document.body.innerText;
-  const itemTitleNode = document.querySelector('h1');
-  // The marked node holds exactly the number the page prints; its own content
-  // attribute carries the base price, so only its text is read. The surrounding
-  // container stays a fallback and may hold more than one number.
-  const itemPriceNode = document.querySelector('[data-marker="item-view/item-price"]')
-    || document.querySelector('#bx_item-price-value');
-  const itemDescriptionNode = document.querySelector('#bx_item-description');
-  // The page prints the same string the item API ships, prefixed with a middot.
-  const itemDateNode = document.querySelector('[data-marker="item-view/item-date"]');
-  const itemAddressNode = document.querySelector('#item-view-address');
-  const attributePairs = {};
-
-  for (const paragraph of document.querySelectorAll('#bx_item-params li p')) {
-    const labelNode = paragraph.querySelector(':scope > span');
-    const attributeLabel = clean(labelNode?.textContent).replace(/:\s*$/, '');
-    if (!attributeLabel) continue;
-
-    const clone = paragraph.cloneNode(true);
-    clone.querySelector(':scope > span')?.remove();
-    const attributeValue = clean(clone.textContent);
-    if (attributeValue && !(attributeLabel in attributePairs)) {
-      attributePairs[attributeLabel] = attributeValue;
-    }
-  }
-
-  const descriptionParts = itemDescriptionNode
-    ? [...itemDescriptionNode.querySelectorAll('p')].map((node) => clean(node.textContent)).filter(Boolean)
-    : [];
-  const observedLocationText = itemAddressNode
-    ? [...itemAddressNode.querySelectorAll('p span')]
-      .map((node) => clean(node.textContent))
-      .find(Boolean) || null
-    : null;
   const hydrationBuyerItem = env.window.__staticRouterHydrationData
     ?.loaderData?.['catalog-or-main-or-item']?.buyerItem;
 
@@ -106,12 +72,5 @@ export function readItemPage(input, env) {
     itemUnavailable: /объявление (?:снято|удалено|заблокировано)|страница не найдена|такой страницы нет/i.test(pageText),
     observedDocumentTitle: document.title,
     decodedHydrationItem: decodeBuyerItemInBrowser(hydrationBuyerItem, expectedItemId, env),
-    domObservedTitle: clean(itemTitleNode?.textContent),
-    domPriceContainerPresent: !!itemPriceNode,
-    domObservedPriceText: clean(itemPriceNode?.textContent),
-    domObservedLocation: observedLocationText,
-    domObservedDescription: descriptionParts.join('\n') || null,
-    domObservedAttributes: attributePairs,
-    domObservedPublishedText: clean(itemDateNode?.textContent).replace(/^[·•]\s*/, '') || null,
   };
 }

@@ -23,6 +23,7 @@ documents, which is why it is here and not there.
 | `filters.mjs` | the `filtersV2` tree: the walk, and the options of one filter |
 | `rubricator.mjs` | what a node of the category sidebar means (D-046) |
 | `card.mjs` | the catalog-card decoder shared by the four listing commands |
+| `item.mjs` | the `buyerItem` decoder behind both carriers of `get-item` (D-064) |
 | `items.mjs` | the items API: building the request from a `searchCore`, reading the answer, and what must have survived it |
 
 `prelude/items.mjs` is the other half of what every listing command does. The

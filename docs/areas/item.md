@@ -32,11 +32,11 @@ favourite actions. A bare item ID is not supported without a confirmed resolver.
 
 ## How it works
 
-`get-item` is API-first: `/items/ads{pathname}` → the listing page's hydration →
-the visible DOM. The API URL is built only from the full pathname the user
-passed; on HTTP, schema or ID drift the command navigates to the item URL and
-reads `window.__staticRouterHydrationData...buyerItem`, then the previous DOM
-anchors.
+`get-item` is API-first: `/items/ads{pathname}` → the listing page's hydration.
+The API URL is built only from the full pathname the user passed; on HTTP,
+schema or ID drift the command navigates to the item URL and reads
+`window.__staticRouterHydrationData...buyerItem`. The visible DOM is not a
+carrier of this command (D-064).
 
 `get-seller-reviews` takes `ratingUserKey` from `buyerItem.rating.userKey` of the
 same item API response and requests `/web/7/user/{key}/ratings`. The listing page
@@ -53,18 +53,14 @@ against `sortRating` in the server's `nextPage`.
   and context, and builds the API route only from a confirmed full pathname. A
   bare ID is not resolved: alias, region and category cannot honestly be
   reconstructed from one ID, and the URL is already the output of `search`.
-- **D-009 — API → hydration → DOM.** Primary is a same-origin
+- **D-009 — API → hydration.** Primary is a same-origin
   `GET /items/ads{pathname}`, which yields structured fields without loading the
-  listing page; the two fallback layers bound the risk of drift in an
-  undocumented endpoint.
+  listing page; the fallback bounds the risk of drift in an undocumented
+  endpoint, and it is the same `buyerItem` read through the other carrier.
 - **D-017 — three flat nullable seller fields.** The fourth was `sellerId`,
   removed by D-038, and the freed slot went to `publishedText` (D-039);
   `priceList` was the thirteenth column (D-056) and `imageCount` the fourteenth
-  (D-060). Media is accepted only from `*.img.avito.st`. The final DOM fallback
-  deliberately returns nullable seller fields rather than opening the gallery,
-  and a `null` `priceList` rather than an empty one: the visible table is anchored
-  by nothing but its own heading, so that path reports it did not read one instead
-  of claiming there is none.
+  (D-060). Media is accepted only from `*.img.avito.st`.
 - **D-059 — the photos are written to disk by this command and by no other.**
   A URL to a binary is nothing a caller can open, so `--images-dir` writes the
   files instead: an existing absolute directory is required and refused as an
@@ -75,17 +71,24 @@ against `sortRating` in the server's `nextPage`.
   run without the flag away. Nothing converts an image: the request asks for
   jpeg and gets it (F-086), and any other content type stops the command.
 - **D-060 — `imageCount` says what exists, `images` says what was written.**
-  Two nullable columns instead of one list of URLs: `imageCount` is `null` only
-  on the visible-page path, which does not open the gallery at all, and `images`
-  is `null` when no directory was named, `[]` when the listing has no photos,
-  and a list of paths otherwise. The listing row carries the count and nothing
-  else (D-061).
+  Two columns instead of one list of URLs: `imageCount` is read from the item on
+  every run, and `images` is `null` when no directory was named, `[]` when the
+  listing has no photos, and a list of paths otherwise. The listing row carries
+  the count and nothing else (D-061).
 - **D-021 — the review feed accepts a listing URL, and `get-item` does not
   change.** The option "replace one of `get-item`'s columns with `reviewsUrl`"
   was rejected: such a link would just be `<itemUrl>#open-reviews-list`, it
   carries no `ratingUserKey` and it saves no requests. The option "accept
   `ratingUserKey` as an argument" was rejected: it exposes an internal hash, and
   Avito accepts someone else's key silently.
+- **D-064 — the visible DOM is not a carrier of `get-item`.** Reading the
+  rendered page through `data-marker` anchors yields a row that looks like the
+  other two and means something else: no seller, no photo count, no price table,
+  and a price re-parsed out of printed text. Both carriers this command has are
+  the same `buyerItem`, so every column carries one meaning — `priceList` and
+  `imageCount` are not nullable, and an empty table says only that Avito priced
+  the listing with a number. A layer that answers with fewer columns is a
+  fallback value in the shape of a row.
 
 ## Facts
 
@@ -129,6 +132,15 @@ against `sortRating` in the server's `nextPage`.
   review with a photo. `get-seller-reviews` no longer reads the key at all
   (D-059 gave the photos to `get-item`), and this stays written down because the
   shape is still in the payload for whoever reads it next.
+- **F-093 — the item page's hydration state is readable at the load event.**
+  `window.__staticRouterHydrationData` is inline in the document Avito serves,
+  so the fallback decodes a complete row with `settleMs: 0` and no `page.wait`
+  at all: a goods listing and a service, twice each, decoded 788–1505 ms after
+  the navigation started, price table and gallery included, and the goods row
+  matched the item API field for field. So the one rendered page this CLI opens
+  is not waited on, and `page.wait` stays what `cdp.mjs` says it is — a bounded
+  backoff, never a courtesy gap. Replayed 2026-08-18,
+  `evidence/item-hydration-at-load-202608181350.json`.
 - **F-085 — the photo CDN answers anonymously, outside the browser session.**
   `*.img.avito.st` returns `200` to a plain Node request with no cookies, no
   referer and `access-control-allow-origin: *`, unlike `www.avito.ru`, whose
@@ -205,7 +217,7 @@ against `sortRating` in the server's `nextPage`.
   are visible strings like `сегодня` or `1 мая 2025`. Sorting and filtering by
   time on the consumer's side is not possible.
 - The primary `/items/ads{pathname}` is undocumented and internal-unstable, so it
-  is validated strictly; both fallbacks must stay working.
-- In the DOM fallback the price is read from a marked node and parsed fail-closed
-  when two numbers are present: a layout with a struck-through old price inside
-  the same container would otherwise produce a glued-together garbage number.
+  is validated strictly; the hydration fallback must stay working, and it is the
+  only one left.
+- Both carriers are the same `buyerItem`, so a shape change in it takes the
+  command out entirely rather than dropping it to a thinner row (D-064).

@@ -1,10 +1,10 @@
 /**
  * `avito get-item` — the node half.
  *
- * The only command with two sources for one row, tried in order: the item API,
- * then the rendered listing page. They are never mixed. A half-decoded API item
- * is discarded rather than patched from the DOM, because a row assembled from
- * two carriers has no single meaning.
+ * One row out of one of two carriers of the same object, tried in order: the
+ * item API, then the hydration state the rendered listing page still holds.
+ * They are never mixed — a half-decoded API item is discarded rather than
+ * patched, because a row assembled from two carriers has no single meaning.
  */
 
 import {
@@ -28,24 +28,6 @@ import { readItemApi, readItemPage } from '../browser/commands/get-item.mjs';
 // scripts, images and telemetry for the sake of one JSON blob in the markup.
 const ORIGIN_BOOTSTRAP_URL = 'https://www.avito.ru/robots.txt';
 const AVITO_HOSTS = new Set(['avito.ru', 'www.avito.ru']);
-// After the load event of the rendered fallback, before reading the DOM. This is the one
-// place a settle time is legitimate: the page is being read as a person sees it.
-const PAGE_SETTLE_MS = 1000;
-const PAGE_SETTLE_SECONDS = 2;
-
-/**
- * Read one price out of visible text. The item page prints exactly one number, so text
- * carrying two different numbers means the layout changed (for example a struck-through old
- * price inside the same container) and is reported as unknown instead of a concatenation.
- */
-export function decodeVisiblePrice(value) {
-  // \s also covers the non-breaking spaces Avito prints inside a price.
-  const digitGroups = String(value ?? '').match(/\d[\d\s]*/g) ?? [];
-  const numbers = [...new Set(digitGroups.map((group) => group.replace(/\s+/g, '')))];
-  if (numbers.length !== 1) return null;
-  const price = Number(numbers[0]);
-  return Number.isSafeInteger(price) && price >= 0 ? price : null;
-}
 
 export function normalizeItemUrl(value) {
   const raw = String(value ?? '').trim();
@@ -149,9 +131,8 @@ export default defineCommand({
     itemId: idString(),
     title: text(),
     price: z.number().nonnegative().nullable(),
-    // Empty is "Avito priced this listing with a number, not a table"; null is
-    // "this answer came from the visible page, which is not where the table is".
-    priceList: z.array(z.strictObject({ title: text(), price: text() })).nullable()
+    // Empty is "Avito priced this listing with a number, not a table".
+    priceList: z.array(z.strictObject({ title: text(), price: text() }))
       .meta({ note: "price as Avito wrote it: «от 1 500 ₽», «Цена договорная»" }),
     location: text().nullable(),
     description: text().nullable(),
@@ -160,9 +141,8 @@ export default defineCommand({
     sellerName: text().nullable(),
     sellerRating: z.number().min(0).max(5).nullable(),
     sellerReviewsCount: count().nullable(),
-    imageCount: count().nullable()
-      .meta({ note: 'null when the answer came from the visible page, which does not open the gallery' }),
-    // The two empties are different answers, as with `priceList`.
+    imageCount: count(),
+    // Two empties that are different answers, which is why this is not one list.
     images: z.array(text()).nullable()
       .meta({ note: 'files written by --images-dir, gallery order; null when it was not passed, [] when the listing has no photos' }),
     url: itemUrl(),
@@ -228,8 +208,9 @@ export default defineCommand({
     }
 
     try {
-      await page.goto(normalizedUrl, { waitUntil: 'load', settleMs: PAGE_SETTLE_MS });
-      await page.wait(PAGE_SETTLE_SECONDS);
+      // Nothing is waited for after the load event: the hydration state is inline in the
+      // document Avito served, not something the page assembles afterwards (F-093).
+      await page.goto(normalizedUrl, { waitUntil: 'load', settleMs: 0 });
     } catch (error) {
       asExecutionError(error, 'opening Avito item fallback');
     }
@@ -252,32 +233,9 @@ export default defineCommand({
     if (fallbackObserved?.itemUnavailable) {
       throw new EmptyResultError('avito get-item', `Item ${normalizedItemId} is unavailable`);
     }
-    if (!fallbackObserved?.domObservedTitle || !fallbackObserved?.domPriceContainerPresent) {
-      throw new CommandExecutionError(
-        `Avito item API failed (${apiFailureReason}); hydration and visible title/price fallback were unavailable`,
-      );
-    }
 
-    return [{
-      itemId: normalizedItemId,
-      title: fallbackObserved.domObservedTitle,
-      price: decodeVisiblePrice(fallbackObserved.domObservedPriceText),
-      // The visible price table is anchored by nothing but its own heading, so
-      // this path reports that it did not read one rather than that there is none.
-      priceList: null,
-      location: fallbackObserved.domObservedLocation,
-      description: fallbackObserved.domObservedDescription,
-      attributes: fallbackObserved.domObservedAttributes,
-      publishedText: fallbackObserved.domObservedPublishedText,
-      sellerName: null,
-      sellerRating: null,
-      sellerReviewsCount: null,
-      // The gallery lives behind the viewer this path deliberately does not open,
-      // so the count is unread rather than zero and no file is written even when
-      // a directory was named.
-      imageCount: null,
-      images: null,
-      url: normalizedUrl,
-    }];
+    throw new CommandExecutionError(
+      `Avito item API failed (${apiFailureReason}); the rendered listing page carried no hydration state for item ${normalizedItemId}`,
+    );
   },
 });

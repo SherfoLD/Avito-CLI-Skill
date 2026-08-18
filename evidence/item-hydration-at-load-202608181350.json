@@ -1,0 +1,42 @@
+{
+  "what": "get-item's remaining fallback: the item page's hydration state, read at the load event with no settle time",
+  "observed": "2026-08-18",
+  "how": "the shipped readItemPage evaluated in a hidden tab after page.goto(url, { waitUntil: 'load', settleMs: 0 }), no page.wait; two runs of the same script, one goods listing and one service",
+  "question": "does window.__staticRouterHydrationData carry a decodable buyerItem by the load event, or does the page assemble it afterwards",
+  "runs": [
+    {
+      "run": 1,
+      "items": [
+        {
+          "itemId": "8030214066",
+          "ms_from_goto_to_decoded_row": 1505,
+          "decoded": true,
+          "title": "Диван прямой для кухни",
+          "price": 13129,
+          "priceList_entries": 0,
+          "imageCount": 1,
+          "accessBlocked": false
+        },
+        {
+          "itemId": "8107239005",
+          "ms_from_goto_to_decoded_row": 943,
+          "decoded": true,
+          "title": "Ремонт стиральных машин с гарантией сегодня",
+          "price": null,
+          "priceList_entries": 6,
+          "imageCount": 10,
+          "accessBlocked": false
+        }
+      ]
+    },
+    {
+      "run": 2,
+      "items": [
+        { "itemId": "8030214066", "ms_from_goto_to_decoded_row": 1248, "decoded": true, "priceList_entries": 0, "imageCount": 1 },
+        { "itemId": "8107239005", "ms_from_goto_to_decoded_row": 788, "decoded": true, "priceList_entries": 6, "imageCount": 10 }
+      ]
+    }
+  ],
+  "cross_check": "the same run's item API row for 8030214066: same title, price 13129, priceList [], imageCount 1, sellerName Любовь, sellerReviewsCount 2, publishedText «12 августа в 17:47», location Москва",
+  "follows": "the hydration blob is inline in the served document, so the fallback needs no settle and no page.wait (F-093)"
+}

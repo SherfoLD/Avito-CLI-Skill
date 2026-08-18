@@ -72,7 +72,7 @@ The question is never "is an API better than the DOM". It is **does this source
 have a contract with anyone**. On this site the answer is already known and
 written down: the SSR bootstrap is the primary carrier for everything catalog
 shaped, the internal JSON endpoints are `internal-unstable` and validated
-fail-closed, and the visible DOM is the last fallback. See
+fail-closed, and the visible DOM is a last resort no command reads (D-064). See
 [references/carrier-selection.md](references/carrier-selection.md) before you
 deviate from that.
 

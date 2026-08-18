@@ -31,7 +31,7 @@ reason before departing from it:
   asked in the terms of a `searchCore` only the document has (F-090).
 - The seven internal JSON endpoints are `internal-unstable` by declaration. They
   are validated fail-closed, called once, and never retried.
-- The visible DOM is the final fallback in `get-item` and nowhere else.
+- No shipped command reads the visible DOM as a carrier (D-064).
 
 ## Why the ranking is not "API first"
 
@@ -95,10 +95,12 @@ semantic anchor is and what typed error fires when the anchor is gone.
 
 ## Fallbacks are not free
 
-`get-item` has three layers — API, then hydration, then DOM — and that is
-deliberate: the primary is an undocumented endpoint, so a second reading of the
-same state bounds the risk. But every fallback is also a way for the command to
-keep answering with different semantics after the primary drifts.
+`get-item` has two layers — the item API, then the same `buyerItem` in the
+rendered page's hydration state — and that is deliberate: the primary is an
+undocumented endpoint, so a second reading of the same object bounds the risk.
+But every fallback is also a way for the command to keep answering with
+different semantics after the primary drifts, and that is what a third layer
+over the visible DOM did to this command's columns (D-064).
 
 The listing row shows the cost directly. The flat `item.description`,
 `item.priceDetailed` and `item.location.name` all still exist and are all wrong

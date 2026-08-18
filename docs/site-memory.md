@@ -111,6 +111,6 @@ one.
 | Many validated filters in one request through the items API | `apply-filters` |
 | Full SSR schema reader with authoritative current values | `get-filters` |
 | Navigation resolved from rendered state, then followed | `move-category` |
-| API-first detail with hydration and DOM fallbacks | `get-item` |
+| API-first detail with a hydration fallback | `get-item` |
 | A feed keyed off another response | `get-seller-reviews` |
 | Name and directory resolvers | `get-location`, `get-coords` |

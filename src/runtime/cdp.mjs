@@ -40,9 +40,10 @@ class PageContext {
   }
 
   /**
-   * `settleMs` is time after the load event, for the one command that reads a
-   * rendered page instead of fetching state. Everything else passes 0: the
-   * catalog is never rendered, so there is nothing to settle.
+   * `settleMs` is time after the load event, for the one navigation that lands
+   * on the homepage to see whether Avito is serving this session at all.
+   * Everything else passes 0: a document is fetched, not rendered, and the
+   * state a rendered page does carry is inline in it (F-093).
    */
   async goto(url, { waitUntil = 'load', settleMs = 0 } = {}) {
     return this.backend.goto(url, { waitUntil, settleMs });
