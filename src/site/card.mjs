@@ -58,14 +58,18 @@ const CATALOG_ITEM = z.looseObject({
 });
 
 /**
- * The two lists a catalog arrives in, before anything in them is a card. Avito
- * puts banners and widgets in the same arrays, and every one of them would fail
- * a card's declarations — so the entries are taken as they come and the ones
- * that say `type: 'item'` are decoded afterwards.
+ * The list a catalog arrives in, before anything in it is a card. Avito puts
+ * banners and widgets in the same array, and every one of them would fail a
+ * card's declarations — so the entries are taken as they come and the ones that
+ * say `type: 'item'` are decoded afterwards.
+ *
+ * `catalog.extraBlockItems` is deliberately not declared and not read. It is
+ * the block Avito appends when the search runs short, and its cards are answers
+ * to a widened search — other regions, other makes — that the caller did not
+ * ask for (D-072, F-094).
  */
 const CATALOG = z.looseObject({
   items: z.array(z.unknown()).nullish(),
-  extraBlockItems: z.array(z.unknown()).nullish(),
 });
 
 function cleanText(value) {
@@ -277,17 +281,15 @@ function itemUrl(item, itemId) {
 }
 
 /**
- * Decode a whole catalog. The rows carry `reserved`, which is not a column:
- * `applyReservedFilter` reads it and `listingRows` drops it.
+ * Decode a whole catalog: `catalog.items` and nothing else. The rows carry
+ * `reserved`, which is not a column: `applyReservedFilter` reads it and
+ * `listingRows` drops it.
  */
 export function catalogRows(catalog) {
   const decoded = decode(CATALOG, catalog, 'Avito catalog');
   const rawItems = decode(
     z.array(CATALOG_ITEM),
-    [
-      ...(decoded.items ?? []),
-      ...(decoded.extraBlockItems ?? []),
-    ].filter((entry) => entry?.type === 'item'),
+    (decoded.items ?? []).filter((entry) => entry?.type === 'item'),
     'Avito catalog',
   );
 

@@ -75,6 +75,12 @@ flat fields beside them carry the base price and a second copy (D-070, F-093).
 The location is the one field with two live carriers — two real-estate routes
 ship no `GeoStep` at all — and it reads from whichever the card has.
 
+The rows are `catalog.items` and nothing else. Avito appends a second list when
+a search runs short — near-misses from other regions and of other makes, headed
+by a placeholder naming what it relaxed — and those are not answers to the
+search: they are dropped, so a search that found nothing of its own ends in
+`EMPTY_RESULT` rather than in somebody else's listings (D-072, F-094).
+
 The consumer flow is one chain around one carrier of state, the canonical `searchUrl`:
 
 ```

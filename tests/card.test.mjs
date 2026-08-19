@@ -162,6 +162,25 @@ check('an item this decoder cannot name stops the call instead of becoming a row
   assert(decode([{ type: 'banner', id: '1' }]).length === 0, 'a catalog entry that is not an item is not a row');
 });
 
+// Avito appends a block of near-misses when the search runs short: other
+// regions, other makes, headed by a placeholder that names the relaxation. They
+// are not answers to the search and never become rows (D-072, F-094).
+check('the block of near-matches Avito appends is not part of the result', () => {
+  const rows = catalogRows({
+    items: [item()],
+    extraBlockItems: [
+      { type: 'placeholder', title: 'Похожие объявления рядом и в других городах', isGeo: true, isMixed: true },
+      item({ id: '8320256694', locationName: 'Курган' }),
+      item({ id: '8263547055', locationName: 'Псков' }),
+    ],
+  });
+  assert(rows.length === 1 && rows[0].itemId === '7881841669', `unexpected rows: ${JSON.stringify(rows.map((row) => row.itemId))}`);
+  // A search Avito answers with nothing of its own is an empty page, whatever
+  // the block beside it holds; the command turns that into EMPTY_RESULT.
+  assert(catalogRows({ items: [], extraBlockItems: [item({ id: '8320256694' })] }).length === 0,
+    'no listings of its own is no rows, not the near-misses instead');
+});
+
 check('the same listing twice is one row', () => {
   assert(decode([item(), item()]).length === 1, 'a repeated id must not become a second row');
 });

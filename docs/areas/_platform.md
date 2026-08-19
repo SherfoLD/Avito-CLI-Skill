@@ -394,6 +394,22 @@ schema (D-053).
   keeping: a port or credentials make a different origin, and an answered URL
   becomes the next command's argument, where `requestedSearchUrl` refuses both.
 
+- **D-072 — the near-miss block is not a result, and is not read.** Avito
+  appends `catalog.extraBlockItems` when a search runs short: a placeholder
+  naming what it relaxed, then cards from other regions or of other makes
+  (F-094). The row decoder used to concatenate that list with `catalog.items`,
+  so a search for one thing in one city answered with another thing in another
+  city, in the same shape and with no column between them — `--location-id` read
+  as though it had not applied. The owner's decision is that they are dropped:
+  the command answers the search it was given, and where Avito found nothing of
+  its own the answer is `EMPTY_RESULT` and not somebody else's listings.
+  So `catalog.items` is the only list read, and `extraBlockItems` is not
+  declared in the schema either — failing on the shape of data you do not read
+  is a spare failure mode (D-034). What that costs is the one thing the block
+  did carry: its placeholder is the only carrier of "this result set was
+  widened", and no column states it. A caller sees a short page or an empty
+  result, which is what the search is worth.
+
 - **D-049 — a verify fixture is a schema over the whole returned array.** The
   fixtures were JSON in a small dialect — `rowCount`, `patterns`, `notEmpty`,
   `mustNotContain`, `mustBeTruthy` — applied by a matcher written by hand. Every
@@ -614,10 +630,37 @@ schema (D-053).
   end-to-end, all 50 rows of the flats route return a metro reference with its
   walking time. Replayed 2026-08-19; the census is in
   `evidence/card-step-carriers-202608191445.json`.
-  What the census does not cover: `catalog.extraBlockItems` was empty on every
-  route read, including two deliberately narrow queries, so every card counted
-  came out of `catalog.items`. The decoder reads both lists, and a card that
-  appears only in the second one has never been seen.
+  The census covers `catalog.extraBlockItems` too, on the two routes that
+  populate it: 88 cards of 88 carry both steps, all their `iva` values are lists
+  and every `isReserved` is a boolean. What those cards *are* is F-094.
+- **F-094 — `catalog.extraBlockItems` is the near-miss block, and the decoder
+  hands it over as results.** Avito fills it when the search itself runs short,
+  on both carriers alike. It opens with a `type: 'placeholder'` entry carrying
+  the visible heading and two flags for what was relaxed — `isGeo`, `isMixed`
+  («Похожие объявления рядом и в других городах», «Дальше встречаются объявления
+  из других регионов») — and the rest are full `type: 'item'` cards that are not
+  answers to the query. Measured 2026-08-19: `/moskva/sobaki?q=щенок
+  бельгийского гриффона` answers `count: 29` with 11 cards in `items` and 40 in
+  the extra block, from Курган, Белгород, Псков and fifteen more regions;
+  `/moskva/tovary_dlya_kompyutera?q=ddr5 96gb kingston renegade rgb xmp 3.0`
+  answers `count: 2` with 48 extra cards of other makes and capacities.
+  The block is empty on a route with enough results — eight ordinary routes
+  answered with it so, and the key is present either way — and it grows as the
+  search shrinks: at `count: 0` («…палевый окрас», and a full model string with
+  a frequency the market does not carry) `items` is empty and the block holds
+  50 cards. `count` counts the search; `totalCount` on such a route counts the
+  block instead — 0 against 50 — so the two are not two witnesses to one number.
+  Until D-072 the decoder concatenated both lists and dropped only the
+  placeholder, and `avito search "щенок бельгийского гриффона" --location-id
+  637640` answered 50 rows of which 28 were outside the region asked for.
+  The rendered page cannot be read for this: it draws 41 cards above the
+  divider «Дальше встречаются объявления из других городов», and only 10 of the
+  41 are бельгийские гриффоны — the rest are йорки, чихуахуа and шпицы of the
+  same city, which is the relaxed *query* half of the block mixed straight into
+  the main run. So the visible page separates the block by geography alone,
+  while the response separates it whole. Sighted against that page after D-072:
+  the command returns exactly those 10 cards, id, price and city equal field by
+  field.
 - **F-087 — the résumé refusal was the photo reader's, and it is gone.** A résumé
   card carries a placeholder served from `www.avito.st`, outside the photo CDN,
   and the row decoder threw on it — one card killed the page, which disabled
