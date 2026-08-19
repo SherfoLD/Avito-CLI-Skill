@@ -68,46 +68,6 @@ way to say "this element is here, one optional part of it is not".
       the class now: eleven files on disk and one refusal is a shape a field
       could state, and today it is a refusal instead.
 
-## Phase 27 — The seller as an entity
-
-A caller choosing an executor works seller by seller, and the CLI has no seller.
-`sellerName` is a string on a card; that seven of the fifty were the same shop
-was discovered by noticing repeats.
-
-The identity is in the payload, three times over, on `4045441344`:
-`buyerItem.userHashedId` (`944d1e…`), `buyerItem.seller.hashId` (`cc39a1…`),
-`buyerItem.rating.userKey` (`1667625…`), plus `item.userId` (`82922703`),
-`item.shop` (`{ domain: "i82922703", id: 187313, isShop: true, name }`) and
-`linkLoggerShop.profileUrl` (`brands/i82922703?…`). `publicProfile` is `null` on
-this one.
-
-- [ ] Establish which key addresses which page, and for whom. A shop resolves
-      through `/brands/<domain>`; a private seller has no `shop` at all, and
-      `get-seller-reviews` already reaches a feed by a key of its own — start from
-      what that command resolves and why.
-- [ ] Owner's note, and the reason this is not a one-liner: a profile in Services
-      is not the profile of a goods seller. Research the closed categories before
-      designing the output, not after.
-- [ ] Then `sellerUrl` on `get-item` (a field of its own) and
-      `get-seller-items` as its own command, which is the scenario the whole
-      request came from: everything this seller offers, in one call.
-
-## Phase 29 — `get-item` one URL at a time
-
-The natural shape of the work is a wide search and then a handful of candidates:
-fifty listings, seven kept, seven separate calls. `get-item url1 url2 url3` removes
-six round trips from the most common flow there is.
-
-- [ ] Decide what a batch does when one URL of seven fails. Fail-closed says the
-      call ends; the value of the batch says the other six are still true. This is
-      phase 25's line drawn on a different axis, and the two answers should not
-      contradict each other — `--images-dir` already answers it one way for one
-      photo of twelve (D-059).
-- [ ] Count the requests before promising the saving. `get-item` falls back from
-      the item API to a rendered page, and seven renders in one call is a
-      different load profile from seven commands — the untested question of a
-      safe request rate sits under this one.
-
 ## Phase 30 — Does `location` earn its slot
 
 `location` was counted once: 45 of 50 null on a Moscow goods route where every
@@ -126,46 +86,6 @@ different questions are tangled in that number.
       takes on `location` that they cannot take on `searchUrl` and `get-item`. If
       there is none, it goes; if there is one, it is worth a live rule on a route
       where the field is known to be filled.
-
-## Phase 13 — Real estate
-
-Fails entirely on `get-filters`: `Avito filter <key> has no stable name`.
-Confirmed on flat rentals (`снять квартиру 2 комнатную`) and garages
-(`гараж купить`).
-
-- [ ] Decide what names a filter that has no `defaultTitle`. Avito sends `null`
-      as a matter of course: `categoryId` (`select`, 7 values), `params[201]`
-      (`select`, 4), `params[504]` (`multiselect`, 2) on rentals, `params[204]`
-      on garages. Today only single-option filters survive, by accident — the
-      name is borrowed from the name of that one option.
-      Since D-037, unnamed `hidden` filters no longer kill the command because
-      they are no longer returned, which leaves exactly the case of a named
-      filter with options.
-- [ ] Decide separately what `categoryId` is. The only `select` seen whose key
-      is not `params[...]`: it cannot be applied, so since D-037 it simply is not
-      returned. Confirm that this is correct rather than a side effect of the
-      `params[...]` rule — if it can be applied, this category needs a way to
-      pick a subcategory by filter and not only through `move-category`.
-- [ ] Walk the category: flat sales and rentals, houses, land, garages,
-      commercial. Daily rentals are not on this list and cannot be: that route is
-      a different Avito product with no catalog in it at all (F-082).
-- [ ] Check the semantics of a listing card on the routes the price fields have
-      not seen — houses, land, garages, commercial. Rentals and sales were read
-      live on 2026-08-18: 100 cards, every one a plain number, no floor and no
-      price list, so nothing there argues with the goods reading of `price`
-      (F-079). Commercial rent is the one route where a rate («₽ за м²», F-077)
-      is likely, and it is the one that has not been read.
-
-## Phase 18 — Topping up the walked categories
-
-- [ ] Animals is confirmed on one route (dogs). Walk a second subcategory: until
-      you check, "one green subcategory" says nothing about its neighbour.
-- [ ] Re-check the walked categories against each defect separately rather than
-      against a route. For each remaining failure class, ask whose shape it is —
-      the category's or the seller's — and count a green mark as proof only for
-      the former (F-057).
-- [ ] After phase 13, walk all 57 routes again and record how many pass.
-      A cheap regression: one SSR fetch per route.
 
 ## Phase 20 — The page past the last one answers `429`
 

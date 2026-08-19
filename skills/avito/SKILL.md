@@ -1,265 +1,274 @@
 ---
 name: avito
-description: Read listings, filters, categories, locations and seller reviews from Avito through the local `avito` CLI. Use when the task involves finding or reading Avito listings — searching, narrowing a search with filters, paging through results, opening one listing in full, or reading a seller's reviews. Ten read-only commands; the CLI does the browsing and the decoding.
+description: Чтение объявлений, фильтров, категорий, локаций и отзывов продавцов на Avito через локальный CLI `avito`. Используй, когда задача про поиск или чтение объявлений на Avito — поиск, сужение выдачи фильтрами, листание страниц, открытие одного объявления целиком, чтение отзывов продавца. Десять read-only команд; браузер и декодирование берёт на себя CLI.
 allowed-tools: Bash(avito:*)
 ---
 
 # Avito
 
-Ten read-only commands over the user's own Chrome. **You call the CLI.** You do
-not open pages, inject scripts, assemble requests or decode responses — every
-command already does that, with the guards that make its answer trustworthy.
+Десять read-only команд поверх собственного браузера пользователя. **Ты вызываешь
+CLI.** Ты не открываешь страницы, не внедряешь скрипты, не собираешь запросы и не
+декодируешь ответы — всё это уже делает каждая команда, вместе с guard'ами, из-за
+которых её ответу можно верить.
 
-The output is already JSON, and it is always **one object**. A command that
-returns several of something answers with an envelope plus a list: what is true
-of the whole answer sits at the top level, and only what differs between the
-results sits inside them. `avito <command> --help` prints the exact type.
+Вывод — уже JSON, и это всегда **один объект**. Команда, возвращающая несколько
+чего-либо, отвечает конвертом плюс списком: то, что верно для всего ответа, лежит
+на верхнем уровне, а внутрь результатов попадает только различающееся между ними.
+`avito <command> --help` печатает точный тип.
 
-## Before the first command
+## Перед первой командой
 
-Every read happens inside a browser the user already owns, so the CLI has to be
-told which one. It remembers the answer in a file, which is the only thing that
-survives between your shells — an `export` in the user's terminal never reaches
-you. This is once per machine.
+Каждое чтение происходит в браузере, который уже принадлежит пользователю, поэтому
+CLI надо сказать, в каком именно. Ответ он запоминает в файле — это единственное,
+что переживает смену твоих шеллов: `export` в терминале пользователя до тебя не
+доходит. Делается один раз на машину.
 
-Run `avito browser`. It prints which browser will be used, whether that endpoint
-is actually there, and every browser on this machine offering a connection right
-now.
+Запусти `avito browser`. Он печатает, какой браузер будет использован, доступен ли
+этот endpoint на самом деле, и все браузеры на этой машине, которые прямо сейчас
+предлагают соединение.
 
-- **Reachable already** — nothing to do.
-- **Candidates listed, none remembered** — do not choose for the user. Show them
-  the list, ask which browser they want Avito read through, and then run
-  `avito browser use --profile <dir>` with their answer.
-- **Nothing listed** — no browser here has debugging on. Ask the user to open
-  `chrome://inspect/#remote-debugging` in the browser they actually use and turn
-  it on there, then run `avito browser` again.
+- **Уже доступен** — делать нечего.
+- **Кандидаты перечислены, но ни один не запомнен** — не выбирай за пользователя.
+  Покажи ему список, спроси, через какой браузер он хочет читать Avito, и запусти
+  `avito browser use --profile <dir>` с его ответом.
+- **Список пуст** — ни на одном браузере здесь не включена отладка. Попроси
+  пользователя открыть `chrome://inspect/#remote-debugging` в том браузере,
+  которым он реально пользуется, и включить её там, затем снова запусти
+  `avito browser`.
 
-Never launch a browser yourself, and never point this at a fresh profile. Avito
-refuses a profile with no history outright, and the page it answers with blames
-the IP, which sends you to debug the wrong thing.
+Никогда не запускай браузер сам и никогда не направляй это на свежий профиль.
+Avito отказывает профилю без истории сразу, а страница, которой он отвечает,
+винит IP — и ты уйдёшь отлаживать не то.
 
-The first command of a session opens the connection and the browser asks the
-person in front of it to approve it — one prompt per session, and until they
-click it the connection simply waits.
+Первая команда сессии открывает соединение, и браузер просит человека перед ним
+его одобрить — один запрос на сессию, и пока он не нажмёт, соединение просто ждёт.
 
-## The chain
+## Цепочка
 
-State travels in one carrier: the canonical `searchUrl`, at the top level of
-every answer that has one. Take it from there and hand it to the next command.
+Состояние переносит один носитель: канонический `searchUrl` на верхнем уровне
+каждого ответа, у которого он есть. Берёшь его оттуда и передаёшь следующей
+команде.
 
 ```
 avito get-location "Тверь"                          → locations[].locationId
 avito search "ddr5 32gb" --location-id 637640       → searchUrl + items[]
-avito get-filters <searchUrl>                       → filters[]: keys, options, what is applied
-avito apply-filters <searchUrl> --set 'price=1000..5000'  → a new searchUrl + items[]
-avito get-page <searchUrl> --page 2                 → the next page
-avito get-item <url> --images-dir <dir>             → full text, and the photos as files
+avito get-filters <searchUrl>                       → filters[]: ключи, значения, что применено
+avito apply-filters <searchUrl> --set 'price=1000..5000'  → новый searchUrl + items[]
+avito get-page <searchUrl> --page 2                 → следующая страница
+avito get-item <url> --images-dir <dir>             → полный текст и фотографии файлами
 ```
 
-The four listing commands also state, at the top level, the region Avito actually
-searched (`locationId`, `locationName`) and the query it actually ran (`query`,
-`null` where the text dissolved into a category). Avito substitutes both
-silently, so read them rather than assuming the request was honoured. `search`
-adds `category`, the category it decided the query belongs to — two searches that
-landed in different ones are not comparable, and `null` means it placed the query
-in none. It is spelled the way `move-category --to` takes it.
+Четыре команды выдачи ещё и сообщают на верхнем уровне регион, в котором Avito
+действительно искал (`locationId`, `locationName`), и запрос, который он
+действительно выполнил (`query`, `null` там, где текст растворился в категории).
+Avito подменяет и то и другое молча, поэтому читай их, а не исходи из того, что
+запрос выполнили как написано. `search` добавляет `category` — категорию, к
+которой он отнёс запрос: два поиска, попавшие в разные категории, несравнимы, а
+`null` значит, что он не отнёс запрос ни к одной. Пишется она так же, как её
+принимает `move-category --to`.
 
-One ordering rule: `apply-filters` and `move-category` accept page 1 only and
-refuse a URL carrying `p=<n>`. So filters and category first, depth after.
+Одно правило порядка: `apply-filters` и `move-category` принимают только первую
+страницу и отказывают URL, несущему `p=<n>`. Значит, сначала фильтры и категория,
+глубина — потом.
 
-`get-categories` answers with the whole sidebar tree in `categories`: `depth` and
-`parent` say where an entry hangs, and `navigable` says whether it can be moved
-to at all — a branch heading is a destination like any other, and what is never
-one is the category the search is already in. No entry carries a URL: you move by
-`name`, and the CLI resolves the route from Avito's own sidebar. `move-category` takes an
-entry that is `navigable` **and** `preservesQuery: true`; it refuses the rest
-with the reason. When Avito could not place a query in any category at all,
-several entries come back with `current: true`: those are the candidate groups it
-drew instead, and moving into one of them is how you choose.
+`get-categories` отвечает всем деревом сайдбара в `categories`: `depth` и `parent`
+говорят, где висит запись, а `navigable` — можно ли в неё вообще перейти.
+Заголовок ветки — такое же место назначения, как и остальные, а чем оно никогда не
+бывает — так это категорией, в которой выдача уже находится. URL не несёт ни одна
+запись: переходишь по `name`, а маршрут CLI разрешает по собственному сайдбару
+Avito. `move-category` принимает запись, у которой `navigable` **и**
+`preservesQuery: true`; остальным отказывает с причиной. Когда Avito вообще не
+смог отнести запрос ни к какой категории, с `current: true` возвращается несколько
+записей: это группы-кандидаты, которые он нарисовал вместо неё, и переход в одну
+из них — способ выбрать.
 
-## The commands
+## Команды
 
-| Command | Subject | Gives you |
+| Команда | Над чем | Что даёт |
 |---|---|---|
-| `search <query>` | a query | the first page in `items`, plus the `searchUrl` everything else takes. Geo lives here: `--location-id`, `--metro`, `--district`, `--coords`, `--radius` |
-| `get-page <searchUrl> --page <n>` | a search URL | another page of the same search |
-| `get-filters <searchUrl>` | a search URL | every filter you can apply here, with its values and what is already set |
-| `apply-filters <searchUrl> --set <selections>` | a search URL | the narrowed listing and a new `searchUrl` |
-| `get-categories <searchUrl>` | a search URL | where you can move from here; feed a `name` into `move-category` |
-| `move-category <searchUrl> --to <name>` | a search URL | the listing in another category |
-| `get-item <url>` | a listing URL | the listing itself, flat: the full description, a service's price table, and the original photos written to a directory you name |
-| `get-seller-reviews <itemUrl>` | a listing URL | the seller's review feed in `reviews`, with `sellerReviewsCount` at the top level |
-| `get-location <query>` | a city or region name | `locations` with the ID `search` needs, and `geo` with metro/district IDs |
-| `get-coords <address>` | an address | the coordinate pair `--coords` needs |
+| `search <query>` | запрос | первую страницу в `items` и `searchUrl`, который берут все остальные. Гео живёт здесь: `--location-id`, `--metro`, `--district`, `--coords`, `--radius` |
+| `get-page <searchUrl> --page <n>` | URL выдачи | другую страницу той же выдачи |
+| `get-filters <searchUrl>` | URL выдачи | все фильтры, применимые здесь, с их значениями и тем, что уже установлено |
+| `apply-filters <searchUrl> --set <selections>` | URL выдачи | суженную выдачу и новый `searchUrl` |
+| `get-categories <searchUrl>` | URL выдачи | куда отсюда можно перейти; `name` оттуда идёт в `move-category` |
+| `move-category <searchUrl> --to <name>` | URL выдачи | ту же выдачу в другой категории |
+| `get-item <url>` | URL объявления | само объявление, плоско: полное описание, прайс-лист услуги и оригиналы фотографий, записанные в названный тобой каталог |
+| `get-seller-reviews <itemUrl>` | URL объявления | ленту отзывов продавца в `reviews`, с `sellerReviewsCount` на верхнем уровне |
+| `get-location <query>` | название города или региона | `locations` с ID, который нужен `search`, и `geo` с ID метро и районов |
+| `get-coords <address>` | адрес | пару координат, которую ждёт `--coords` |
 
-Run `avito <command> --help` for the arguments and for the type it answers with.
-That is the contract; this file does not restate it — what follows is only what a
-type cannot say.
+Запускай `avito <command> --help` за аргументами и за типом, которым команда
+отвечает. Это и есть контракт; здесь он не пересказан — дальше только то, чего тип
+сказать не может.
 
-## Reading the output
+## Чтение вывода
 
-**An entry in `items` is a card, not a listing.** `descriptionPreview` is text
-Avito already truncated for the card, and `imageCount` is a number of photos, not
-the photos. Both are complete only in `get-item`, and neither can be derived from
-a card.
+**Запись в `items` — это карточка, а не объявление.** `descriptionPreview` — текст,
+который Avito уже обрезал для карточки, а `imageCount` — количество фотографий, а
+не сами фотографии. И то и другое полно только в `get-item`, и вывести это из
+карточки нельзя.
 
-**Some pages arrive complete for twenty entries and thin for the other thirty.**
-`get-page`, `move-category` and a `search` with no geo argument read the page
-Avito renders, and it carries only its first twenty cards in full: after that
-`descriptionPreview`, `sellerName` and `imageCount` are `null` — not because the
-listing lacks them, but because the page did not carry them. `itemId`, `title`,
-`price`, `published` and the URL are on every entry regardless. A `search` with
-`--location-id` (or another geo argument) and `apply-filters` go through a
-different source where those three are filled on all fifty, so narrowing a search
-also thickens it. If a thin entry matters, open it with `get-item`.
+**Часть страниц приходит полной для двадцати записей и тонкой для остальных
+тридцати.** `get-page`, `move-category` и `search` без гео-аргумента читают
+страницу, которую рисует Avito, а она несёт целиком только первые двадцать
+карточек: дальше `descriptionPreview`, `sellerName` и `imageCount` равны `null` —
+не потому, что у объявления их нет, а потому, что страница их не принесла.
+`itemId`, `title`, `price`, `published` и URL есть у каждой записи в любом случае.
+`search` с `--location-id` (или другим гео-аргументом) и `apply-filters` идут
+другим источником, где эти три поля заполнены у всех пятидесяти, — то есть сужение
+выдачи заодно делает её плотнее. Если тонкая запись важна, открой её через
+`get-item`.
 
-**`location` is not part of that split, and it is usually `null`.** It is the geo
-line Avito draws on the card — a metro station with walking time, or a city — and
-most cards do not have one: 45 of 50 on a live page that was complete in every
-other field. Read `null` there as "this card shows no place", never as a thin
-page or a lost field. The listing's real address is only on the listing itself.
+**`location` в это разделение не входит и обычно равен `null`.** Это гео-строка,
+которую Avito рисует на карточке — станция метро с временем пешком или город, — и
+у большинства карточек её нет: 45 из 50 на живой странице, полной по всем
+остальным полям. Читай `null` там как «на этой карточке место не показано», а не
+как тонкую страницу или потерянное поле. Настоящий адрес есть только на самом
+объявлении.
 
-**`query` and `searchUrl` tell you what you actually got.** Avito canonicalises
-any query into a category route, and sometimes the text query dissolves into that
-category entirely — that is what `query: null` means. So a result is not
-guaranteed to be a text match for what you asked; read both before treating the
-listings as answers to your words.
+**`query` и `searchUrl` говорят, что ты на самом деле получил.** Avito
+канонизирует любой запрос в маршрут категории, и иногда текстовый запрос
+растворяется в этой категории целиком — это и означает `query: null`. Так что
+результат не гарантированно является текстовым совпадением с тем, что ты просил;
+прочитай оба поля, прежде чем считать выдачу ответом на свои слова.
 
-**`price` is a price or it is `null`** — it is never a teaser. On services Avito
-usually advertises a floor or a whole price list, and neither is what the work
-costs, so:
+**`price` — это цена либо `null`** — но никогда не приманка. В услугах Avito обычно
+рекламирует нижнюю границу или целый прайс-лист, и ни то ни другое не равно
+стоимости работы, поэтому:
 
-- `minPrice` instead of `price` means the number Avito showed is not what the
-  work costs — it printed «от 500 ₽», or it priced the listing by a table and put
-  one number on the card. Treat it as a starting point, never as a price.
-- `hasPriceList: true` means that table exists. `get-item` returns it as
-  `priceList`; a card does not carry it, because the copy search holds can be out
-  of date.
-- both `null` means Avito printed a phrase — «Цена договорная». `price: 0` is not
-  that: it means the listing really is free.
+- `minPrice` вместо `price` значит, что показанное Avito число — не то, сколько
+  стоит работа: он напечатал «от 500 ₽» или оценил объявление по таблице и вынес
+  на карточку одно число. Считай это отправной точкой, а не ценой.
+- `hasPriceList: true` значит, что такая таблица есть. `get-item` возвращает её как
+  `priceList`; карточка её не несёт, потому что копия, которую держит поиск, может
+  быть устаревшей.
+- оба `null` — Avito напечатал фразу, «Цена договорная». `price: 0` — не это: он
+  значит, что объявление действительно бесплатное.
 
-One thing a card still does not tell you: whether a number is a rate. «150 ₽ за
-м²» arrives as `price: 150` like any other 150, so on services do not compare
-prices across listings without opening them.
+Чего карточка всё равно не говорит: является ли число тарифом. «150 ₽ за м²»
+приходит как `price: 150`, как любые другие 150, — поэтому в услугах не сравнивай
+цены между объявлениями, не открыв их.
 
-**`published` is an exact instant** (ISO 8601, UTC) on a card. `publishedText` in
-`get-item` is Avito's rendered string — no year, no seconds, Moscow time. If you
-need the date as a value, use the card.
+**`published` — это точный момент времени** (ISO 8601, UTC) на карточке.
+`publishedText` в `get-item` — строка в том виде, в каком её нарисовал Avito: без
+года, без секунд, по Москве. Если нужна дата как значение, бери её с карточки.
 
-**A `null` the type allows is Avito withholding, not a gap in the decoding.**
-`sellerName` is null for private sellers when the browser session is not logged
-in — that is Avito hiding identity, and the rating still arrives beside it.
+**`null`, который разрешает тип, — это Avito, который не отдаёт, а не пробел в
+декодировании.** `sellerName` равен `null` у частных продавцов, когда в сессии
+браузера не выполнен вход: так Avito скрывает личность, а рейтинг рядом при этом
+приходит.
 
-## Photos
+## Фотографии
 
-You cannot read a photo out of any command's output, because no command returns
-one: a photo URL is a binary you have no way to open. `get-item` writes the files
-instead.
+Прочитать фотографию из вывода какой-либо команды нельзя, потому что ни одна
+команда её не возвращает: URL фотографии — это бинарник, который тебе нечем
+открыть. Вместо этого `get-item` записывает файлы.
 
 ```
-avito get-item <url> --images-dir /tmp/<your-own-dir>
+avito get-item <url> --images-dir /tmp/<свой-каталог>
 ```
 
-Pass a directory of your own that already exists, given as an absolute path — a
-temporary one you made for this task is exactly right. The command creates
-`<dir>/<itemId>/` inside it and fills that with `01.jpg`, `02.jpg` … in gallery
-order, so photos of different listings never mix, and puts the absolute paths in
-`images`. They are ordinary JPEGs; open them the way you open any local image.
+Передай свой собственный каталог, который уже существует, абсолютным путём —
+временный, созданный под эту задачу, подходит идеально. Команда создаёт внутри
+него `<dir>/<itemId>/` и наполняет его файлами `01.jpg`, `02.jpg` … в порядке
+галереи, так что фотографии разных объявлений не перемешиваются, а абсолютные пути
+кладёт в `images`. Это обычные JPEG; открывай их так же, как любую локальную
+картинку.
 
-Two fields say two different things:
+Два поля говорят о разном:
 
-- `imageCount` — how many photos the listing has. Every card carries it, and so
-  does `get-item`, whether or not you asked for the files. On a card `null` is not
-  zero: it means the page did not carry that card's photo block (see the
-  twenty/thirty split above). `get-item` always reads the count.
-- `images` — the files that were written. `null` means you did not pass
-  `--images-dir`, an empty list means the listing has no photos, and otherwise
-  it is one path per photo.
+- `imageCount` — сколько фотографий у объявления. Его несёт каждая карточка, несёт
+  и `get-item`, независимо от того, просил ли ты файлы. На карточке `null` — это не
+  ноль: это значит, что страница не принесла блок фотографий этой карточки (см.
+  разделение двадцать/тридцать выше). `get-item` читает количество всегда.
+- `images` — какие файлы были записаны. `null` значит, что ты не передал
+  `--images-dir`, пустой список — что у объявления нет фотографий, во всех
+  остальных случаях это по одному пути на фотографию.
 
-So the cheap move is to read the listing first and only spend a download on the
-one or two candidates that survive the text.
+Так что дешёвый ход — сначала прочитать объявление и потратить загрузку только на
+одного-двух кандидатов, переживших текст.
 
-If any single photo cannot be fetched, the whole call fails rather than handing
-you part of a gallery. The text is one run away — repeat the command without
-`--images-dir` and you get everything but the files.
+Если хотя бы одну фотографию скачать не удалось, падает весь вызов, а не отдаёт
+тебе часть галереи. Текст при этом в одном запуске: повтори команду без
+`--images-dir` и получишь всё, кроме файлов.
 
-## Applying filters
+## Применение фильтров
 
-Keys and values come from `get-filters` exactly as it prints them. `valueSyntax`
-tells you what to write after `key=`.
+Ключи и значения берутся из `get-filters` ровно в том виде, в каком он их печатает.
+`valueSyntax` говорит, что писать после `key=`.
 
 ```
 avito apply-filters <searchUrl> --set 'price=1000..5000;params[112691]=757883,757884'
 ```
 
-- `;` separates filters, `,` separates values of one filter, `..` is a range with
-  optional ends, and `key=` with no value clears it.
-- Pass every filter you want in **one** call. Chaining does not accumulate values
-  of the same filter — the second call replaces the first.
-- A range's `options` tells you what its bounds are: empty means numbers,
-  non-empty means you pick from those values.
-- A word containing `,` or `;` cannot be expressed in this grammar.
-- After `move-category`, re-read `get-filters`: the previous category's keys are
-  no longer valid.
+- `;` разделяет фильтры, `,` — значения одного фильтра, `..` — диапазон с
+  необязательными границами, а `key=` без значения его очищает.
+- Передавай все нужные фильтры **одним** вызовом. Цепочка вызовов не накапливает
+  значения одного фильтра — второй вызов заменяет первый.
+- `options` диапазона говорит, какие у него границы: пусто — значит числа,
+  непусто — значит выбираешь из этих значений.
+- Слово, содержащее `,` или `;`, в этой грамматике выразить нельзя.
+- После `move-category` перечитай `get-filters`: ключи прежней категории больше
+  недействительны.
 
-## Reservation
+## Резерв
 
-`--remove-reserved` drops the listings Avito marks as reserved. Avito has no
-server-side filter for it, so the page simply comes back shorter, and nothing in
-the output says which were dropped.
+`--remove-reserved` убирает объявления, помеченные Avito как зарезервированные.
+Серверного фильтра для этого у Avito нет, поэтому страница просто возвращается
+короче, и ничто в выводе не говорит, что именно убрали.
 
-It is **per call**. If you want reserved listings gone, pass it to every command
-in the chain — `search`, `get-page`, `apply-filters`, `move-category`. A missed
-flag silently brings them back.
+Флаг действует **на один вызов**. Если зарезервированные не нужны, передавай его
+каждой команде цепочки — `search`, `get-page`, `apply-filters`, `move-category`.
+Пропущенный флаг молча вернёт их обратно.
 
-## When a command refuses
+## Когда команда отказывает
 
-Refusals are typed and they mean what they say. Do not retry, do not work around
-them.
+Отказы типизированы и означают ровно то, что говорят. Не повторяй запрос, не
+обходи их.
 
-| Exit | Meaning | What to do |
+| Код | Что значит | Что делать |
 |---|---|---|
-| 2 | you passed something the command cannot act on | read the message; it names the constraint |
-| 66 | the request worked and there is nothing to return | that is an answer — report it |
-| 1 | the answer could not be trusted: an HTTP refusal, a shape that drifted, a postcondition that failed | stop and report. Never retry. |
-| 75 | no answer in time | report it |
-| 77 | Avito is not answering this session at all | take it to the user — see below |
+| 2 | ты передал то, с чем команда работать не может | прочитай сообщение, оно называет ограничение |
+| 66 | запрос отработал, и возвращать нечего | это ответ — так и сообщи |
+| 1 | ответу нельзя доверять: отказ по HTTP, уехавшая форма, невыполненное постусловие | остановись и сообщи. Никогда не повторяй |
+| 75 | ответа не дождались | сообщи об этом |
+| 77 | Avito вообще не отвечает этой сессии | иди с этим к пользователю — см. ниже |
 
-**77 is the one you cannot fix.** Avito answered, but not with data: a rate
-limit, a verification page, or a page carrying no state. All three mean the same
-thing and none of them is a bug in the command. Do not retry, do not interact
-with a CAPTCHA, do not try a different route to the same data. Ask the user to
-open www.avito.ru in the same browser and see what it is asking for.
+**77 — тот, который тебе не починить.** Avito ответил, но не данными: лимит
+запросов, страница проверки или страница без состояния. Всё три означают одно и то
+же, и ни одно из них не является багом команды. Не повторяй запрос, не
+взаимодействуй с CAPTCHA, не ищи другой маршрут к тем же данным. Попроси
+пользователя открыть www.avito.ru в том же браузере и посмотреть, что тот просит.
 
-One refusal is not about Avito at all: **`could not reach the browser: …`** means
-the CLI never got as far as the site. The message names the endpoint it tried.
-Run `avito session status` to see which browser is configured and whether it is
-there, then take it to the user — a browser that is closed, or has debugging
-switched off, or an approval prompt nobody clicked, is theirs to fix, not
-something to retry around.
+Один отказ вообще не про Avito: **`could not reach the browser: …`** значит, что
+CLI не дошёл даже до сайта. Сообщение называет endpoint, к которому он обращался.
+Запусти `avito session status`, чтобы увидеть, какой браузер настроен и есть ли он
+там вообще, и иди с этим к пользователю — закрытый браузер, выключенная отладка
+или неподтверждённый запрос разрешения — это его дело, а не то, что надо обходить
+повторами.
 
-## Known rough edges
+## Известные шероховатости
 
-Two, and neither corrupts what you get — each either refuses or hands you the
-wrong reason for a refusal. Read them as "expected here", not as something to
-retry through.
+Их две, и ни одна не портит то, что ты получаешь: каждая либо отказывает, либо
+называет неверную причину отказа. Читай их как «здесь так и ожидается», а не как
+то, через что надо пробиваться повторами.
 
-- **`get-page` past the last page of results** reports a CAPTCHA or a rate-limit
-  cooldown when it usually means there is no such page. Check how many `items` the
-  page you have came back with before asking for the next one.
-- **Real estate**: `get-filters` refuses the whole category when Avito ships a
-  named filter without a name — flat rentals and garages are the confirmed
-  routes. Search itself works; narrowing does not.
+- **`get-page` за последней страницей выдачи** сообщает о CAPTCHA или о паузе
+  из-за лимита запросов там, где обычно означает, что такой страницы нет. Проверь,
+  сколько `items` вернула страница, которая у тебя уже есть, прежде чем просить
+  следующую.
+- **Недвижимость**: `get-filters` отказывает всей категории, когда Avito отдаёт
+  именованный фильтр без имени — подтверждённые маршруты это аренда квартир и
+  гаражи. Сам поиск работает, сужение — нет.
 
-## Category coverage
+## Покрытие категорий
 
-Eight top-level categories are covered end to end: Transport, Services, Personal
-items, Home and garden, Parts and accessories, Electronics, Hobby and leisure,
-Animals. Real estate is covered apart from `get-filters` above.
+Восемь категорий верхнего уровня покрыты полностью: Транспорт, Услуги, Личные
+вещи, Для дома и дачи, Запчасти и аксессуары, Электроника, Хобби и отдых,
+Животные. Недвижимость покрыта, кроме `get-filters` выше.
 
-Three are **out of scope**: Jobs, Business and equipment, and Business 360. They
-are not supported and not planned. Nothing stops a query from landing in one, and
-what comes back there is unknown rather than known-good — a jobs query mixing
-résumés and vacancies, for instance, refuses with "invalid item URL". If the task
-is about one of these three, say so to the user rather than working around the
-refusals.
+Три **вне области**: Работа, Бизнес и оборудование, Бизнес 360. Они не
+поддерживаются и в планах их нет. Ничто не мешает запросу попасть в одну из них, и
+то, что оттуда вернётся, скорее неизвестно, чем заведомо корректно: например,
+запрос по работе, смешивающий резюме и вакансии, отказывает с «invalid item URL».
+Если задача про одну из этих трёх, скажи об этом пользователю, а не обходи отказы.
