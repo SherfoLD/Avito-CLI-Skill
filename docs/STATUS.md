@@ -7,7 +7,7 @@ How each command is built is in its domain file, [docs/areas/](areas/).
 
 ## Commands
 
-Ten commands, all read-only. `npm run check` is green; the offline suite is 217
+Ten commands, all read-only. `npm run check` is green; the offline suite is 218
 checks across sixteen suites, and all ten expectations pass live against Avito
 (2026-08-19).
 
@@ -16,10 +16,10 @@ z.strictObject({...})` in its descriptor. The CLI parses the whole answer throug
 it before printing, the offline suites run the same parse, and there is no
 `--format` — the output is JSON and nothing else (D-048). A command that returns
 several of something answers with an envelope plus a list: the `searchUrl`, the
-effective region and the confirmed page sit on the envelope, and only what
-differs between the things returned sits inside them (D-073). The runtime holds
-three rules over the shape — `strictObject` at every level, 40 declared fields,
-3 objects deep (D-074) — and nothing else.
+effective region, the confirmed page and the category the search landed in sit on
+the envelope, and only what differs between the things returned sits inside them
+(D-073, D-076). The runtime holds — `strictObject` at every level, 40 declared fields, 3 objects deep (D-074) —
+and nothing else.
 
 `--help` prints that contract as TypeScript, from the descriptor's `type`, which
 is written by hand and held in step with the schema by `npm run check:commands`

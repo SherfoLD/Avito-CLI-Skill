@@ -11,6 +11,10 @@ export const args = ['ddr5 32gb', '--location-id', '637640'];
 // visible decoder stopped being read (F-041).
 export const output = z.looseObject({
   locationId: z.literal('637640'),
+  // Avito places this query in a category of its own, and the name is the one
+  // `move-category --to` takes. A null here would mean it placed it in none,
+  // which on this route would be Avito drifting rather than a wider search.
+  category: z.string().min(1),
   items: z.array(z.looseObject({
     descriptionPreview: z.string().min(1),
     price: z.number().positive(),

@@ -4,8 +4,8 @@ export const args = ['https://www.avito.ru/moskva/tovary_dlya_kompyutera/komplek
 
 // This route has a category, so exactly one entry is it. What the expectation is
 // really here for is the pair of rules that let a caller leave: the category we
-// are already on is the only one with no route, and the ancestors above it carry
-// theirs with the query on it (D-057).
+// are already on is the only one that cannot be moved to, and the ancestors above
+// it can, with the query surviving (D-057).
 export const output = z.looseObject({
   query: z.literal('ddr5 32gb'),
   categories: z.array(z.looseObject({}))
@@ -16,8 +16,8 @@ export const output = z.looseObject({
       'exactly one entry is the category this search is in',
     )
     .refine(
-      (decoded) => decoded.every((entry) => (entry.targetUrl === null) === entry.current),
-      'the current category carries no route, and every other one carries one',
+      (decoded) => decoded.every((entry) => entry.navigable === !entry.current),
+      'the current category is not a move, and every other one on this route is',
     )
     .refine(
       (decoded) => decoded.some((entry) => entry.role === 'branch' && entry.navigable),

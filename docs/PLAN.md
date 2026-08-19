@@ -92,25 +92,6 @@ this one.
       `get-seller-items` as its own command, which is the scenario the whole
       request came from: everything this seller offers, in one call.
 
-## Phase 28 — Which category a search silently landed in
-
-The location half of this is answered: `locationId` and `locationName` are on the
-envelope of all four listing commands, read off the response rather than off the
-argument (D-073). The category half is not.
-
-Three searches landed in three different categories (`/predlozheniya_uslug`,
-`/moskva`, `/bytovaya_elektronika`), which makes their results incomparable, and
-today that is inferable only from the slug of `searchUrl`.
-`searchCore.categoryId` is the carrier — `null` when Avito determined none, which
-is itself the fact a caller most needs, and which is visible today only as several
-current branches in `get-categories` (F-084) — and every card carries its own
-`category`.
-
-- [ ] The card's own `category` and `searchCore.categoryId` are not the same
-      question — one is per element, the other per search, so they land in
-      different halves of the answer. Decide which one the caller needs before
-      adding either.
-
 ## Phase 29 — `get-item` one URL at a time
 
 The natural shape of the work is a wide search and then a handful of candidates:

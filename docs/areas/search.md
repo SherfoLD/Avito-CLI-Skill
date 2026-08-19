@@ -19,8 +19,9 @@ therefore only good input for `get-page` and `get-filters`: `apply-filters` and
 `move-category` accept page 1 only.
 
 Both answer with `{ query, locationId, locationName, searchUrl, items }` —
-`get-page` adds the confirmed `page`. The URL and the effective region are stated
-once, on the envelope, and never repeat inside `items` (D-073).
+`search` adds `category` and `get-page` the confirmed `page`. The URL, the
+effective region and the category are stated once, on the envelope, and never
+repeat inside `items` (D-073).
 
 Request budget for `search`: 4 with no geo and 4 with `--location-id`
 (`/robots.txt`, the `?q=` redirect payload, the canonical SSR document, the items
@@ -35,7 +36,7 @@ case, because the listings are there (D-063). Budget for `get-page`: 3.
 `https://www.avito.ru/?q=<query>` returns a pure redirect payload naming the
 canonical route; a second read fetches that route, which carries `searchCore`,
 `filtersV2` and `context` for the postconditions and for the request that
-follows. The listings come from a third call, to the items API (D-063). The visible
+follows, plus the category sidebar `category` is read from (D-076). The listings come from a third call, to the items API (D-063). The visible
 form is not used and the session's region is preserved.
 
 Geo of the route the query landed on is carried into that request and confirmed
@@ -89,6 +90,32 @@ before a single card is decoded.
   It also removes a fork inside one command: `search` used to answer from the
   document when it was given no geo argument and from the API when it was, so the
   same query returned two different qualities of listing depending on a flag.
+- **D-076 — `search` names the category it landed in, and does it in
+  `move-category`'s words.** Three queries land in three different categories and
+  their results are not comparable; until now that was inferable only from the
+  slug of `searchUrl`. `category` is the name of the node Avito marks as current
+  in the sidebar the canonical document already carries, so it costs no request —
+  only `rubricators` added to the keys that cross, and the walk that
+  `get-categories` and `move-category` already share (D-046, D-071).
+
+  It is a **name and not an ID** because `searchCore.categoryId` names a coarser
+  level than the one this CLI navigates (F-096): the ID would not identify the
+  name beside it, and nothing accepts it. The name is exactly what
+  `move-category --to` takes, so the field an agent reads is the field it passes
+  back.
+
+  `null` means Avito placed the search in no category — the sidebar of several
+  bold branches (F-084) — and that is the answer, not a gap. A sidebar the walk
+  cannot read ends the call instead, before the listings are requested: a `null`
+  covering both would say "no category" where the truth is "not read".
+
+  Only `search` and `move-category` have it, and those are the two commands that
+  *decide* a category: one when Avito places the query, the other when the caller
+  moves it. `get-page` and `apply-filters` change neither — a page is the same
+  search deeper, and a filter is drift if it moves `categoryId` — so the category
+  of the `searchUrl` they were handed is a fact the caller already holds. Stating
+  it again per call would be payload for nothing, so they do not.
+
 - **D-024 — reservation is a flag, not a field.** `--remove-reserved` is a
   declared local predicate over the page that came back, not an Avito filter
   (no server-side reservation filter exists). The three rules are identical in

@@ -20,15 +20,31 @@ const CANONICAL = '/moskva/tovary_dlya_kompyutera/komplektuyuschie/operativnaya_
 const ABSORBED = '/moskva/telefony/mobilnye_telefony/apple-ASgB?cd=1&context=H4sIAAA';
 const API = `${ORIGIN}${ITEMS_API_PATH}`;
 
+// The sidebar the landed document draws, which is where the category the search
+// fell into is named. `type=2` is the current one; a search Avito placed nowhere
+// has none of them and several bold branches instead (F-084).
+const sideNode = ({
+  id, name, type = 1, url = '/moskva/tovary_dlya_kompyutera/komplektuyuschie-ASgB?cd=1&q=ddr5+32gb',
+  children = [], isCurrent = false, isOpened = false, hasBack = false,
+} = {}) => ({ id, name, type, url, children, isCurrent, isOpened, hasBack });
+
+const SIDE_NODES = [
+  sideNode({ id: 1, name: 'Комплектующие', type: 0, isOpened: true, children: [
+    sideNode({ id: 2, name: 'Оперативная память', type: 2, isCurrent: true, url: CANONICAL }),
+    sideNode({ id: 3, name: 'Видеокарты', url: '/moskva/tovary_dlya_kompyutera/komplektuyuschie/videokarty-ASgB?cd=1&q=ddr5+32gb' }),
+  ] }),
+];
+
 // The landed document names the search and ships the context that addresses the
 // API; its own catalog is never read, being the twenty-complete-cards carrier (F-089).
-function catalogState({ query = 'ddr5 32gb', core = {} } = {}) {
+function catalogState({ query = 'ddr5 32gb', core = {}, sideNodes = SIDE_NODES } = {}) {
   return {
     loaderData: {
       data: {
         searchCore: searchCore({ query, ...core }),
         filtersV2: FILTERS,
         context: 'opaque-context',
+        ...(sideNodes === null ? {} : { rubricators: { side: { nodes: sideNodes } } }),
       },
     },
   };
@@ -180,6 +196,47 @@ check('two document hops name the search and the items API answers it with the l
   assertOutput(COMMAND, answer);
   assert(driven.page.navigations.length === 1 && driven.page.navigations[0] === ROBOTS,
     `expected one robots.txt priming, got ${JSON.stringify(driven.page.navigations)}`);
+});
+
+// The category is a fact about the whole answer, so it sits on the envelope
+// beside the region (D-073, D-076). It is spelled exactly as `move-category --to`
+// takes it, which is the only reason it is a name and not an ID.
+check('the envelope names the category Avito placed the search in', async () => {
+  const { answer } = search(routes());
+  const decoded = await answer;
+  assert(decoded.category === 'Оперативная память', `unexpected category ${decoded.category}`);
+  assert(decoded.items.every((entry) => !('category' in entry)), 'the category must not repeat on every listing');
+
+  // A query Avito could place in no category is drawn as several bold branches
+  // with no current node at all, and null is that answer rather than a gap (F-084).
+  const nowhere = await search(routes(apiRoute(), hop2({ state: catalogState({ sideNodes: [
+    sideNode({ id: 1, name: 'Услуги', type: 0, isCurrent: true, isOpened: true }),
+    sideNode({ id: 2, name: 'Электроника', type: 0, isCurrent: true, isOpened: true }),
+  ] }) }))).answer;
+  assert(nowhere.category === null, `expected no category, got ${nowhere.category}`);
+  assertOutput(COMMAND, nowhere);
+});
+
+// The category is read off a carrier, so a carrier that stopped being one ends
+// the call. Returning null there would say "Avito placed this search nowhere",
+// which is a different answer from "the sidebar could not be read".
+check('a sidebar this reader cannot walk stops the search before the listings', async () => {
+  const missing = await failureOf(() => search(
+    routes(apiRoute(), hop2({ state: catalogState({ sideNodes: null }) })),
+  ).answer);
+  assert(missing?.code === 'COMMAND_EXEC', `expected a typed refusal, got ${missing?.code}`);
+
+  // Two current categories is not a category to choose between.
+  const doubled = await failureOf(() => search(routes(apiRoute(), hop2({ state: catalogState({ sideNodes: [
+    sideNode({ id: 1, name: 'Оперативная память', type: 2, isCurrent: true, url: CANONICAL }),
+    sideNode({ id: 2, name: 'Видеокарты', type: 2, isCurrent: true }),
+  ] }) }))).answer);
+  assert(/more than one current category/.test(doubled?.message ?? ''), `unexpected refusal ${doubled?.message}`);
+
+  // Both refusals land before the listings are asked for.
+  const driven = search(routes(apiRoute(), hop2({ state: catalogState({ sideNodes: null }) })));
+  await failureOf(() => driven.answer);
+  assert(driven.page.calls.every((url) => !url.startsWith(API)), 'the items API must not be asked');
 });
 
 // A search without a geo argument refines nothing, and that is exactly what the

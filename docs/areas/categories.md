@@ -12,8 +12,8 @@ categories }` — the whole sidebar tree of the current route, in the order Avit
 drew it: array position is the reading order, `depth` the indentation and
 `parent` the visible name of the node above, so the tree is reconstructible
 without this command inventing one. It performs no transition and does not change
-its input. `name` is what `move-category --to` accepts, and `targetUrl` is where
-following that entry would land.
+its input. `name` is what `move-category --to` accepts, and `navigable` says
+whether it will take it (D-075).
 
 `move-category <searchUrl> --to <name>` moves the listing into another category
 by its visible name and answers `{ query, category, locationId, locationName,
@@ -72,6 +72,16 @@ without losing the query.
   `ancestor` values. D-033 remains the guard: tree entries always carry the query, so
   the rule does not fire in normal operation, but drift at Avito will become a
   visible refusal instead of a quietly widened listing.
+- **D-075 — `get-categories` hands over no routes.** Each entry used to carry
+  `targetUrl`, the URL following it would land on. Nothing consumes it:
+  `move-category` takes a **name** and resolves the route itself, from the same
+  sidebar, so a caller passing a `targetUrl` anywhere is passing it to a command
+  that ignores it. What it cost was a second URL vocabulary in the hands of
+  agents — one route per node, up to forty of them, none of which any command
+  accepts — beside the one `searchUrl` on the envelope that every command does.
+  `navigable` survives it: that was the only question a caller asked the route,
+  and it is now answered without handing the route over.
+
 - **D-046 — the two sidebar readers share the node, its meaning and the walk
   around it.** Both commands read `rubricators.side.nodes`, and none of it exists
   twice: `SIDEBAR_NODE` in `src/schemas/rubricator.mjs` says what a node has to
@@ -125,6 +135,18 @@ without losing the query.
   `isOpened: false` with its children `aria-hidden="true"`. `isOpened` is the
   expander state (`expandless` / `expandmore`), not a claim about the type, and
   `isCurrent` on a head is what the page bolds. Both were refusals until D-058.
+- **F-096 — `searchCore.categoryId` is a coarser level than the sidebar
+  navigates.** Replayed 2026-08-19 on `…/komplektuyuschie/operativnaya_pamyat-…?q=ddr5
+  32gb`: `categoryId: 101` is carried by the current node, by its parent, by its
+  grandparent and by all three of its siblings alike. What identifies the current
+  category is the microcategory — `mcId: 3845` on the node, the same number on the
+  document's own top-level `mcId` and on `analytics.microCategoryId` — and the
+  name «Оперативная память» belongs to that, not to 101. `rootCategoryId: 6` and
+  `verticalCategoryId: 4` are coarser again. So a `{categoryId, categoryName}`
+  pair would be an ID naming one thing beside a name meaning another, and the
+  whole vocabulary this CLI navigates by — what `get-categories` prints, what
+  `move-category --to` takes, what `search` answers with (D-076) — is the name.
+
 - **F-053 — Avito changes the tree's shape by route mode, and going up exists in
   both.** On a search page the ancestors arrive as `type=0` and one `back` entry
   «Все категории», all of them carrying `?cd=1&q=…`. On a route **without** a

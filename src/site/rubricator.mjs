@@ -81,6 +81,24 @@ export function sidebarWalk(rawNodes, baseUrl) {
 }
 
 /**
+ * The category this search is in, by the one node Avito marks as current, or
+ * `null` where it marks none — a search it could place nowhere, drawn as several
+ * current branches instead (F-084). That `null` is the answer, not a missing
+ * one: the sidebar itself is refused by `sidebarWalk` before this is asked.
+ *
+ * Two current categories is not a choice to make quietly. Avito has never drawn
+ * one, and the day it does, picking the first would name a category the search
+ * is not in.
+ */
+export function currentCategoryName(entries) {
+  const current = entries.filter((entry) => entry.role === 'current');
+  if (current.length > 1) {
+    throw new CommandExecutionError('Avito category sidebar marks more than one current category');
+  }
+  return current.length === 1 ? current[0].node.name : null;
+}
+
+/**
  * Whether a node's route is one this search can be moved to — the URL decides,
  * not what the page draws (D-057). Two nodes are not a move: the node Avito
  * itself marks as the current category, and any node whose route is the one

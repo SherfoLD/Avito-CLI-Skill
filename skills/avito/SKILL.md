@@ -59,15 +59,19 @@ avito get-item <url> --images-dir <dir>             → full text, and the photo
 The four listing commands also state, at the top level, the region Avito actually
 searched (`locationId`, `locationName`) and the query it actually ran (`query`,
 `null` where the text dissolved into a category). Avito substitutes both
-silently, so read them rather than assuming the request was honoured.
+silently, so read them rather than assuming the request was honoured. `search`
+adds `category`, the category it decided the query belongs to — two searches that
+landed in different ones are not comparable, and `null` means it placed the query
+in none. It is spelled the way `move-category --to` takes it.
 
 One ordering rule: `apply-filters` and `move-category` accept page 1 only and
 refuse a URL carrying `p=<n>`. So filters and category first, depth after.
 
 `get-categories` answers with the whole sidebar tree in `categories`: `depth` and
-`parent` say where an entry hangs, and `navigable` says whether it has a route to
-move to at all — a branch heading is a destination like any other, and what is
-never one is the category the search is already in. `move-category` takes an
+`parent` say where an entry hangs, and `navigable` says whether it can be moved
+to at all — a branch heading is a destination like any other, and what is never
+one is the category the search is already in. No entry carries a URL: you move by
+`name`, and the CLI resolves the route from Avito's own sidebar. `move-category` takes an
 entry that is `navigable` **and** `preservesQuery: true`; it refuses the rest
 with the reason. When Avito could not place a query in any category at all,
 several entries come back with `current: true`: those are the candidate groups it

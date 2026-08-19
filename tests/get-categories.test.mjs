@@ -140,15 +140,15 @@ check('role names what the node is, and back wins over the type', async () => {
 });
 
 // The route decides, not the type (D-057): a branch is not an anchor on the
-// page and its URL is still a working route. What carries no searchUrl is the
-// route the search is already on — moving there is not a move — and a node
-// Avito hung no URL on at all.
-check('every category with a route of its own carries it, whatever its type', async () => {
+// page and its URL is still a working route, so it is navigable too. The route
+// itself is not handed over — `navigable` is the whole of what a caller does
+// with it, and the name is what `move-category` takes (D-075).
+check('navigable is the route, told as the one thing a caller acts on', async () => {
   const { answer: { categories } } = await readCategories();
-  assert(byName(categories, 'Мобильные телефоны').targetUrl?.startsWith(ORIGIN), 'an option must carry its route');
-  assert(byName(categories, 'Телефоны').targetUrl?.startsWith(ORIGIN), 'a branch carries the route Avito gave it');
+  assert(Object.keys(categories[0]).includes('targetUrl') === false, 'no category carries a route of its own');
+  assert(byName(categories, 'Мобильные телефоны').navigable === true, 'an option with a route is navigable');
   assert(byName(categories, 'Телефоны').navigable === true, 'a branch with a route is navigable');
-  assert(byName(categories, 'Xiaomi').targetUrl === null && byName(categories, 'Xiaomi').navigable === false,
+  assert(byName(categories, 'Xiaomi').navigable === false,
     'the route this search is already on is not a move');
 
   // Avito names the current category itself, and that answer outranks the
@@ -157,14 +157,13 @@ check('every category with a route of its own carries it, whatever its type', as
   const { answer: { categories: canonical } } = await readCategories(withNodes([
     node({ id: 1, name: 'Xiaomi', type: 2, isCurrent: true, url: withQuery('/moskva/telefony/xiaomi-ASgB') }),
   ]));
-  assert(canonical[0].navigable === false && canonical[0].targetUrl === null,
+  assert(canonical[0].navigable === false,
     'the category Avito marks as current is never a move, whatever its route');
 
   const { answer: { categories: routeless } } = await readCategories(withNodes([
     node({ id: 1, name: 'Телефоны', type: 0, url: '', children: [node({ id: 2, name: 'Xiaomi' })] }),
   ]));
   assert(byName(routeless, 'Телефоны').navigable === false, 'a node with no URL cannot be followed');
-  assert(byName(routeless, 'Телефоны').targetUrl === null, 'and it carries none');
   assert(routeless.length === 2, 'it is still returned, and so are its children');
 });
 

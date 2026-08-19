@@ -4,9 +4,9 @@
  * Two document hops and one items API call. Avito answers the public `?q=` route
  * with a payload that names the canonical target itself, so no region slug or
  * category route is ever constructed; the canonical catalog document then
- * carries the `searchCore` the API request is built from, and the API answers
- * with all fifty cards where the SSR catalog is complete only in its first
- * twenty (F-089).
+ * carries the `searchCore` the API request is built from, the category sidebar
+ * that names where the query landed, and the API answers with all fifty cards
+ * where the SSR catalog is complete only in its first twenty (F-089).
  *
  * The directory calls come first on purpose. Avito accepts geo values it does
  * not apply, so a check made after the search would be checking the wrong thing
@@ -15,16 +15,19 @@
 
 import { ArgumentError, CommandExecutionError, EmptyResultError } from '../runtime/errors.mjs';
 import { defineCommand } from '../runtime/command.mjs';
-import { CATALOG_DOCUMENT, QUERY_DOCUMENT } from '../schemas/document.mjs';
+import { QUERY_DOCUMENT, SIDEBAR_DOCUMENT } from '../schemas/document.mjs';
 import { LISTING_ITEM, LISTING_ITEM_TYPE, applyReservedFilter, listingItems } from '../site/listing.mjs';
 import { catalogItems } from '../site/card.mjs';
 import {
   CATALOG_KEYS,
+  SIDEBAR_KEYS,
   primeOrigin,
   readCatalogPage,
   readDocument,
   resultCount,
 } from '../site/carriers.mjs';
+import { MAX_NAME_LENGTH } from '../schemas/rubricator.mjs';
+import { currentCategoryName, sidebarWalk } from '../site/rubricator.mjs';
 import {
   PRESERVED_CORE_FIELDS,
   carrySearchCore,
@@ -390,6 +393,7 @@ function assertSearchApplied(sourceCore, resultCore, refinement) {
  */
 const OUTPUT = z.strictObject({
   query: text().nullable(),
+  category: text().max(MAX_NAME_LENGTH).nullable(),
   locationId: idString(),
   locationName: text(),
   searchUrl: searchUrlField(),
@@ -398,6 +402,8 @@ const OUTPUT = z.strictObject({
 
 const OUTPUT_TYPE = `type Output = {
   query: string | null;   // what Avito searched for; null where the text dissolved into a category
+  category: string | null; // the category Avito placed the search in, spelled as move-category
+                           // --to takes it; null where it placed it in none
   locationId: string;     // digits only, the region Avito actually searched
   locationName: string;
   searchUrl: string;      // the canonical URL every other command takes
@@ -505,8 +511,8 @@ export default defineCommand({
     const schema = await readDocument(page, {
       requestUrl: canonicalUrl,
       stage: 'schema',
-      keep: CATALOG_KEYS,
-      schema: CATALOG_DOCUMENT,
+      keep: SIDEBAR_KEYS,
+      schema: SIDEBAR_DOCUMENT,
       subject: 'Avito SSR search state',
       command: COMMAND,
     });
@@ -520,6 +526,14 @@ export default defineCommand({
     if (!cleanText(sourceCore.locationName)) {
       throw new CommandExecutionError('Avito SSR search state has unsupported effective context');
     }
+    // The category is the canonical document's to name, and it is read before the
+    // listings are asked for: a sidebar this reader cannot walk stops the command
+    // here rather than after fifty cards have been decoded. What makes the name
+    // true of those cards is `categoryId`, which the API answer is held to below.
+    const category = currentCategoryName(sidebarWalk(
+      schema.state.rubricators?.side?.nodes,
+      answeredUrl(schema.responseUrl, 'canonical search URL'),
+    ));
     const sourceParamEntries = coreParamEntries(sourceCore, 'Avito SSR searchCore');
 
     const api = await readCatalogPage(
@@ -561,6 +575,7 @@ export default defineCommand({
 
     return {
       query: cleanText(resultCore.query) || null,
+      category,
       locationId: String(searchLocationId),
       locationName: searchLocation,
       searchUrl,

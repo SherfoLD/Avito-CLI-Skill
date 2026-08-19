@@ -111,7 +111,6 @@ check('a rule over a list fires on the list, not on one entry', async () => {
         hasChildren: index === 0,
         navigable: !current,
         preservesQuery: current ? null : true,
-        targetUrl: current ? null : `https://www.avito.ru/moskva/category-${index}?cd=1&q=ddr5+32gb`,
       };
     }),
   });

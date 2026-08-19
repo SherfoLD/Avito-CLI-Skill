@@ -62,9 +62,9 @@ function targetPreservesQuery(targetUrl, currentQuery) {
 }
 
 /**
- * `preservesQuery` and `targetUrl` are null together and only where there is no
- * move to make: the route the search is already on, and a node Avito gave no
- * route at all. `parent` is null at the top of the tree and nowhere else.
+ * `preservesQuery` is null only where there is no move to make: the route the
+ * search is already on, and a node Avito gave no route at all. `parent` is null
+ * at the top of the tree and nowhere else.
  */
 const OUTPUT = z.strictObject({
   query: text().nullable(),
@@ -79,7 +79,6 @@ const OUTPUT = z.strictObject({
     hasChildren: z.boolean(),
     navigable: z.boolean(),
     preservesQuery: z.boolean().nullable(),
-    targetUrl: searchUrl().nullable(),
   })),
 });
 
@@ -100,12 +99,11 @@ type Category = {
   hasChildren: boolean;
   navigable: boolean;        // false for the route this search is already on, and for a routeless head
   preservesQuery: boolean | null;  // null where there is no route; false is refused by move-category
-  targetUrl: string | null;  // the search URL moving here would land on
 };`;
 
 export default defineCommand({
   name: 'get-categories',
-  description: 'Get the whole Avito category sidebar of a search URL as a tree: where the search sits, and every route it can be moved to. Feed a name into avito move-category',
+  description: 'Get the whole Avito category sidebar of a search URL as a tree: where the search sits, and every category it can be moved to. Feed a name into avito move-category',
   access: 'read',
   example: 'avito get-categories <searchUrl>',
   domain: 'www.avito.ru',
@@ -160,7 +158,6 @@ export default defineCommand({
         hasChildren: node.children.length > 0,
         navigable,
         preservesQuery: navigable ? targetPreservesQuery(route, searchCore.query) : null,
-        targetUrl: navigable ? route.href : null,
       });
     }
 

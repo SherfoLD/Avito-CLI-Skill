@@ -37,10 +37,13 @@ list**. Deciding what goes where is mechanical:
 > element.**
 
 `searchUrl` is one URL for the whole search, so it sits on the envelope of the
-four listing commands. `targetUrl` in `get-categories` is a different route per
-node, so it sits on the node. `sellerReviewsCount` is one number for the seller,
-so it sits on the envelope of `get-seller-reviews` rather than on all twenty-five
-reviews.
+four listing commands. `depth` in `get-categories` is different per node, so it
+sits on the node. `sellerReviewsCount` is one number for the seller, so it sits
+on the envelope of `get-seller-reviews` rather than on all twenty-five reviews.
+
+Passing this rule is not earning a place. `get-categories` also had a route per
+node; it went, because `move-category` takes a name and resolves the route
+itself, so nothing a caller could do with it existed (D-075).
 
 Two things this rule is for, and the second is the bigger one:
 
@@ -95,9 +98,10 @@ Avito's, neither of which a map can hold (D-056).
   large; if you also carried the base price it would not be `price2`, it would be
   `basePrice`.
 - The envelope and the element must not share a name for different things. When
-  `get-categories` moved to an envelope, the per-node route became `targetUrl`
-  precisely because `searchUrl` on the envelope now means "the search this
-  sidebar belongs to".
+  `get-categories` moved to an envelope, the per-node route had to be renamed
+  from `searchUrl`, which on the envelope now means "the search this sidebar
+  belongs to". It was called `targetUrl` for a while and then deleted (D-075) —
+  the rename is still the rule, the field is just no longer the example.
 
 ## Order
 

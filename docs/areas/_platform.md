@@ -524,9 +524,11 @@ by hand, and held in step with the schema by `npm run check:commands` (D-053).
   one object: an envelope carrying what is true of the whole answer, and lists
   carrying what differs between the things in them. The rule for deciding is
   mechanical — **identical across every element → envelope; different between
-  them → element** — which is why `get-categories` keeps `targetUrl` on each
-  category (every node has its own route) while the four listing commands keep
-  `searchUrl` on the envelope (there is one).
+  them → element** — which is why `get-categories` keeps `depth` and `parent` on
+  each category (every node sits somewhere different) while the four listing
+  commands keep `searchUrl` on the envelope (there is one). The rule says where a
+  field goes, not that it earns a place: a per-node route passed it and was
+  removed anyway, for having no caller (D-075).
 
   Two things this is for, and the second is the bigger one. `searchUrl` on fifty
   cards was ~2000 tokens of the same 120-character string per call, paid on every
