@@ -2,14 +2,14 @@
  * The category sidebar, `rubricators.side.nodes`: what a node is, what its type
  * means, and the one walk over the tree both commands that read it share
  * (D-046). `get-categories` and `move-category` differ in what they do with a
- * row, not in what a row is.
+ * node, not in what a node is.
  *
  * Avito's vocabulary for `type`, which no command may hold a second opinion
  * about:
  *
  *   0  a branch — a group head, drawn with an expander arrow and never as a
  *      link, whose own route Avito still hands over (F-083)
- *   1  an option — the rows the page draws as anchors
+ *   1  an option — the nodes the page draws as anchors
  *   2  the current category — where this search already is
  *
  * An unknown type stops the walk, because a fourth kind of node is a sidebar
@@ -36,7 +36,7 @@ export function sidebarRole(type) {
  * Every node of the tree in the order Avito drew it, each with the three things
  * a caller needs that the node itself does not carry: how deep it sits, the
  * visible name it hangs under, and its route as a `URL` — `null` where Avito
- * hung none, which is a row that cannot be followed rather than a sidebar this
+ * hung none, which is a node that cannot be followed rather than a sidebar this
  * CLI fails to understand.
  */
 export function sidebarWalk(rawNodes, baseUrl) {
@@ -82,7 +82,7 @@ export function sidebarWalk(rawNodes, baseUrl) {
 
 /**
  * Whether a node's route is one this search can be moved to — the URL decides,
- * not what the page draws (D-057). Two rows are not a move: the node Avito
+ * not what the page draws (D-057). Two nodes are not a move: the node Avito
  * itself marks as the current category, and any node whose route is the one
  * already requested. The second comparison is by pathname alone, because the
  * sidebar's copy of a route carries a `cd=1` the request did not — and it is

@@ -1,6 +1,6 @@
 ---
 name: fix-command
-description: Use when a command that used to work now fails — a typed error at runtime, a red offline suite, or a verify fixture that stopped matching. Guides diagnosis, a bounded repair, and writing the result into memory. For writing a new command, use write-command instead.
+description: Use when a command that used to work now fails — a typed error at runtime, a red offline suite, or a live expectation that stopped matching. Guides diagnosis, a bounded repair, and writing the result into memory. For writing a new command, use write-command instead.
 allowed-tools: Read, Edit, Write, Grep, Bash(npm:*), Bash(node:*), Bash(git:*)
 ---
 
@@ -26,7 +26,7 @@ with an edit.
   the fix is logging in, not decoding around it.
 
 **Repair budget: three rounds.** If diagnose → fix → retry has not resolved it in
-three, stop and report what was tried. A fourth round is where fixtures start
+three, stop and report what was tried. A fourth round is where expectations start
 getting relaxed.
 
 ## "Empty" is not "broken"
@@ -37,7 +37,7 @@ committing to a repair:
 - **Was the request answered?** A `200` with an empty result set is an answer.
   Report "nothing matches" rather than patching a working command.
 - **Does it reproduce?** Try a neighbouring input. If one query returns nothing
-  and a similar one returns fifty rows, the command is fine.
+  and a similar one returns fifty listings, the command is fine.
 - **Is it a boundary rather than a failure?** On this site the page past the last
   page of results answers `429`, not an empty page (F-061). A `429` at the end of
   a listing is a known false alarm about rate limiting.
@@ -54,12 +54,12 @@ that worked.
 |---|---|---|
 | `ArgumentError` | the caller, or a guard that got stricter than reality | the guard, and whether Avito really refuses that input |
 | `CommandExecutionError` about shape | drift: Avito changed the payload | the carrier, compared against a stored evidence sample. The message names the path that broke (`point.latitude`, `stations.0.name`) — start there. |
-| `... breaks its own contract at row N` | drift on our side of the boundary | the row no longer satisfies the descriptor's `row` schema. Either a field stopped arriving, or a mapping changed. Never widen the schema to make it pass. |
+| `... breaks its own contract` | drift on our side of the boundary | the answer no longer satisfies the descriptor's `output` schema, and the message names the path. Either a field stopped arriving, or a mapping changed. Never widen the schema to make it pass. |
 | `CommandExecutionError` about a postcondition | drift, or applied-vs-echoed | which carrier proves application for that key |
 | `EmptyResultError` | usually not a defect | the section above |
 | `TimeoutError` | the browser, the tab, or one slow endpoint | a fresh tab first — a hung recon tab looks exactly like this |
 | red offline suite | the change you just made | the assertion is right until proven otherwise |
-| red verify fixture | the value, or the rule | compare against the visible page **before** anything else |
+| red live expectation | the value, or the rule | compare against the visible page **before** anything else |
 
 ## Step 2 — Get the evidence
 
@@ -84,8 +84,8 @@ Four possibilities, and they have different fixes:
    guard to what is actually implausible — and never past that.
 3. **Our mapping was wrong all along.** The command was reading a field that
    happened to agree. This is the dangerous case: it means past output was wrong
-   and probably passed a fixture. Check whether the fixture was written from the
-   same assumption as the code.
+   and probably satisfied its live expectation. Check whether that expectation was
+   written from the same assumption as the code.
 4. **Nothing changed.** Session, tab, or boundary. See the hard stops.
 
 Say which one out loud before editing. The fix for (2) and the fix for (3) look
@@ -103,10 +103,10 @@ similar and mean opposite things.
   in four. When the slug check was fixed, five commands held it — and the fifth
   had it as `continue` instead of `throw`, so it had been quietly returning the
   wrong value rather than failing. Grep before you declare it fixed.
-- **Never relax a verify fixture to silence a failure.** A rule that fires means
-  the output is broken. Tighten the command. The one legitimate reason to edit a fixture during a
-  repair is that the site changed shape — and then the fact is written into the
-  domain file in the same commit. Otherwise the edit converts a caught
+- **Never relax a live expectation to silence a failure.** A rule that fires means
+  the output is broken. Tighten the command. The one legitimate reason to edit an
+  expectation during a repair is that the site changed shape — and then the fact
+  is written into the domain file in the same commit. Otherwise the edit converts a caught
   regression into a silent one.
 - **Never weaken an offline assertion.** If one genuinely has to change, that is
   a contract change with a `D-0xx` number, not a repair.
@@ -118,15 +118,15 @@ similar and mean opposite things.
 
 ```
 npm test                  # offline, every suite
-npm run verify <command>  # live, against the fixture
+npm run verify <command>  # live, against expectations/<command>.mjs
 npm run check             # lint and the static gates
 ```
 
 Then compare the values against the visible page. A repair that makes verify
 green without anyone looking at the data is how case (3) survives.
 
-If the fixture needed to become stricter as a result — because the failure showed
-a hole in it — make it stricter now. A repair that leaves the same class of bug
+If the expectation needed to become stricter as a result — because the failure
+showed a hole in it — make it stricter now. A repair that leaves the same class of bug
 undetectable next time is half a repair.
 
 ## Step 6 — Write it down
@@ -143,11 +143,11 @@ undetectable next time is half a repair.
 Two things worth stating in the write-up because they are easy to get wrong later:
 whether the defect's shape belongs to the category or to the seller (a green
 category proves nothing about a defect that belongs to a seller — F-057), and
-whether the fixture would have caught it if it had been written independently.
+whether the expectation would have caught it if it had been written independently.
 
 ## When to stop and ask
 
-- The fix requires adding an argument, a column, a retry or a fallback value.
+- The fix requires adding an argument, an output field, a retry or a fallback value.
 - The output would differ from what the command returned before, on any field,
   for a reason you cannot explain.
 - Three rounds are up.

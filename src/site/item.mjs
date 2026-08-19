@@ -3,7 +3,7 @@
  * `card.mjs` and holds the opposite failure contract, which is why the review
  * count and the image reader exist in both:
  *
- *   card.mjs   throws on a malformed value. A catalog row has no second source,
+ *   card.mjs   throws on a malformed value. A catalog card has no second source,
  *              so drift has to stop the call.
  *   item.mjs   returns `null` for the whole item. `get-item` has a fallback —
  *              the rendered page — and null is how this decoder says "try it".
@@ -29,7 +29,7 @@ export function itemReviewCount(value) {
 /**
  * The price table of a service, as the listing page prints it (F-080). Avito
  * groups the entries and has only ever sent one group, «Прайс-лист»; the groups
- * are merged because a row column holds a table and not a tree, so a second
+ * are merged because the field holds a table and not a tree, so a second
  * group would arrive as more entries rather than as a lost one. A goods listing
  * carries the key with `null` and decodes to an empty table.
  *
@@ -162,8 +162,8 @@ export function decodeBuyerItem(rawBuyerItem, expectedItemId) {
 
   // The listing page carries no machine-readable date anywhere — not in the item API, not
   // in JSON-LD, not in microdata — only this rendered string, without a year and without
-  // seconds. It passes through as Avito wrote it; the exact instant is on the search row
-  // under `published` (D-039, F-059).
+  // seconds. It passes through as Avito wrote it; the exact instant is on the listing
+  // item under `published` (D-039, F-059).
   if (rawItem.sortFormatedDate != null && typeof rawItem.sortFormatedDate !== 'string') return null;
   const decodedPublishedText = clean(rawItem.sortFormatedDate) || null;
 

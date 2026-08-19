@@ -10,3 +10,6 @@ node_modules/
 traces/
 fixtures/traces/
 last-probe.log
+
+# Worktrees the agent harness creates here are checkouts of this repo, not content.
+.claude/worktrees/

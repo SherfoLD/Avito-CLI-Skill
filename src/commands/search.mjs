@@ -16,8 +16,8 @@
 import { ArgumentError, CommandExecutionError, EmptyResultError } from '../runtime/errors.mjs';
 import { defineCommand } from '../runtime/command.mjs';
 import { CATALOG_DOCUMENT, QUERY_DOCUMENT } from '../schemas/document.mjs';
-import { LISTING_ROW, applyReservedFilter, listingRows } from '../site/listing.mjs';
-import { catalogRows } from '../site/card.mjs';
+import { LISTING_ITEM, LISTING_ITEM_TYPE, applyReservedFilter, listingItems } from '../site/listing.mjs';
+import { catalogItems } from '../site/card.mjs';
 import {
   CATALOG_KEYS,
   primeOrigin,
@@ -41,6 +41,7 @@ import {
   sameValues,
 } from '../site/text.mjs';
 import { AVITO_ORIGIN, answeredUrl } from '../site/url.mjs';
+import { idString, searchUrl as searchUrlField, text, z } from '../runtime/schema.mjs';
 import {
   capabilityParameter,
   fetchAvitoJson,
@@ -316,7 +317,7 @@ function buildSearchRequest(state, refinement) {
   return apiUrl;
 }
 
-/** What the answer has to show before its rows mean anything. */
+/** What the answer has to show before its listings mean anything. */
 function assertSearchApplied(sourceCore, resultCore, refinement) {
   const driftedField = preservedCoreDrift(sourceCore, resultCore, PRESERVED_CORE_FIELDS);
   if (driftedField) {
@@ -381,12 +382,36 @@ function assertSearchApplied(sourceCore, resultCore, refinement) {
   }
 }
 
+/**
+ * `locationId` and `locationName` are the region Avito actually searched, which
+ * is not always the one that was asked for — the command refuses a mismatch, and
+ * a caller who passed no `--location-id` at all learns here where they landed.
+ * `query` is null where Avito dissolved the text into a category route.
+ */
+const OUTPUT = z.strictObject({
+  query: text().nullable(),
+  locationId: idString(),
+  locationName: text(),
+  searchUrl: searchUrlField(),
+  items: z.array(LISTING_ITEM),
+});
+
+const OUTPUT_TYPE = `type Output = {
+  query: string | null;   // what Avito searched for; null where the text dissolved into a category
+  locationId: string;     // digits only, the region Avito actually searched
+  locationName: string;
+  searchUrl: string;      // the canonical URL every other command takes
+  items: Item[];          // page 1; page the rest with get-page
+};
+
+${LISTING_ITEM_TYPE}`;
+
 export default defineCommand({
   name: 'search',
   description: 'Start an Avito search: returns the first page of listings and the search URL every other command takes. Refine that URL with avito get-filters and avito apply-filters, not here',
   access: 'read',
   // vocabulary-ok: sample argument in help text, not an identifier the command uses
-  example: 'avito search <query> --location-id 650400 -f json',
+  example: 'avito search <query> --location-id 650400',
   domain: 'www.avito.ru',
   args: [
     { name: 'query', type: 'string', required: true, positional: true, help: 'Search query' },
@@ -397,7 +422,8 @@ export default defineCommand({
     { name: 'radius', type: 'int', help: 'Radius in km around --coords, limited to the values Avito offers for the location' },
     { name: 'remove-reserved', type: 'bool', default: false, help: 'Drop the listings Avito marks as reserved; Avito has no server-side filter for them, so the page comes back shorter' },
   ],
-  row: LISTING_ROW,
+  output: OUTPUT,
+  type: OUTPUT_TYPE,
   run: async (page, args) => {
     const query = String(args.query ?? '').trim();
     if (!query) {
@@ -475,7 +501,7 @@ export default defineCommand({
     const canonicalUrl = await resolveCanonicalUrl(page, query);
 
     // Hop two: the canonical catalog document carries searchCore and filtersV2, so
-    // it serves both the postconditions and the request the rows come back on.
+    // it serves both the postconditions and the request the listings come back on.
     const schema = await readDocument(page, {
       requestUrl: canonicalUrl,
       stage: 'schema',
@@ -525,17 +551,20 @@ export default defineCommand({
     const landed = decodeLandedSearch(searchUrl, query);
     if (!landed.accepted) throw landingError(landed.reason);
 
-    const decodedRows = catalogRows(api.catalog);
-    if (decodedRows.length === 0) {
+    const decoded = catalogItems(api.catalog);
+    if (decoded.length === 0) {
       if (resultCount(api) === 0) {
         throw new EmptyResultError(COMMAND, 'No listings match the requested query in this location');
       }
       throw new CommandExecutionError('Avito returned no catalog items with a non-zero result count');
     }
 
-    return listingRows(
-      applyReservedFilter(decodedRows, removeReserved, COMMAND),
+    return {
+      query: cleanText(resultCore.query) || null,
+      locationId: String(searchLocationId),
+      locationName: searchLocation,
       searchUrl,
-    );
+      items: listingItems(applyReservedFilter(decoded, removeReserved, COMMAND)),
+    };
   },
 });

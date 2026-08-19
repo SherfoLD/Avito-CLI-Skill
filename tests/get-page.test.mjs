@@ -1,9 +1,9 @@
 // Offline end-to-end for `avito get-page`: the real command over a synthetic
-// Avito SSR document plus the items API response the rows come from. What a card
+// Avito SSR document plus the items API response the listings come from. What a card
 // means is `card.test.mjs`; what this suite watches is the two carriers being
 // tied to one another, and the page coming back whole.
 import {
-  assertRow, assertRows, failureOf, loadCommand, runner,
+  assertOutput, failureOf, loadCommand, runner,
 } from './harness.mjs';
 import {
   FILTERS, ITEMS_API_PATH, ORIGIN, bootstrapHtml, browserPage, item, itemsApiResponse, searchCore,
@@ -18,7 +18,7 @@ const { COMMAND } = await loadCommand('get-page');
 const { check, assert, run } = runner();
 
 // The document is read for the page it proves, not for its catalog: past the
-// twentieth card that catalog carries stubs, which is why the rows come from the
+// twentieth card that catalog carries stubs, which is why the listings come from the
 // API below (F-089). Only a page-1 document ships a `context`, so the carrier
 // spells that difference out the way Avito does (F-092).
 function pageState({ page = 2, query = 'ddr5 32gb', sort = null } = {}) {
@@ -59,25 +59,27 @@ const routes = (document = documentRoute(), api = apiRoute()) => [api, document]
 
 const paginate = (routeList, args = {}) => {
   const page = browserPage(routeList);
-  return { page, rows: COMMAND.run(page, { searchUrl: REQUESTED, page: 2, ...args }) };
+  return { page, answer: COMMAND.run(page, { searchUrl: REQUESTED, page: 2, ...args }) };
 };
 
-check('the document proves the page and the items API answers it with the rows', async () => {
-  const { page, rows } = paginate(routes());
-  const returned = await rows;
+check('the document proves the page and the items API answers it with the listings', async () => {
+  const { page, answer } = paginate(routes());
+  const returned = await answer;
   assert(page.calls.length === 2, `expected a document and one API call, got ${JSON.stringify(page.calls)}`);
   assert(page.calls[0] === PAGE_2, `the document must be the requested page, got ${page.calls[0]}`);
-  assert(page.calls[1].startsWith(API), `the rows must come from the items API, got ${page.calls[1]}`);
+  assert(page.calls[1].startsWith(API), `the listings must come from the items API, got ${page.calls[1]}`);
   // The document's canonical URL is what the next command pages, not the API's.
-  assert(returned[0].searchUrl === PAGE_2, `unexpected searchUrl ${returned[0].searchUrl}`);
-  assertRows(COMMAND, returned);
+  assert(returned.searchUrl === PAGE_2, `unexpected searchUrl ${returned.searchUrl}`);
+  assert(returned.page === 2, `the confirmed page must be reported, got ${returned.page}`);
+  assert(returned.items.every((entry) => !('searchUrl' in entry)), 'the search URL must not repeat on every listing');
+  assertOutput(COMMAND, returned);
 });
 
 // The API is asked for the page the document proved, carrying that document's
 // searchCore: without the page key it answers about page 1 (F-091).
 check('the API request carries the page number and the searchCore of that document', async () => {
-  const { page: driven, rows } = paginate(routes());
-  await rows;
+  const { page: driven, answer } = paginate(routes());
+  await answer;
   const requested = new URL(driven.calls[1]);
   assert(requested.searchParams.get('p') === '2', `page not requested: ${driven.calls[1]}`);
   assert(requested.searchParams.get('categoryId') === '101', `searchCore not carried: ${driven.calls[1]}`);
@@ -89,7 +91,7 @@ check('the API request carries the page number and the searchCore of that docume
     routes(documentRoute(pageState({ page: 1 })), apiRoute(apiState({ page: 1, url: REQUESTED }))),
     { page: 1 },
   );
-  await first.rows;
+  await first.answer;
   const firstRequest = new URL(first.page.calls[1]);
   assert(!firstRequest.searchParams.has('p'), `page 1 must be the request without p: ${first.page.calls[1]}`);
   assert(firstRequest.searchParams.get('context') === 'opaque-context',
@@ -97,33 +99,34 @@ check('the API request carries the page number and the searchCore of that docume
 });
 
 check('page 1 is requested without p and canonicalized the same way', async () => {
-  const { page, rows } = paginate(
+  const { page, answer } = paginate(
     routes(documentRoute(pageState({ page: 1 })), apiRoute(apiState({ page: 1, url: REQUESTED }))),
     { page: 1 },
   );
-  const returned = await rows;
+  const returned = await answer;
   assert(page.calls[0] === REQUESTED, `page 1 must drop p, requested ${page.calls[0]}`);
-  assert(returned[0].searchUrl === REQUESTED, `unexpected searchUrl ${returned[0].searchUrl}`);
+  assert(returned.searchUrl === REQUESTED, `unexpected searchUrl ${returned.searchUrl}`);
+  assert(returned.page === 1, `the confirmed page must be reported, got ${returned.page}`);
 });
 
 check('a canonical URL that dropped a preserved parameter is drift', async () => {
   const failure = await failureOf(() => paginate(
     routes(documentRoute(pageState(), { responseUrl: `${ORIGIN}${CATALOG_PATH}?p=2` })),
-  ).rows);
+  ).answer);
   assert(failure != null && /preserved search query parameters/.test(failure.message),
     `drift accepted: ${failure && failure.message}`);
 });
 
-check('searchCore reporting another page is drift, not rows', async () => {
+check('searchCore reporting another page is drift, not listings', async () => {
   const driven = paginate(routes(documentRoute(pageState({ page: 1 }))));
-  const failure = await failureOf(() => driven.rows);
+  const failure = await failureOf(() => driven.answer);
   assert(failure != null && /unexpected page/.test(failure.message), `wrong page accepted: ${failure && failure.message}`);
   assert(driven.page.calls.length === 1,
     `the API must not be asked after the document already drifted: ${JSON.stringify(driven.page.calls)}`);
 });
 
 // The second carrier is checked against the first, because the document is what
-// named the search and the API is only being asked for its rows.
+// named the search and the API is only being asked for its listings.
 check('an API answer about another page, route or search is drift', async () => {
   const cases = [
     [apiState({ page: 3 }), /items API returned an unexpected page/],
@@ -132,7 +135,7 @@ check('an API answer about another page, route or search is drift', async () => 
     [apiState({ core: { categoryId: 24 } }), /preserved search field categoryId/],
   ];
   for (const [answer, expected] of cases) {
-    const failure = await failureOf(() => paginate(routes(documentRoute(), apiRoute(answer))).rows);
+    const failure = await failureOf(() => paginate(routes(documentRoute(), apiRoute(answer))).answer);
     assert(failure != null && expected.test(failure.message),
       `an answer matching ${expected} was accepted: ${failure && failure.message}`);
   }
@@ -141,7 +144,7 @@ check('an API answer about another page, route or search is drift', async () => 
 check('HTTP 429 and access challenges stop before any decoding', async () => {
   const rate = await failureOf(() => paginate(
     routes(documentRoute(pageState(), { status: 429, body: '<html><title>Доступ ограничен</title></html>' })),
-  ).rows);
+  ).answer);
   assert(rate?.code === 'ACCESS', `429 not reported as access: ${rate && rate.code}`);
 
   // A verification page is 200 HTML with no state script, which is exactly what a
@@ -149,12 +152,12 @@ check('HTTP 429 and access challenges stop before any decoding', async () => {
   // them apart — they call for the same thing.
   const challenge = await failureOf(() => paginate(routes(documentRoute(pageState(), {
     body: '<html><head><title>Доступ ограничен: проблема с IP</title></head><body>проверим, что вы человек</body></html>',
-  }))).rows);
+  }))).answer);
   assert(challenge?.code === 'ACCESS', `challenge not reported as access: ${challenge && challenge.code}`);
 
   const apiRate = await failureOf(() => paginate(
     routes(documentRoute(), apiRoute(apiState(), { status: 429, body: { 'too-many-requests': true } })),
-  ).rows);
+  ).answer);
   assert(apiRate?.code === 'ACCESS', `API 429 not reported as access: ${apiRate && apiRate.code}`);
 });
 
@@ -165,35 +168,35 @@ check('HTTP 429 and access challenges stop before any decoding', async () => {
 check('a normal page whose state carries the word captcha is not a refusal', async () => {
   const state = pageState();
   state.loaderData.data.meta = { captchaProvider: 'none', captcha: false };
-  const rows = await paginate(routes(documentRoute(state))).rows;
-  assert(rows.length > 0, 'the rows must come back untouched');
+  const untouched = await paginate(routes(documentRoute(state))).answer;
+  assert(untouched.items.length > 0, 'the listings must come back untouched');
 });
 
 // This command applies no filter and reads none, but a document whose schema
-// stopped being a schema is not a document to hand fifty rows from.
-check('a page whose filter schema stopped being one does not hand over rows', async () => {
+// stopped being a schema is not a document to hand fifty listings from.
+check('a page whose filter schema stopped being one does not hand over listings', async () => {
   const state = pageState();
   state.loaderData.data.filtersV2 = { Sections: [{ Filters: 'нет фильтров' }] };
-  const failure = await failureOf(() => paginate(routes(documentRoute(state))).rows);
+  const failure = await failureOf(() => paginate(routes(documentRoute(state))).answer);
   assert(failure?.code === 'COMMAND_EXEC', `expected COMMAND_EXEC, got ${failure && failure.code}`);
   assert(/filtersV2\.Sections\.0\.Filters/.test(failure.message), `the path must be named: ${failure.message}`);
 });
 
 check('a page whose catalog decodes to nothing is a typed empty result', async () => {
-  const failure = await failureOf(() => paginate(routes(documentRoute(), apiRoute(apiState({ items: [] })))).rows);
+  const failure = await failureOf(() => paginate(routes(documentRoute(), apiRoute(apiState({ items: [] })))).answer);
   assert(failure?.code === 'EMPTY_RESULT', `expected EMPTY_RESULT, got ${failure && failure.code}`);
 });
 
-// Avito fixes the page at 50 rows and offers no page-size parameter, so a full page must
+// Avito fixes the page at 50 listings and offers no page-size parameter, so a full page must
 // come back whole. Until 2026-08-14 a --limit default of 10 silently dropped 40 of them.
 check('every listing Avito put on the page is returned, never a local slice', async () => {
   const items = Array.from({ length: 50 }, (unused, index) => item({ id: String(7881841669 + index) }));
-  const rows = await paginate(routes(documentRoute(), apiRoute(apiState({ items })))).rows;
-  assert(rows.length === 50, `expected the whole page, got ${rows.length}`);
+  const whole = await paginate(routes(documentRoute(), apiRoute(apiState({ items })))).answer;
+  assert(whole.items.length === 50, `expected the whole page, got ${whole.items.length}`);
   // Every one of them complete: that is the whole reason this command asks a
-  // second carrier for rows the document already had in part (F-089).
-  assert(rows.every((row) => row.descriptionPreview && row.location && row.imageCount === 2),
-    'the API page must be complete on every row, not only its first twenty');
+  // second carrier for listings the document already had in part (F-089).
+  assert(whole.items.every((entry) => entry.descriptionPreview && entry.location && entry.imageCount === 2),
+    'the API page must be complete on every listing, not only its first twenty');
 });
 
 // Node side: --remove-reserved is a declared local predicate over the page Avito returned,
@@ -201,19 +204,21 @@ check('every listing Avito put on the page is returned, never a local slice', as
 const CARD_ID = '8288791269';
 const withReservations = (items) => routes(documentRoute(), apiRoute(apiState({ items })));
 
-check('remove-reserved drops the reserved rows of the requested page', async () => {
+check('remove-reserved drops the reserved listings of the requested page', async () => {
   const items = [
     item({ id: '8329291056', isReserved: true }),
     item({ id: CARD_ID, isReserved: false }),
     item({ id: '8220283533', isReserved: true }),
   ];
-  const rows = await paginate(withReservations(items), { 'remove-reserved': true }).rows;
-  assert(rows.length === 1 && rows[0].itemId === CARD_ID, `unexpected rows: ${JSON.stringify(rows.map((r) => r.itemId))}`);
-  assert(!('isReserved' in rows[0]) && !('reserved' in rows[0]), 'the flag must stay out of the row contract');
-  assertRow(COMMAND, rows[0]);
+  const filtered = await paginate(withReservations(items), { 'remove-reserved': true }).answer;
+  assert(filtered.items.length === 1 && filtered.items[0].itemId === CARD_ID,
+    `unexpected listings: ${JSON.stringify(filtered.items.map((entry) => entry.itemId))}`);
+  assert(!('isReserved' in filtered.items[0]) && !('reserved' in filtered.items[0]),
+    'the flag must stay out of the contract');
+  assertOutput(COMMAND, filtered);
 
-  const whole = await paginate(withReservations(items)).rows;
-  assert(whole.length === 3, 'without the flag the page must come back whole');
+  const untouched = await paginate(withReservations(items)).answer;
+  assert(untouched.items.length === 3, 'without the flag the page must come back whole');
 });
 
 check('an all-reserved page is empty and a vanished flag refuses the filter', async () => {
@@ -221,12 +226,12 @@ check('an all-reserved page is empty and a vanished flag refuses the filter', as
     item({ id: '8329291056', isReserved: true }),
     item({ id: '8220283533', isReserved: true }),
   ];
-  const empty = await failureOf(() => paginate(withReservations(allReserved), { 'remove-reserved': true }).rows);
+  const empty = await failureOf(() => paginate(withReservations(allReserved), { 'remove-reserved': true }).answer);
   assert(empty?.code === 'EMPTY_RESULT', `expected EMPTY_RESULT, got ${empty && empty.code}`);
   assert(/\(2\) is reserved/.test(empty.message), `page size not reported: ${empty.message}`);
 
   const drifted = [item({ id: CARD_ID }), item({ id: '8234297329', isReserved: null })];
-  const refused = await failureOf(() => paginate(withReservations(drifted), { 'remove-reserved': true }).rows);
+  const refused = await failureOf(() => paginate(withReservations(drifted), { 'remove-reserved': true }).answer);
   assert(refused?.code === 'COMMAND_EXEC', `drifted flag accepted: ${refused && refused.code}`);
   assert(/reservation flag/.test(refused.message), `unexpected message: ${refused.message}`);
 });

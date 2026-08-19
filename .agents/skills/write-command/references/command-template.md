@@ -3,7 +3,7 @@
 One file is the command, and the CDP boundary is drawn as narrowly as it can be:
 
 ```
-src/commands/<name>.mjs   arguments, the request, the postconditions, the row
+src/commands/<name>.mjs   arguments, the request, the postconditions, the answer
 src/schemas/*.mjs         what Avito answers with, one file per response
 src/site/*.mjs            Avito knowledge that runs in Node: decoders, request
                           builders, the URL rules
@@ -30,8 +30,9 @@ states.
 ```js
 import { defineCommand } from '../runtime/command.mjs';
 import { ArgumentError, CommandExecutionError, EmptyResultError } from '../runtime/errors.mjs';
-import { idString, itemUrl, text, z } from '../runtime/schema.mjs';
-import { decodeRows } from '../decoders/example.mjs';
+import { idString, itemUrl, searchUrl, text, z } from '../runtime/schema.mjs';
+import { answeredUrl } from '../site/url.mjs';
+import { decodeItems } from '../decoders/example.mjs';
 
 const ORIGIN_BOOTSTRAP_URL = 'https://www.avito.ru/robots.txt';
 
@@ -40,7 +41,7 @@ export default defineCommand({
   description: 'One sentence saying what the caller gets and what to do with it',
   access: 'read',
   domain: 'www.avito.ru',
-  example: 'avito example <searchUrl> -f json',
+  example: 'avito example <searchUrl>',
   args: [
     {
       name: 'searchUrl',
@@ -50,20 +51,47 @@ export default defineCommand({
       help: 'Search URL from avito search, apply-filters, move-category or get-page',
     },
   ],
-  row: z.strictObject({
-    itemId: idString(),
-    title: text(),
-    url: itemUrl(),
-  }),
+  output: OUTPUT,
+  type: OUTPUT_TYPE,
   run: async (ctx, args) => { /* … */ },
 });
 ```
 
 The descriptor is the whole contract. `--help` prints it, the checks read it, and
-`bin/avito.mjs` parses every row through `row` before printing — so a column that
-drifted from what it declares ends the call with a typed error instead of
-reaching the caller. `columns` is derived from `row` and is never written by
-hand; declaring it is an error.
+`bin/avito.mjs` parses the whole answer through `output` before printing — so a
+field that drifted from what it declares ends the call with a typed error instead
+of reaching the caller.
+
+`OUTPUT` and `OUTPUT_TYPE` are two declarations of that one contract, written
+side by side above the descriptor:
+
+```js
+const OUTPUT = z.strictObject({
+  searchUrl: searchUrl(),
+  items: z.array(z.strictObject({
+    itemId: idString(),
+    title: text(),
+    url: itemUrl(),
+  })),
+});
+
+const OUTPUT_TYPE = `type Output = {
+  searchUrl: string;   // the URL these results belong to
+  items: Item[];
+};
+
+type Item = {
+  itemId: string;      // digits only
+  title: string;
+  url: string;         // listing URL, no query
+};`;
+```
+
+The comments are why the type is not rendered from the schema: a renderer knows
+`string | null` but not what the `null` says. They are written for a consuming
+agent, so they carry meaning and units — never an `F-0xx` it cannot resolve, and
+never a restatement of the type beside them. `npm run check:commands` refuses a
+name that is in the schema and not in the type, or the reverse.
 
 `help` text on an argument is mandatory because for an agent caller it is the
 only documentation that exists — so it says *why*, not just *what*: which flag it
@@ -72,7 +100,7 @@ it out.
 
 The description is written for someone deciding whether to call this command
 rather than a neighbouring one. "Get another result page of a search URL.
-Returns the same listing columns as avito search" does that; "Paginate" does not.
+Returns the same listing fields as avito search" does that; "Paginate" does not.
 
 ## The body
 
@@ -101,9 +129,11 @@ run: async (page, args) => {
   assertPreserved(state.searchCore, requestedUrl, responseUrl);
 
   // 5. Decode. Pure function, same one the offline suite exercises.
-  const rows = decodeRows(state);
-  if (rows.length === 0) throw new EmptyResultError(COMMAND);
-  return rows;
+  const items = decodeItems(state);
+  if (items.length === 0) throw new EmptyResultError(COMMAND);
+  // The URL Avito answered on, checked and normalised — never the raw string the
+  // page reported, and never the one that was requested (src/site/url.mjs).
+  return { searchUrl: answeredUrl(responseUrl, 'example URL').href, items };
 },
 ```
 
@@ -157,15 +187,15 @@ shapes in this repository are:
 
 ## Things that bite
 
-- **Name an intermediate shape after itself, not after the row.** `suggested*`
+- **Name an intermediate shape after itself, not after the answer.** `suggested*`
   in `get-location` exists for this: a carrier that shares its key names with the
-  columns is one rename away from being mistaken for output. The schema will
-  catch the mistake now, but the reader still has to tell the two apart.
+  output is one rename away from being mistaken for it. The schema will catch the
+  mistake now, but the reader still has to tell the two apart.
 - **The browser-side script is a module, not a template string.** No
   double-escaping of regexes, no marker comments for the harness to find, and
   `import` instead of textual surgery. See `src/browser/README.md` for the two
   rules the prelude enforces on anything shared.
-- **The four listing commands are one row and one request builder.** `search`,
+- **The four listing commands are one item schema and one request builder.** `search`,
   `get-page`, `apply-filters` and `move-category` share `src/site/card.mjs`,
   `src/site/listing.mjs` and `src/site/items.mjs`. A change in any of the three
   is a change to four commands, and all four offline suites have to run.
@@ -173,7 +203,7 @@ shapes in this repository are:
   class names carry build hashes. Visible text, `aria-label`, `title` and
   `placeholder` are all locale-dependent — a selector written against Russian
   labels silently matches nothing the day the browser language changes, and
-  "matches nothing" degrades into empty rows rather than an error. If you must
+  "matches nothing" degrades into empty fields rather than an error. If you must
   match text, fail closed with a typed error when nothing matches.
 - **Timeouts are per command, not copied.** Measure the endpoint you are actually
   calling and set the budget from what you measured. An intermittent timeout is

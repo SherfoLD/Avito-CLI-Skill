@@ -5,7 +5,7 @@
 - [STATUS.md](STATUS.md) — what works right now, the register of failures, category coverage, standing blockers.
 - [PLAN.md](PLAN.md) — the future only: phases, open questions, quality gates.
 - [areas/](areas/) — one file per command domain. Everything about that domain lives inside it: contract, mechanics, decisions, facts, risks.
-  - [_platform.md](areas/_platform.md) — cross-cutting: transport, anti-bot, the SSR carrier, the shared row decoder, output shape, repository rules.
+  - [_platform.md](areas/_platform.md) — cross-cutting: transport, anti-bot, the SSR carrier, the shared listing decoder, output shape, repository rules.
   - [search.md](areas/search.md) — `search`, `get-page`
   - [filters.md](areas/filters.md) — `get-filters`, `apply-filters`
   - [categories.md](areas/categories.md) — `get-categories`, `move-category`
@@ -22,14 +22,14 @@ in the numbering are normal — a dropped decision is deleted, not rewritten.
 
 | What | Where | Who reads it |
 |---|---|---|
-| command contract: arguments, columns, description | the descriptor in `src/commands/`, printed by `--help` | anyone calling it |
+| command contract: arguments, output type, description | the descriptor in `src/commands/`, printed by `--help` | anyone calling it |
 | installation, command list, exit codes, examples | [../README.md](../README.md) | anyone installing the CLI |
 | a fact about Avito, or a decision about us | the domain file in [areas/](areas/) | anyone editing a command |
 | what any Avito author will hit, ours or not | [site-memory.md](site-memory.md) | the next project |
 | an anonymised response sample | `../evidence/<name>-<YYYYMMDDHHMM>.json` | whoever proves the site drifted |
 | how we got here | the commit message | git |
 
-The flag list and the column list are never duplicated here: that is a rotting
+The flag list and the output type are never duplicated here: that is a rotting
 copy of `--help`. Documentation says only what a flag cannot say about itself —
 why it is shaped that way, what it is mutually exclusive with, what happens when
 it is omitted.

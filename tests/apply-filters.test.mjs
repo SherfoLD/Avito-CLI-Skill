@@ -5,9 +5,9 @@
 //
 // What a card means is `card.test.mjs`. What this suite watches is which
 // selections are refused before a request exists, how each one is serialized, and
-// what the answer has to show before its rows are handed over.
+// what the answer has to show before its listings are handed over.
 import {
-  assertRow, failureOf, loadCommand, runner,
+  assertOutput, failureOf, loadCommand, runner,
 } from './harness.mjs';
 import {
   FILTERS, ITEMS_API_PATH, ORIGIN, bootstrapHtml, browserPage, item, searchCore,
@@ -85,7 +85,7 @@ const routes = (ssr = ssrRoute(), api = apiRoute()) => [api, ssr];
 
 const apply = (routeList, set = 'params[159478]=18629557', args = {}) => {
   const page = browserPage(routeList);
-  return { page, rows: COMMAND.run(page, { searchUrl: REQUESTED, set, ...args }) };
+  return { page, answer: COMMAND.run(page, { searchUrl: REQUESTED, set, ...args }) };
 };
 
 /** The request the page was told to fetch, readable. */
@@ -93,26 +93,27 @@ const requested = (page) => decodeURIComponent(page.calls.find((call) => call.st
 
 const { check, assert, run } = runner();
 
-check('the selection is serialized onto the sealed request and its rows come back', async () => {
+check('the selection is serialized onto the sealed request and its listings come back', async () => {
   const driven = apply(routes());
-  const rows = await driven.rows;
+  const answer = await driven.answer;
   assert(driven.page.calls.length === 2 && driven.page.calls[0] === REQUESTED,
     `expected one SSR read then one API call, got ${JSON.stringify(driven.page.calls)}`);
   const url = requested(driven.page);
   assert(url.includes('params[159478][0]=18629557'), `selection not serialized: ${url}`);
   assert(url.includes('spaFlow=true') && url.includes('context=opaque-context'), `unexpected API URL: ${url}`);
-  assertRow(COMMAND, rows[0]);
+  assert(answer.items.every((entry) => !('searchUrl' in entry)), 'the search URL must not repeat on every listing');
+  assertOutput(COMMAND, answer);
 });
 
-check('a selection Avito did not apply is drift, not rows', async () => {
-  const failure = await failureOf(() => apply(routes(ssrRoute(), apiRoute(apiState({ params: {}, current: {} })))).rows);
+check('a selection Avito did not apply is drift, not listings', async () => {
+  const failure = await failureOf(() => apply(routes(ssrRoute(), apiRoute(apiState({ params: {}, current: {} })))).answer);
   assert(failure?.code === 'COMMAND_EXEC', `unapplied selection accepted: ${failure && failure.code}`);
   assert(/did not apply every requested value of params\[159478\]/.test(failure.message), `unexpected message: ${failure.message}`);
 });
 
 check('a value missing from the fresh schema stops before the API', async () => {
   const driven = apply(routes(ssrRoute(ssrState({ filters: sourceFilters({ values: [{ value: '18629556', name: 'DDR4' }] }) }))));
-  const failure = await failureOf(() => driven.rows);
+  const failure = await failureOf(() => driven.answer);
   assert(failure?.code === 'ARGUMENT', `unknown value accepted: ${failure && failure.code}`);
   assert(driven.page.calls.length === 1, 'API called despite an unavailable selection');
 });
@@ -121,7 +122,7 @@ check('a value missing from the fresh schema stops before the API', async () => 
 // is refused by name instead of being applied in a second round (D-031).
 check('a key missing from the fresh schema is refused by name before the API', async () => {
   const driven = apply(routes(ssrRoute()), 'params[777777]=1');
-  const failure = await failureOf(() => driven.rows);
+  const failure = await failureOf(() => driven.answer);
   assert(failure?.code === 'ARGUMENT', `unknown key accepted: ${failure && failure.code}`);
   assert(/params\[777777\] is not available/.test(failure.message), `unexpected message: ${failure.message}`);
   assert(/avito get-filters/.test(failure.message), 'the caller must be told where to read the current keys');
@@ -137,18 +138,18 @@ check('several values of one filter are serialized and confirmed together', asyn
     routes(ssrRoute(), apiRoute(apiState({ params: { 159478: both }, current: { 'params[159478]': both } }))),
     'params[159478]=18629557,18629556',
   );
-  await driven.rows;
+  await driven.answer;
   const url = requested(driven.page);
   assert(url.includes('params[159478][0]=18629557'), `first value not serialized: ${url}`);
   assert(url.includes('params[159478][1]=18629556'), `second value not serialized: ${url}`);
   assert(!/params\[159478\]=/.test(url), `the scalar form must not be sent too: ${url}`);
 });
 
-check('a partly applied multi-value selection is drift, not rows', async () => {
+check('a partly applied multi-value selection is drift, not listings', async () => {
   const failure = await failureOf(() => apply(
     routes(ssrRoute(), apiRoute(apiState({ params: { 159478: ['18629557'] }, current: { 'params[159478]': ['18629557'] } }))),
     'params[159478]=18629557,18629556',
-  ).rows);
+  ).answer);
   assert(failure?.code === 'COMMAND_EXEC', `partial application accepted: ${failure && failure.code}`);
   assert(/did not apply every requested value/.test(failure.message), `unexpected message: ${failure.message}`);
 });
@@ -156,15 +157,15 @@ check('a partly applied multi-value selection is drift, not rows', async () => {
 check('several values are refused for a single-value filter before the API', async () => {
   const singleValued = sourceFilters({ type: 'select' });
   const driven = apply(routes(ssrRoute(ssrState({ filters: singleValued }))), 'params[159478]=18629557,18629556');
-  const failure = await failureOf(() => driven.rows);
+  const failure = await failureOf(() => driven.answer);
   assert(failure?.code === 'ARGUMENT', `single-value filter took two values: ${failure && failure.code}`);
   assert(/takes a single value/.test(failure.message), `unexpected message: ${failure.message}`);
   assert(driven.page.calls.length === 1, 'API called despite an unusable selection');
 
   const one = await apply(routes(
     ssrRoute(ssrState({ filters: singleValued })), apiRoute(apiState({ filters: singleValued })),
-  )).rows;
-  assert(one.length === 1, 'a single value must still apply to a single-value filter');
+  )).answer;
+  assert(one.items.length === 1, 'a single value must still apply to a single-value filter');
 });
 
 // Live evidence: three different filters and five values went out in one request, came back
@@ -175,7 +176,7 @@ check('several different filters travel in one request and are confirmed one by 
     current: { 'params[159478]': ['18629557'], 'params[121588]': ['2850684'] },
     core: { owner: '2', priceMin: '1000', priceMax: '5000' },
   }))), 'params[159478]=18629557;params[121588]=2850684;user=2;price=1000..5000');
-  await driven.rows;
+  await driven.answer;
   assert(driven.page.calls.length === 2, `several filters must still cost one API request, got ${driven.page.calls.length - 1}`);
   const url = requested(driven.page);
   for (const expected of ['params[159478][0]=18629557', 'params[121588][0]=2850684', 'user=2', 'pmin=1000', 'pmax=5000']) {
@@ -194,14 +195,14 @@ check('a short key is confirmed from searchCore and a stale filtersV2 does not f
     routes(ssrRoute(), apiRoute(apiState({ params: {}, current: {}, core: { sort: '104' }, filters: stale }))),
     'sort=104',
   );
-  await driven.rows;
+  await driven.answer;
   assert(requested(driven.page).includes('s=104'), 'sort must be serialized as s');
 });
 
-check('a short key Avito did not apply is drift, not rows', async () => {
+check('a short key Avito did not apply is drift, not listings', async () => {
   const failure = await failureOf(() => apply(
     routes(ssrRoute(), apiRoute(apiState({ params: {}, current: {}, core: { owner: null } }))), 'user=2',
-  ).rows);
+  ).answer);
   assert(failure?.code === 'COMMAND_EXEC', `unapplied short key accepted: ${failure && failure.code}`);
   assert(/did not apply the requested value of user/.test(failure.message), `unexpected message: ${failure.message}`);
 });
@@ -214,18 +215,18 @@ check('an empty value clears a filter and the clearing is confirmed', async () =
     routes(ssrRoute(source), apiRoute(apiState({ params: {}, current: { 'params[159478]': [] }, core: { owner: null } }))),
     'params[159478]=;user=',
   );
-  await driven.rows;
+  await driven.answer;
   const url = requested(driven.page);
   assert(!url.includes('params[159478]'), `a cleared filter must not be sent: ${url}`);
   assert(!/[?&]user=/.test(url), `a cleared short key must not be sent: ${url}`);
 });
 
-check('a filter Avito kept despite the clear is drift, not rows', async () => {
+check('a filter Avito kept despite the clear is drift, not listings', async () => {
   const source = ssrState({ core: { params: { 159478: ['18629557'] } } });
   const failure = await failureOf(() => apply(routes(
     ssrRoute(source),
     apiRoute(apiState({ params: { 159478: ['18629557'] }, current: { 'params[159478]': ['18629557'] } })),
-  ), 'params[159478]=').rows);
+  ), 'params[159478]=').answer);
   assert(failure?.code === 'COMMAND_EXEC', `an ignored clear was accepted: ${failure && failure.code}`);
   assert(/did not clear filter params\[159478\]/.test(failure.message), `unexpected message: ${failure.message}`);
 });
@@ -237,7 +238,7 @@ check('a params range travels in the two keys Avito declares for it', async () =
     params: { 99001: { from: 2015, to: 2018 } },
     current: { 'params[99001]': { from: '2015', to: '2018' } },
   }))), 'params[99001]=2015..2018');
-  await driven.rows;
+  await driven.answer;
   const url = requested(driven.page);
   assert(url.includes('params[99001][from]=2015') && url.includes('params[99001][to]=2018'),
     `a range must be sent as two bounds: ${url}`);
@@ -248,13 +249,13 @@ check('an omitted bound is not sent, and the bound Avito calls empty is not a va
     params: { 99001: { from: 2015, to: 0 } },
     current: { 'params[99001]': { from: '2015', to: null } },
   }))), 'params[99001]=2015..');
-  await driven.rows;
+  await driven.answer;
   const url = requested(driven.page);
   assert(url.includes('params[99001][from]=2015') && !url.includes('params[99001][to]'),
     `the omitted bound must not be sent: ${url}`);
 });
 
-check('a range Avito did not apply is drift, not rows', async () => {
+check('a range Avito did not apply is drift, not listings', async () => {
   const cases = [
     { params: { 99001: { from: 2015, to: 2017 } }, current: { 'params[99001]': { from: '2015', to: '2017' } } },
     // The shape of an echoed key: searchCore repeats what it was sent while the schema, which
@@ -264,7 +265,7 @@ check('a range Avito did not apply is drift, not rows', async () => {
   for (const state of cases) {
     const failure = await failureOf(() => apply(
       routes(ssrRoute(), apiRoute(apiState(state))), 'params[99001]=2015..2018',
-    ).rows);
+    ).answer);
     assert(failure?.code === 'COMMAND_EXEC', `an unapplied range was accepted: ${failure && failure.code}`);
   }
 });
@@ -277,7 +278,7 @@ check('a range already applied to the URL survives the next call', async () => {
     ssrRoute(ssrState({ core: { params: carried } })),
     apiRoute(apiState({ params: { ...carried, 121588: ['2850684'] }, current: { 'params[121588]': ['2850684'] } })),
   ), 'params[121588]=2850684');
-  await driven.rows;
+  await driven.answer;
   const url = requested(driven.page);
   assert(url.includes('params[99001][from]=2015') && !url.includes('params[99001][to]'),
     `the untouched range must be carried unchanged: ${url}`);
@@ -288,7 +289,7 @@ check('a range already applied to the URL survives the next call', async () => {
       params: { ...carried, 99001: { from: 2010, to: 0 }, 121588: ['2850684'] },
       current: { 'params[121588]': ['2850684'] },
     })),
-  ), 'params[121588]=2850684').rows);
+  ), 'params[121588]=2850684').answer);
   assert(failure?.code === 'COMMAND_EXEC', `a changed range must not pass as preserved: ${failure && failure.code}`);
 });
 
@@ -302,7 +303,7 @@ check('a value of a sectioned control is found through its groups', async () => 
   ];
   const filters = sourceFilters({ type: 'sectionedMultiselect', values: sectioned });
   const driven = apply(routes(ssrRoute(ssrState({ filters })), apiRoute(apiState({ filters }))));
-  await driven.rows;
+  await driven.answer;
   assert(driven.page.calls.length === 2, `expected the SSR read and one API call, got ${driven.page.calls.length}`);
 });
 
@@ -314,7 +315,7 @@ check('one value under two names in two groups stops before the API', async () =
   const driven = apply(routes(ssrRoute(ssrState({
     filters: sourceFilters({ type: 'sectionedMultiselect', values: drifted }),
   }))));
-  const failure = await failureOf(() => driven.rows);
+  const failure = await failureOf(() => driven.answer);
   assert(failure?.code === 'ARGUMENT', `an ambiguous option was accepted: ${failure && failure.code}`);
   assert(/unavailable or ambiguous/.test(failure.message), `unexpected message: ${failure.message}`);
   assert(driven.page.calls.length === 1, 'API called despite an ambiguous option');
@@ -341,7 +342,7 @@ check('the bounds of a slider are its own option values', async () => {
     params: { 99002: { from: 3261702, to: 3261704 } },
     current: { 'params[99002]': { from: '3261702', to: '3261704' } },
   }))), 'params[99002]=3261702..3261704');
-  await driven.rows;
+  await driven.answer;
   const url = requested(driven.page);
   assert(url.includes('params[99002][from]=3261702') && url.includes('params[99002][to]=3261704'),
     `a slider must be sent as two bounds: ${url}`);
@@ -358,7 +359,7 @@ check('a bound outside the slider vocabulary and a reversed pair stop before the
   ];
   for (const [set, expected] of cases) {
     const driven = apply(routes(ssrRoute(ssrState({ filters }))), set);
-    const failure = await failureOf(() => driven.rows);
+    const failure = await failureOf(() => driven.answer);
     assert(failure?.code === 'ARGUMENT', `${set} was accepted: ${failure && failure.code}`);
     assert(expected.test(failure.message), `unexpected message for ${set}: ${failure.message}`);
     assert(driven.page.calls.length === 1, `API called despite a refused selection: ${set}`);
@@ -377,7 +378,7 @@ check('typed words are applied as a list and confirmed verbatim', async () => {
     ssrRoute(ssrState({ filters })),
     apiRoute(apiState({ filters, params: { 149569: typed }, current: { 'params[149569]': typed } })),
   ), 'params[149569]=Kingston HyperX,новая');
-  await driven.rows;
+  await driven.answer;
   const url = requested(driven.page);
   // A space travels form-encoded as `+`, which is the form Avito answered live.
   assert(url.includes('params[149569][0]=Kingston+HyperX') && url.includes('params[149569][1]=новая'),
@@ -389,13 +390,13 @@ check('typed words are applied as a list and confirmed verbatim', async () => {
   const failure = await failureOf(() => apply(routes(
     ssrRoute(ssrState({ filters })),
     apiRoute(apiState({ filters, params: { 149569: rewritten }, current: { 'params[149569]': rewritten } })),
-  ), 'params[149569]=Kingston HyperX,новая').rows);
+  ), 'params[149569]=Kingston HyperX,новая').answer);
   assert(failure?.code === 'COMMAND_EXEC', `a rewritten keyword must not pass: ${failure && failure.code}`);
 });
 
 check('a keyword that reads as a range is refused instead of sent as one', async () => {
   const driven = apply(routes(ssrRoute(ssrState({ filters: withKeywords() }))), 'params[149569]=2015..2018');
-  const failure = await failureOf(() => driven.rows);
+  const failure = await failureOf(() => driven.answer);
   assert(failure?.code === 'ARGUMENT', `a range-looking keyword was sent: ${failure && failure.code}`);
   assert(/takes text/.test(failure.message), `unexpected message: ${failure.message}`);
   assert(driven.page.calls.length === 1, 'API called despite an ambiguous keyword');
@@ -413,14 +414,14 @@ check('a checkbox is sent as the bare key and confirmed by both carriers', async
     ssrRoute(ssrState({ filters })),
     apiRoute(apiState({ filters, params: { 191434: 1 }, current: { 'params[191434]': 1 } })),
   ), 'params[191434]=1');
-  await driven.rows;
+  await driven.answer;
   const url = requested(driven.page);
   assert(url.includes('params[191434]=1') && !url.includes('params[191434][0]'), `a checkbox has no index: ${url}`);
 
   const echoed = await failureOf(() => apply(routes(
     ssrRoute(ssrState({ filters })),
     apiRoute(apiState({ filters, params: { 191434: 1 }, current: {} })),
-  ), 'params[191434]=1').rows);
+  ), 'params[191434]=1').answer);
   assert(echoed?.code === 'COMMAND_EXEC', `an echoed checkbox must not pass as applied: ${echoed && echoed.code}`);
 });
 
@@ -428,7 +429,7 @@ check('a checkbox takes 1 and nothing else', async () => {
   const filters = withCheckbox();
   for (const set of ['params[191434]=2', 'params[191434]=1,1', 'params[191434]=1..5']) {
     const driven = apply(routes(ssrRoute(ssrState({ filters }))), set);
-    const failure = await failureOf(() => driven.rows);
+    const failure = await failureOf(() => driven.answer);
     assert(failure?.code === 'ARGUMENT', `${set} was accepted: ${failure && failure.code}`);
     assert(driven.page.calls.length <= 1, `API called despite a refused checkbox value: ${set}`);
   }
@@ -439,14 +440,14 @@ check('a checkbox takes 1 and nothing else', async () => {
 check('the geo of the source URL is carried into the request and checked as preserved', async () => {
   const geo = { metroId: ['117'], geoCoords: [55.760256, 37.611446], searchRadius: 5 };
   const driven = apply(routes(ssrRoute(ssrState({ core: geo })), apiRoute(apiState({ core: geo }))));
-  await driven.rows;
+  await driven.answer;
   const url = requested(driven.page);
   assert(url.includes('metro[0]=117'), `metro not carried: ${url}`);
   assert(url.includes('geoCoords=55.760256,37.611446') && url.includes('radius=5'), `radius not carried: ${url}`);
 
   const failure = await failureOf(() => apply(routes(
     ssrRoute(ssrState({ core: geo })), apiRoute(apiState({ core: { ...geo, metroId: [] } })),
-  )).rows);
+  )).answer);
   assert(failure != null && /preserved search field metroId/.test(failure.message),
     `a dropped metro must be drift: ${failure && failure.message}`);
 });
@@ -454,40 +455,40 @@ check('the geo of the source URL is carried into the request and checked as pres
 check('an items API rate limit or challenge stops as access', async () => {
   const rate = await failureOf(() => apply(routes(
     ssrRoute(), apiRoute(undefined, { status: 429, body: { 'too-many-requests': true } }),
-  )).rows);
+  )).answer);
   assert(rate?.code === 'ACCESS', `429 not reported as access: ${rate && rate.code}`);
 
   const captcha = await failureOf(() => apply(routes(
     ssrRoute(), apiRoute(undefined, { body: { firewallCaptcha: true } }),
-  )).rows);
+  )).answer);
   assert(captcha?.code === 'ACCESS', `captcha not reported as access: ${captcha && captcha.code}`);
 });
 
 check('a zero-count result is a typed empty result', async () => {
   const failure = await failureOf(() => apply(routes(
     ssrRoute(), apiRoute(apiState({ items: [], count: 0 })),
-  )).rows);
+  )).answer);
   assert(failure?.code === 'EMPTY_RESULT', `expected EMPTY_RESULT, got ${failure && failure.code}`);
 
-  // No rows and a non-zero count is not an answer, it is rows gone missing.
+  // No listings and a non-zero count is not an answer, it is listings gone missing.
   const missing = await failureOf(() => apply(routes(
     ssrRoute(), apiRoute(apiState({ items: [], count: 120 })),
-  )).rows);
-  assert(missing?.code === 'COMMAND_EXEC', `a non-zero count with no rows was accepted: ${missing && missing.code}`);
+  )).answer);
+  assert(missing?.code === 'COMMAND_EXEC', `a non-zero count with no listings was accepted: ${missing && missing.code}`);
 });
 
-// Avito fixes the page at 50 rows and offers no page-size parameter, so a full page must
+// Avito fixes the page at 50 listings and offers no page-size parameter, so a full page must
 // come back whole. Until 2026-08-14 a --limit default of 10 silently dropped 40 of them.
 check('every listing the items API returned is kept, never a local slice', async () => {
   const items = Array.from({ length: 50 }, (unused, index) => item({ id: String(7881841669 + index) }));
-  const rows = await apply(routes(ssrRoute(), apiRoute(apiState({ items })))).rows;
-  assert(rows.length === 50, `expected the whole page, got ${rows.length}`);
+  const whole = await apply(routes(ssrRoute(), apiRoute(apiState({ items })))).answer;
+  assert(whole.items.length === 50, `expected the whole page, got ${whole.items.length}`);
 });
 
 // Node side: the flag is a local predicate over the returned page and is never a selection.
 const CARD_ID = '8288791269';
 
-check('remove-reserved drops the reserved rows without touching the selection', async () => {
+check('remove-reserved drops the reserved listings without touching the selection', async () => {
   const items = [
     item({ id: '8329291056', isReserved: true }),
     item({ id: CARD_ID }),
@@ -496,16 +497,18 @@ check('remove-reserved drops the reserved rows without touching the selection', 
   const driven = apply(
     routes(ssrRoute(), apiRoute(apiState({ items }))), 'params[159478]=18629557', { 'remove-reserved': true },
   );
-  const rows = await driven.rows;
-  assert(rows.length === 1 && rows[0].itemId === CARD_ID, `unexpected rows: ${JSON.stringify(rows.map((r) => r.itemId))}`);
-  assert(!('isReserved' in rows[0]) && !('reserved' in rows[0]), 'the flag must stay out of the row contract');
-  assertRow(COMMAND, rows[0]);
+  const filtered = await driven.answer;
+  assert(filtered.items.length === 1 && filtered.items[0].itemId === CARD_ID,
+    `unexpected listings: ${JSON.stringify(filtered.items.map((entry) => entry.itemId))}`);
+  assert(!('isReserved' in filtered.items[0]) && !('reserved' in filtered.items[0]),
+    'the flag must stay out of the contract');
+  assertOutput(COMMAND, filtered);
   const url = requested(driven.page);
   assert(url.includes('params[159478][0]=18629557'), `the selection must still be sent: ${url}`);
   assert(!/reserv/i.test(url), `remove-reserved must never become a request key: ${url}`);
 
-  const whole = await apply(routes(ssrRoute(), apiRoute(apiState({ items })))).rows;
-  assert(whole.length === 3, 'without the flag the page must come back whole');
+  const untouched = await apply(routes(ssrRoute(), apiRoute(apiState({ items })))).answer;
+  assert(untouched.items.length === 3, 'without the flag the page must come back whole');
 });
 
 check('an all-reserved page is empty and a vanished flag refuses the filter', async () => {
@@ -515,14 +518,14 @@ check('an all-reserved page is empty and a vanished flag refuses the filter', as
   ];
   const empty = await failureOf(() => apply(
     routes(ssrRoute(), apiRoute(apiState({ items: allReserved }))), 'params[159478]=18629557', { 'remove-reserved': true },
-  ).rows);
+  ).answer);
   assert(empty?.code === 'EMPTY_RESULT', `expected EMPTY_RESULT, got ${empty && empty.code}`);
   assert(/\(2\) is reserved/.test(empty.message), `page size not reported: ${empty.message}`);
 
   const drifted = [item({ id: CARD_ID }), item({ id: '8234297329', isReserved: null })];
   const refused = await failureOf(() => apply(
     routes(ssrRoute(), apiRoute(apiState({ items: drifted }))), 'params[159478]=18629557', { 'remove-reserved': true },
-  ).rows);
+  ).answer);
   assert(refused?.code === 'COMMAND_EXEC', `drifted flag accepted: ${refused && refused.code}`);
   assert(/reservation flag/.test(refused.message), `unexpected message: ${refused.message}`);
 });
@@ -554,7 +557,7 @@ check('the set grammar is parsed fail-closed', async () => {
     ['', /at least one/],
   ]) {
     const driven = apply(routes(), set);
-    const failure = await failureOf(() => driven.rows);
+    const failure = await failureOf(() => driven.answer);
     assert(failure?.code === 'ARGUMENT', `"${set}" accepted: ${failure && failure.code}`);
     assert(pattern.test(failure.message), `unexpected message for "${set}": ${failure.message}`);
     assert(driven.page.calls.length === 0, `"${set}" reached the network`);
@@ -566,7 +569,7 @@ check('the set grammar is parsed fail-closed', async () => {
 check('a repeated --set is refused instead of silently keeping the last one', async () => {
   const argv = process.argv;
   process.argv = [...argv, '--set', 'params[159478]=18629557', '--set', 'params[121588]=2850684'];
-  const failure = await failureOf(() => apply(routes()).rows).finally(() => { process.argv = argv; });
+  const failure = await failureOf(() => apply(routes()).answer).finally(() => { process.argv = argv; });
   assert(failure?.code === 'ARGUMENT', `repeated --set accepted: ${failure && failure.code}`);
   assert(/set may be passed once/.test(failure.message), `unexpected message: ${failure.message}`);
 });
@@ -575,7 +578,7 @@ check('a repeated --set is refused instead of silently keeping the last one', as
 // operations stay separate rather than one of them guessing the other.
 check('a page-2 search URL is refused instead of filtered', async () => {
   const driven = apply(routes(ssrRoute(ssrState({ page: 2 }))));
-  const failure = await failureOf(() => driven.rows);
+  const failure = await failureOf(() => driven.answer);
   assert(failure?.code === 'ARGUMENT', `a page-2 URL was filtered: ${failure && failure.code}`);
   assert(/avito get-page/.test(failure.message), `the caller must be pointed at get-page: ${failure.message}`);
   assert(driven.page.calls.length === 1, 'the API was asked from a page-2 source');

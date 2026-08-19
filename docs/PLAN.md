@@ -4,10 +4,10 @@ Updated: 2026-08-19
 
 The future only. What is already done is in [STATUS.md](STATUS.md) and in git.
 
-Two blocks, and the first one comes first. Phases 25, 27, 28 and 29 are what one
+Two blocks, and the first one comes first. Phases 25 and 27–29 are what one
 consumer session found by using the skill blind on a real task — a services
-search in Moscow — and every claim in them was replayed live before it was
-written down.
+search in Moscow; phase 30 came from counting an answer field by field. Every
+claim in them was replayed live before it was written down.
 Phases 13–21 are the category walk: the unit of work there is a top-level Avito
 category, not a command, because data shape belongs to the category. Of twelve
 categories, three are out of scope by decision and will not be walked — Jobs,
@@ -25,21 +25,24 @@ Known holes in the checks themselves, as opposed to holes in what Avito lets us
 read. Neither is urgent and neither is free.
 
 - [ ] `search` has no offline coverage of its geo *directory* reads beyond the
-      radius list, and no fixture exercises `--metro` / `--district`. It was
+      radius list, and no expectation exercises `--metro` / `--district`. It was
       checked live by hand when `src/site/` was extracted (D-047); that check is
       repeatable by nothing in the repository.
-- [ ] `sellerName` is defended by no live rule at all (D-028) and cannot be —
-      `notEmpty` applies to every row. Only the offline suite and human eyes
-      stand behind it.
+- [ ] `sellerName` is defended by no live rule at all (D-028) and cannot be — a
+      required field applies to every element at once. Only the offline suite and
+      human eyes stand behind it.
+- [ ] `location` is in the same class and for a sharper reason: it was null on 45
+      of 50 on the one page it was counted (F-095), so no expectation can require
+      it and none does. A decoder that stopped reading the geo carrier entirely
+      would look exactly like that page.
 
-## What a new column still costs
+## What a new field still costs
 
-The ceiling is 16 (D-054) and a column holds whatever its schema declares, so
-the phases below no longer bid against one another for a slot: the listing row is
-at 14 and `get-item` at 14. What a column still costs is meaning — what it says
-when the value is missing — and payload, which every row pays on every page.
-`-f table` prints a record as `[object Object]`; `attributes` has done that since
-it existed, and any second record column inherits it.
+The ceilings are 40 declared fields and 3 objects deep (D-074), so the phases
+below do not bid against one another for a slot. What a field still costs is
+meaning — what it says when the value is missing — and payload, which it pays
+wherever it repeats. Before adding one, answer where it goes: identical across
+every element is the envelope, different between them is the element (D-073).
 
 ## Phase 25 — Partial degradation of an optional field
 
@@ -59,17 +62,17 @@ way to say "this element is here, one optional part of it is not".
       field says stays a refusal.
 - [ ] Find the carrier for "part of this element is missing". Silently returning
       the element without its photos is the fallback value this repository does
-      not do. A column states it in the contract; a typed warning on stderr is
+      not do. A field states it in the contract; a typed warning on stderr is
       part of no contract yet. This one is a stop-and-ask.
 - [ ] Decide it against `get-item --images-dir`, which is the only carrier of
-      the class now: eleven files on disk and one refusal is a shape a column
+      the class now: eleven files on disk and one refusal is a shape a field
       could state, and today it is a refusal instead.
 
 ## Phase 27 — The seller as an entity
 
 A caller choosing an executor works seller by seller, and the CLI has no seller.
-`sellerName` is a string on a row; that seven of the fifty rows were the same
-shop was discovered by noticing repeats.
+`sellerName` is a string on a card; that seven of the fifty were the same shop
+was discovered by noticing repeats.
 
 The identity is in the payload, three times over, on `4045441344`:
 `buyerItem.userHashedId` (`944d1e…`), `buyerItem.seller.hashId` (`cc39a1…`),
@@ -85,43 +88,33 @@ this one.
 - [ ] Owner's note, and the reason this is not a one-liner: a profile in Services
       is not the profile of a goods seller. Research the closed categories before
       designing the output, not after.
-- [ ] Then `sellerUrl` on `get-item` (a column of its own) and
+- [ ] Then `sellerUrl` on `get-item` (a field of its own) and
       `get-seller-items` as its own command, which is the scenario the whole
       request came from: everything this seller offers, in one call.
 
-## Phase 28 — What a search result silently is
+## Phase 28 — Which category a search silently landed in
 
-Two facts decide how a result reads, and both are inferred from the slug of
-`searchUrl` today.
+The location half of this is answered: `locationId` and `locationName` are on the
+envelope of all four listing commands, read off the response rather than off the
+argument (D-073). The category half is not.
 
-**Location.** `search` without `--location-id` returned Moscow, and the only
-evidence was `/moskva/` in the URL. `searchCore` carries `locationId: 637640`,
-`locationName: "Москва"` and `geoCoords`, and none of it reaches the output.
-`--help` says "omit to keep the current region"; nothing tells a caller what the
-current region is — `avito browser` reports a browser, not a session's region.
+Three searches landed in three different categories (`/predlozheniya_uslug`,
+`/moskva`, `/bytovaya_elektronika`), which makes their results incomparable, and
+today that is inferable only from the slug of `searchUrl`.
+`searchCore.categoryId` is the carrier — `null` when Avito determined none, which
+is itself the fact a caller most needs, and which is visible today only as several
+current branches in `get-categories` (F-084) — and every card carries its own
+`category`.
 
-**Category.** Three searches landed in three different categories
-(`/predlozheniya_uslug`, `/moskva`, `/bytovaya_elektronika`), which makes their
-results incomparable. `searchCore.categoryId` is the carrier — `null` when Avito
-determined none, which is itself the fact a caller most needs, and which today is
-visible only as several current branches in `get-categories` (F-084) — and every
-card carries its own `category`.
-
-- [ ] Decide where a per-call scalar goes in a contract that returns rows.
-      `searchUrl` is the precedent: one value, repeated on every row, and it works
-      because a caller reads one row. Two more repeated columns is the obvious
-      shape; what it costs now is payload on every row, not a slot.
-- [ ] Read the resolved location off the response, never off the argument. The
-      command already knows: an echoed `--location-id` proves nothing (F-037), and
-      `locationName` beside it is what the caller asked to see.
 - [ ] The card's own `category` and `searchCore.categoryId` are not the same
-      question — one is per row, the other per search. Decide which one the caller
-      needs before adding either.
+      question — one is per element, the other per search, so they land in
+      different halves of the answer. Decide which one the caller needs before
+      adding either.
 
 ## Phase 29 — `get-item` one URL at a time
 
 The natural shape of the work is a wide search and then a handful of candidates:
-fifty rows, seven kept, seven separate calls. `get-item url1 url2 url3` removes
+fifty listings, seven kept, seven separate calls. `get-item url1 url2 url3` removes
 six round trips from the most common flow there is.
 
 - [ ] Decide what a batch does when one URL of seven fails. Fail-closed says the
@@ -133,6 +126,25 @@ six round trips from the most common flow there is.
       the item API to a rendered page, and seven renders in one call is a
       different load profile from seven commands — the untested question of a
       safe request rate sits under this one.
+
+## Phase 30 — Does `location` earn its slot
+
+`location` was counted once: 45 of 50 null on a Moscow goods route where every
+other field of the card was filled (F-095). One route is not the answer, and two
+different questions are tangled in that number.
+
+- [ ] Count it on routes where a place is the point — flats, services, a region
+      with no metro. If it is filled there and empty only on goods, it is an
+      honest field with a narrow domain; if it is empty everywhere, it is a field
+      that costs payload on fifty entries to say nothing.
+- [ ] Read the two carriers apart before deciding. `card.mjs` takes
+      `geo.geoReferences[0]` with its walking time, or the plain city, and the
+      count above does not say which of the two went missing — or whether both
+      were absent because Avito drew no geo line at all.
+- [ ] Only then the D-038 question, in its usual form: name the action a caller
+      takes on `location` that they cannot take on `searchUrl` and `get-item`. If
+      there is none, it goes; if there is one, it is worth a live rule on a route
+      where the field is known to be filled.
 
 ## Phase 13 — Real estate
 
@@ -156,7 +168,7 @@ Confirmed on flat rentals (`снять квартиру 2 комнатную`) a
 - [ ] Walk the category: flat sales and rentals, houses, land, garages,
       commercial. Daily rentals are not on this list and cannot be: that route is
       a different Avito product with no catalog in it at all (F-082).
-- [ ] Check the semantics of the listing row on the routes the price columns have
+- [ ] Check the semantics of a listing card on the routes the price fields have
       not seen — houses, land, garages, commercial. Rentals and sales were read
       live on 2026-08-18: 100 cards, every one a plain number, no floor and no
       price list, so nothing there argues with the goods reading of `price`
@@ -207,20 +219,19 @@ in between (F-061).
 
 ## Phase 21 — What the schemas left behind
 
-D-048 moved the row contract into the descriptors and D-049 the fixtures.
-Two things they exposed rather than solved:
+D-048 put the output contract in the descriptors and D-049 the live
+expectations. Two things they exposed rather than solved:
 
-- [ ] Tighten what the fixtures claim, now that they can claim it. Each was
-      converted faithfully (D-049), so most still say only what the JSON dialect
-      could. Reading one live run per command would answer, for example: is the
-      applied `user=2` visible in the `apply-filters` searchUrl, does the
-      `get-filters` route carry a `price` row, is the `get-page` count the same
-      as page 1's. None of those may be guessed.
+- [ ] Tighten what the expectations claim, now that they can claim it. `search`,
+      `get-page`, `apply-filters` and `move-category` pin their envelope; the
+      other six pin less than one live run would let them. Open, and not to be
+      guessed: does the `get-filters` route carry a `price` key, is the
+      `get-page` count the same as page 1's.
 - [ ] Now that the carriers are settled (D-063), tighten what the four listing
-      fixtures claim about a complete page. Each asserts a non-empty
-      `descriptionPreview`; none yet asserts that the page is fifty rows, or that
-      `location` and `sellerName` survive where Avito sends them — which is what
-      would catch a silent return to the document catalog.
+      expectations claim about a complete page. Each asserts a non-empty
+      `descriptionPreview`; none yet asserts that the page is fifty listings, or
+      that `location` and `sellerName` survive where Avito sends them — which is
+      what would catch a silent return to the document catalog.
 
 ## Open questions
 
@@ -233,7 +244,7 @@ Two things they exposed rather than solved:
   02:15` and `вчера в 19:15`. The second matters more than the first — it shows
   Avito also prints a relative day, so the string sometimes carries no number at
   all. `сегодня в …` and last-year forms (with or without a year) have not been
-  observed, so the column is still handed over as a string and not parsed (D-039).
+  observed, so the field is still handed over as a string and not parsed (D-039).
 - **What is still not applicable.** Two kinds of key. `hidden` is a constraint of
   the route rather than a filter, and the only question about it is whether it is
   ever a control in the visible form. `footWalkingMetro` and `categoryId` are keys
@@ -246,6 +257,6 @@ Two things they exposed rather than solved:
 - Fresh evidence with a replay, recorded in its domain file.
 - Arguments and the output contract fixed in the descriptor and visible through `--help`.
 - Fields and units compared against the visible page.
-- Errors typed: no silent empty, no sentinel row, no silent clamp.
-- A verify fixture that catches empty and swapped fields.
+- Errors typed: no silent empty, no sentinel value, no silent clamp.
+- A live expectation that catches empty and swapped fields.
 - The offline suite and `npm run check` green.

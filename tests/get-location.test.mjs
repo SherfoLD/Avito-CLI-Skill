@@ -4,7 +4,7 @@
 // than an obvious one — an exact-match requirement that keeps `--geo` from
 // listing the metro of a neighbouring city, and a refusal to truncate that
 // keeps 347 of Moscow's 357 stations from disappearing in silence.
-import { assertRow, assertRows, loadCommand, runner } from './harness.mjs';
+import { assertOutput, loadCommand, runner } from './harness.mjs';
 
 const { COMMAND } = await loadCommand('get-location');
 const { check, assert, run } = runner();
@@ -101,15 +101,13 @@ const refuses = async (page, args, code, pattern) => {
 
 check('resolver mode costs one directory read and returns the suggestions', async () => {
   const page = makePage(ALL_ROUTES);
-  const rows = await COMMAND.run(page, { query: '  Москва ' });
-  assert(rows.length === 2, `expected both suggestions, got ${rows.length}`);
-  assert(rows[0].locationId === '637640' && rows[0].locationName === 'Москва', 'the location was not decoded');
-  assert(rows[0].rank === 1 && rows[1].rank === 2, 'rank must be the reading order');
-  for (const row of rows) {
-    assert(row.geoMode === null && row.geoId === null && row.geoName === null && row.geoGroup === null,
-      'the geo columns must be empty in resolver mode');
-    assertRow(COMMAND, row);
-  }
+  const answer = await COMMAND.run(page, { query: '  Москва ' });
+  const { locations } = answer;
+  assert(answer.query === 'Москва', `the query must come back trimmed, got ${JSON.stringify(answer.query)}`);
+  assert(locations.length === 2, `expected both suggestions, got ${locations.length}`);
+  assert(locations[0].locationId === '637640' && locations[0].locationName === 'Москва', 'the location was not decoded');
+  assert(answer.geoMode === null && answer.geo.length === 0, 'suggestion mode answers about no geo at all');
+  assertOutput(COMMAND, answer);
   assert(page.calls.goto.length === 1 && page.calls.goto[0] === HOMEPAGE,
     `expected one homepage navigation, got ${JSON.stringify(page.calls.goto)}`);
   assert(page.calls.fetchJson.length === 1, `resolver mode must cost one read, got ${page.calls.fetchJson.length}`);
@@ -120,11 +118,12 @@ check('resolver mode costs one directory read and returns the suggestions', asyn
 
 // The IDs must belong to the location the caller named. Avito suggests neighbours
 // freely, so taking the first suggestion would list the metro of another city while
-// the rows looked perfectly ordinary.
+// the answer looked perfectly ordinary.
 check('geo mode requires one exact name match, never the first suggestion', async () => {
   const page = makePage(ALL_ROUTES);
-  const rows = await COMMAND.run(page, { query: 'москва', geo: 'metro' });
-  assert(rows.every((row) => row.locationId === '637640'), 'geo rows must carry the matched location');
+  const { locations } = await COMMAND.run(page, { query: 'москва', geo: 'metro' });
+  assert(locations.length === 1 && locations[0].locationId === '637640',
+    'geo mode answers about the one location it matched');
 
   const near = makePage({ ...ALL_ROUTES, '/web/1/slocations': { result: { locations: [suggestion(637780, 'Московская область')] } } });
   const failure = await refuses(near, { query: 'Москва', geo: 'metro' }, 'ARGUMENT', /No exact Avito location match/);
@@ -140,30 +139,34 @@ check('geo mode requires one exact name match, never the first suggestion', asyn
     `both candidates must be named with their IDs: ${ambiguous.message}`);
 });
 
-check('metro rows carry the line names as their group', async () => {
+check('metro entries carry the line names as their group', async () => {
   const page = makePage(ALL_ROUTES);
-  const rows = await COMMAND.run(page, { query: 'Москва', geo: 'metro' });
-  assert(rows.length === 3, `expected every station, got ${rows.length}`);
-  assert(rows[0].geoMode === 'metro' && rows[0].geoId === '100' && rows[0].geoName === 'Охотный Ряд',
-    `station not decoded: ${JSON.stringify(rows[0])}`);
-  assert(rows[0].geoGroup === 'Сокольническая', 'a single line is the group');
-  assert(rows[2].geoGroup === 'Сокольническая, Замоскворецкая', 'an interchange lists both lines');
-  assert(rows.every((row) => row.locationName === 'Москва'), 'locationName stays the city in geo mode');
-  assertRows(COMMAND, rows);
+  const answer = await COMMAND.run(page, { query: 'Москва', geo: 'metro' });
+  const { geo } = answer;
+  assert(geo.length === 3, `expected every station, got ${geo.length}`);
+  assert(answer.geoMode === 'metro' && geo[0].geoId === '100' && geo[0].geoName === 'Охотный Ряд',
+    `station not decoded: ${JSON.stringify(geo[0])}`);
+  assert(geo[0].geoGroup === 'Сокольническая', 'a single line is the group');
+  assert(geo[2].geoGroup === 'Сокольническая, Замоскворецкая', 'an interchange lists both lines');
+  // The city is one fact about the whole answer, and the stations no longer repeat it.
+  assert(answer.locations.length === 1 && answer.locations[0].locationName === 'Москва',
+    'the resolved city belongs to the answer, not to every station');
+  assert(geo.every((entry) => !('locationName' in entry)), 'a station must not carry the city');
+  assertOutput(COMMAND, answer);
   assert(page.calls.fetchJson.length === 3, `geo mode costs three reads, got ${page.calls.fetchJson.length}`);
 });
 
-check('district rows carry their region, and a district in none carries null', async () => {
-  const rows = await COMMAND.run(makePage(ALL_ROUTES), { query: 'Москва', geo: 'districts' });
-  assert(rows.length === 3, `expected every district, got ${rows.length}`);
-  assert(rows[0].geoName === 'Арбат' && rows[0].geoGroup === 'ЦАО', 'the region must become the group');
-  assert(rows[2].geoName === 'Северное Бутово' && rows[2].geoGroup === null,
+check('district entries carry their region, and a district in none carries null', async () => {
+  const { geo } = await COMMAND.run(makePage(ALL_ROUTES), { query: 'Москва', geo: 'districts' });
+  assert(geo.length === 3, `expected every district, got ${geo.length}`);
+  assert(geo[0].geoName === 'Арбат' && geo[0].geoGroup === 'ЦАО', 'the region must become the group');
+  assert(geo[2].geoName === 'Северное Бутово' && geo[2].geoGroup === null,
     'a district in no listed region carries null, not an invented group');
 });
 
 check('geo-query filters by the visible name and reports an empty match', async () => {
-  const rows = await COMMAND.run(makePage(ALL_ROUTES), { query: 'Москва', geo: 'metro', 'geo-query': 'театр' });
-  assert(rows.length === 1 && rows[0].geoName === 'Театральная', `filter did not apply: ${JSON.stringify(rows)}`);
+  const { geo } = await COMMAND.run(makePage(ALL_ROUTES), { query: 'Москва', geo: 'metro', 'geo-query': 'театр' });
+  assert(geo.length === 1 && geo[0].geoName === 'Театральная', `filter did not apply: ${JSON.stringify(geo)}`);
 
   await refuses(
     makePage(ALL_ROUTES),
@@ -185,7 +188,7 @@ check('a result larger than the limit is refused, never truncated', async () => 
   assert(/--geo-query|--limit/.test(failure.message), 'the caller must be told how to proceed');
 
   const within = await COMMAND.run(makePage(ALL_ROUTES), { query: 'Москва', geo: 'metro', limit: 3 });
-  assert(within.length === 3, 'a limit that fits must return every row');
+  assert(within.geo.length === 3, 'a limit that fits must return every entry');
 });
 
 check('the limit ceiling differs between the two modes', async () => {
@@ -193,10 +196,10 @@ check('the limit ceiling differs between the two modes', async () => {
   await refuses(makePage(ALL_ROUTES), { query: 'Москва', geo: 'metro', limit: 401 }, 'ARGUMENT', /limit must be <= 400/);
   await refuses(makePage(ALL_ROUTES), { query: 'Москва', limit: 0 }, 'ARGUMENT', /positive integer/);
 
-  // Resolver mode still trims to the limit: those rows are Avito's own ranking of
+  // Resolver mode still trims to the limit: those matches are Avito's own ranking of
   // suggestions, so asking for fewer is asking for the top of a list, not a clamp.
-  const rows = await COMMAND.run(makePage(ALL_ROUTES), { query: 'Москва', limit: 1 });
-  assert(rows.length === 1 && rows[0].locationName === 'Москва', 'the resolver must honour its limit');
+  const { locations } = await COMMAND.run(makePage(ALL_ROUTES), { query: 'Москва', limit: 1 });
+  assert(locations.length === 1 && locations[0].locationName === 'Москва', 'the resolver must honour its limit');
 });
 
 check('a location without the requested geo is refused by name', async () => {
@@ -225,7 +228,7 @@ check('a challenge on the homepage stops before any directory is read', async ()
   assert(page.calls.fetchJson.length === 0, 'a directory was read through a challenge');
 });
 
-check('a drifted directory response fails closed instead of returning fewer rows', async () => {
+check('a drifted directory response fails closed instead of returning fewer entries', async () => {
   const cases = [
     [{ '/web/1/slocations': { result: {} } }, /unexpected shape/],
     [{ '/web/1/slocations': { result: { locations: [{ id: 0, names: { 1: 'Москва' } }] } } }, /result\.locations\.0\.id: Too small/],

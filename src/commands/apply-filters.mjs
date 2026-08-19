@@ -11,7 +11,7 @@
  * Avito also accepts a filter it does not apply: an unknown key is echoed back
  * in `searchCore.params` with an empty `currentValue`, a value from another
  * category is dropped in silence, and both return a full page that answers a
- * different question. Nothing in the rows shows it.
+ * different question. Nothing in the listings shows it.
  *
  * So every selection is checked twice, and the checks are not redundant. The
  * first refuses, by name, a key or value the caller could never have seen,
@@ -23,8 +23,8 @@
 import { ArgumentError, CommandExecutionError, EmptyResultError } from '../runtime/errors.mjs';
 import { defineCommand } from '../runtime/command.mjs';
 import { CATALOG_DOCUMENT } from '../schemas/document.mjs';
-import { LISTING_ROW, applyReservedFilter, listingRows } from '../site/listing.mjs';
-import { catalogRows } from '../site/card.mjs';
+import { LISTING_ITEM, LISTING_ITEM_TYPE, applyReservedFilter, listingItems } from '../site/listing.mjs';
+import { catalogItems } from '../site/card.mjs';
 import {
   CATALOG_KEYS,
   primeOrigin,
@@ -40,6 +40,7 @@ import {
   preservedParamsDrift,
   sealItemsApiUrl,
 } from '../site/items.mjs';
+import { idString, searchUrl as searchUrlField, text, z } from '../runtime/schema.mjs';
 import { filterOptions, flattenFilters } from '../site/filters.mjs';
 import {
   addScalar,
@@ -72,9 +73,9 @@ const PARAM_TYPES = new Set([
 ]);
 
 // The short keys are ordinary filter keys for the caller: `avito get-filters` returns them
-// in the same rows as `params[...]`, and they are typed here only because their request
+// beside `params[...]`, and they are typed here only because their request
 // serialization and their authoritative `searchCore` carrier are per-key facts confirmed
-// live, not something derivable from the schema. A key outside this table is refused
+// live, not something derivable from the schema. A key outside this map is refused
 // instead of guessed (D-031, D-032).
 export const SHORT_KEYS = Object.freeze({
   price: {
@@ -511,12 +512,30 @@ function preservedCoreFields(shortSelections) {
   return preserved;
 }
 
+const OUTPUT = z.strictObject({
+  query: text().nullable(),
+  locationId: idString(),
+  locationName: text(),
+  searchUrl: searchUrlField(),
+  items: z.array(LISTING_ITEM),
+});
+
+const OUTPUT_TYPE = `type Output = {
+  query: string | null;   // the search the filters were applied to
+  locationId: string;     // digits only — filters never move the search, this is the same region
+  locationName: string;
+  searchUrl: string;      // the narrowed URL; page it with get-page, re-read it with get-filters
+  items: Item[];          // page 1 of the narrowed search
+};
+
+${LISTING_ITEM_TYPE}`;
+
 export default defineCommand({
   name: 'apply-filters',
   description: 'Apply filters to a search URL and return the matching listings plus the new search URL. Takes several filters at once; keys and values come from avito get-filters',
   access: 'read',
   // vocabulary-ok: sample argument in help text, not an identifier the command uses
-  example: "avito apply-filters <searchUrl> --set 'price=1000..5000;params[112691]=757883,757884' -f json",
+  example: "avito apply-filters <searchUrl> --set 'price=1000..5000;params[112691]=757883,757884'",
   domain: 'www.avito.ru',
   args: [
     {
@@ -540,7 +559,8 @@ export default defineCommand({
       help: 'Drop the listings Avito marks as reserved; Avito has no server-side filter for them, so the page comes back shorter',
     },
   ],
-  row: LISTING_ROW,
+  output: OUTPUT,
+  type: OUTPUT_TYPE,
   run: async (page, args) => {
     assertSingleSetOption(process.argv);
     const requestedUrl = requestedSearchUrl(args.searchUrl);
@@ -598,22 +618,27 @@ export default defineCommand({
 
     assertFiltersApplied(selections, resultCore, flattenFilters(api.filtersV2.Sections));
 
-    if (!cleanText(resultCore.locationName)) {
+    const searchLocation = cleanText(resultCore.locationName);
+    const searchLocationId = Number(resultCore.locationId);
+    if (!searchLocation || !Number.isInteger(searchLocationId) || searchLocationId <= 0) {
       throw new CommandExecutionError('Avito returned unsupported effective search context');
     }
-    const searchUrl = answeredUrl(api.url, 'search result URL').href;
+    const resultSearchUrl = answeredUrl(api.url, 'search result URL').href;
 
-    const decodedRows = catalogRows(api.catalog);
-    if (decodedRows.length === 0) {
+    const decoded = catalogItems(api.catalog);
+    if (decoded.length === 0) {
       if (resultCount(api) === 0) {
         throw new EmptyResultError(COMMAND, 'No listings match the requested filters');
       }
       throw new CommandExecutionError('Avito returned no catalog items with a non-zero result count');
     }
 
-    return listingRows(
-      applyReservedFilter(decodedRows, removeReserved, COMMAND),
-      searchUrl,
-    );
+    return {
+      query: cleanText(resultCore.query) || null,
+      locationId: String(searchLocationId),
+      locationName: searchLocation,
+      searchUrl: resultSearchUrl,
+      items: listingItems(applyReservedFilter(decoded, removeReserved, COMMAND)),
+    };
   },
 });

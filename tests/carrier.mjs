@@ -141,7 +141,7 @@ export const searchCore = (overrides = {}) => ({
 export const ITEMS_API_PATH = '/web/1/js/items';
 
 /**
- * The items API response: the carrier the four catalog commands read their rows
+ * The items API response: the carrier the four catalog commands read their listings
  * from, because the SSR catalog ships only its first twenty cards in full
  * (F-089). `url` is Avito's own server-generated one, context included.
  */

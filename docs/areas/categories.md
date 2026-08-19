@@ -2,21 +2,23 @@
 
 Confirmed live: 2026-08-19
 
-The shared row decoder, the row shape and the transport are in
+The shared listing decoder, the item shape and the transport are in
 [_platform.md](_platform.md).
 
 ## Contract
 
-`get-categories <searchUrl>` returns the whole sidebar tree of the current
-route, one row per node, in the order Avito drew it: `rank` is the reading
-order, `depth` the indentation and `parent` the visible name of the node above,
-so the tree is reconstructible without this command inventing one. It performs
-no transition and does not change its input. The value of the `name` column is
-what `move-category --to` accepts.
+`get-categories <searchUrl>` answers `{ query, locationId, searchUrl,
+categories }` — the whole sidebar tree of the current route, in the order Avito
+drew it: array position is the reading order, `depth` the indentation and
+`parent` the visible name of the node above, so the tree is reconstructible
+without this command inventing one. It performs no transition and does not change
+its input. `name` is what `move-category --to` accepts, and `targetUrl` is where
+following that entry would land.
 
 `move-category <searchUrl> --to <name>` moves the listing into another category
-by its visible name and returns that category's rows. Accepts page 1. Plus
-`--remove-reserved`. Budget: 4 requests.
+by its visible name and answers `{ query, category, locationId, locationName,
+searchUrl, items }`. `category` is the name as Avito renders it. Accepts page 1.
+Plus `--remove-reserved`. Budget: 4 requests.
 
 The move changes both the listing and the set of available filters, so the
 previous category's `params[...]` are invalid afterwards and `get-filters` must
@@ -29,20 +31,20 @@ document the other commands read. `type=1` becomes `role=option` or `back`,
 `type=0` is `role=branch`, `type=2` is `role=current`; all three carry a route
 of their own and all three are handed out (D-057).
 
-`navigable` is not the type: a row can be moved to when it has a route and that
+`navigable` is not the type: an entry can be moved to when it has a route and that
 route is not the one the search is already on. `current=true` is a node Avito
 draws in bold — on a search it placed in a category that is the one node, and on
 a search it placed nowhere it is every group head (F-084).
 
 `move-category` resolves `--to` by exact match of the visible name: no match and
 several same-named candidates both yield an `ArgumentError` listing the visible
-names. Silently picking the first row is forbidden. The target URL is never
+names. Silently picking the first match is forbidden. The target URL is never
 constructed — only taken from Avito's own state. After the move, the target's SSR
 document is read and cross-checked fail-closed: the route must be the one Avito
 named, the page must be the first, the location must be unchanged. That document
-proves the move; the rows of the category it landed on come from the items API,
-addressed by its own `searchCore` and `context` (D-063). So a move costs three
-same-origin calls: the sidebar, the target, its rows.
+proves the move; the listings of the category it landed on come from the items
+API, addressed by its own `searchCore` and `context` (D-063). So a move costs
+three same-origin calls: the sidebar, the target, its listings.
 
 Query preservation is checked twice: by the URL before the move and by
 `searchCore.query` of the response after it. The URL promises, the state proves.
@@ -66,8 +68,8 @@ without losing the query.
 - **D-034 — breadcrumbs are not read at all.** The shape checks on
   `seoNavigation.breadcrumbs.links` were removed along with the reading: failing
   on the shape of data you do not read is a spare failure mode. The `source`
-  column was deleted once it became constant, and `role` lost its `root` and
-  `ancestor` values. D-033 remains the guard: tree rows always carry the query, so
+  field was deleted once it became constant, and `role` lost its `root` and
+  `ancestor` values. D-033 remains the guard: tree entries always carry the query, so
   the rule does not fire in normal operation, but drift at Avito will become a
   visible refusal instead of a quietly widened listing.
 - **D-046 — the two sidebar readers share the node, its meaning and the walk
@@ -77,9 +79,9 @@ without losing the query.
   option, 2 the current category, that a fourth kind stops the call, and that a
   node can be followed when it carries a route other than this one. `sidebarWalk`
   in the same file is the traversal (D-071), so what the two commands still hold
-  separately is only what they do with a row: `get-categories` describes it,
+  separately is only what they do with a node: `get-categories` describes it,
   `move-category` follows it.
-- **D-057 — a row is navigable when it has a route, not when Avito draws it as a
+- **D-057 — an entry is navigable when it has a route, not when Avito draws it as a
   link.** The page renders only `type=1` as an anchor, and the old reading
   followed that: a branch was a control and its URL was withheld. But the URL is
   there on every node and it works — `/moskva/predlozheniya_uslug?cd=1&q=…`
@@ -124,20 +126,20 @@ without losing the query.
   expander state (`expandless` / `expandmore`), not a claim about the type, and
   `isCurrent` on a head is what the page bolds. Both were refusals until D-058.
 - **F-053 — Avito changes the tree's shape by route mode, and going up exists in
-  both.** On a search page the ancestors arrive as `type=0` and one `back` row
+  both.** On a search page the ancestors arrive as `type=0` and one `back` entry
   «Все категории», all of them carrying `?cd=1&q=…`. On a route **without** a
-  query, that same section returns the whole ancestor chain as `back` rows. That
+  query, that same section returns the whole ancestor chain as `back` entries. That
   removed the only objection to deleting the breadcrumbs.
 - **F-052 — two `move-category` defects found live.** It accepted the current
   category through its breadcrumb — a breadcrumb's URL drops the query where the
-  tree row's keeps it — and returned the same category **without the query**
+  tree entry's keeps it — and returned the same category **without the query**
   disguised as a successful move. That is why the node Avito marks as the current
   category is refused by that mark and not only by its route (D-057). And it treated the text query itself as a category: the last
   breadcrumb of a search is `ddr5 32gb`, and it made it into the candidates even
   though `get-categories` discarded it by an explicit rule. Two decoders of the
   same node disagreed.
 - **Breadcrumbs do not carry a search across at all.** Measured on a live route:
-  5 breadcrumbs of 5 lose `q`, 5 navigable tree rows of 5 carry `?cd=1&q=…`.
+  5 breadcrumbs of 5 lose `q`, 5 navigable tree entries of 5 carry `?cd=1&q=…`.
   Moving into `Комплектующие` by breadcrumb returned cases and power supplies.
 - **Breadcrumbs and the tree disagree about the hierarchy itself.** On a
   dissolved `iphone`, the breadcrumbs name `Apple` as the ancestor while the
@@ -147,14 +149,14 @@ without losing the query.
 ## Risks
 
 - Category navigation depends entirely on `rubricators.side.nodes`: there is no
-  backup source any more. If Avito stops attaching `?cd=1&q=…` to tree rows, a
+  backup source any more. If Avito stops attaching `?cd=1&q=…` to tree entries, a
   move with a live query becomes impossible outright rather than "sometimes"; if
-  the `back` rows on a query-less route disappear, going up from there vanishes.
+  the `back` entries on a query-less route disappear, going up from there vanishes.
   Both are visible refusals, not a quietly widened listing.
 - The upper nodes of the tree are storefront hubs with no `catalog.items` when
   no query is on them: `/moskva/bytovaya_elektronika` and the city root `/moskva`
   return `EmptyResultError` in both `move-category` and `get-page`. With a query
   they are ordinary listings — the sidebar's copy carries one, so a move to a
-  branch answers with rows. That is Avito's shape, not the decoder's, but "this
+  branch answers with listings. That is Avito's shape, not the decoder's, but "this
   route is not a listing" cannot be told from "the query found nothing" by the
   error code.

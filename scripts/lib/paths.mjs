@@ -6,7 +6,7 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 /** Repository root: scripts/lib/ → scripts/ → root. */
 export const PROJECT_ROOT = path.resolve(HERE, '..', '..');
 
-export const VERIFY_DIR = path.join(PROJECT_ROOT, 'verify');
+export const EXPECTATIONS_DIR = path.join(PROJECT_ROOT, 'expectations');
 export const FIXTURES_DIR = path.join(PROJECT_ROOT, 'evidence');
 export const DOCS_DIR = path.join(PROJECT_ROOT, 'docs');
 

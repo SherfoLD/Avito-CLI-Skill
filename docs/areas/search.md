@@ -2,7 +2,7 @@
 
 Confirmed live: 2026-08-18
 
-The shared row decoder, the row shape and the transport are in
+The shared listing decoder, the item shape and the transport are in
 [_platform.md](_platform.md).
 
 ## Contract
@@ -18,15 +18,16 @@ nothing else. Plus `--remove-reserved`. The URL it returns carries `p=<n>` and i
 therefore only good input for `get-page` and `get-filters`: `apply-filters` and
 `move-category` accept page 1 only.
 
-Both return the listing row and the canonical `searchUrl` of the listing they
-produced, in every row.
+Both answer with `{ query, locationId, locationName, searchUrl, items }` —
+`get-page` adds the confirmed `page`. The URL and the effective region are stated
+once, on the envelope, and never repeat inside `items` (D-073).
 
 Request budget for `search`: 4 with no geo and 4 with `--location-id`
 (`/robots.txt`, the `?q=` redirect payload, the canonical SSR document, the items
 API); 5 with `--coords` / `--radius`; 6 with `--metro` / `--district`, where the
 location directory costs two more. A city cannot be applied by editing a URL, so
 any geo goes through the same items API — which every search now ends with in any
-case, because the rows are there (D-063). Budget for `get-page`: 3.
+case, because the listings are there (D-063). Budget for `get-page`: 3.
 
 ## How it works
 
@@ -34,7 +35,7 @@ case, because the rows are there (D-063). Budget for `get-page`: 3.
 `https://www.avito.ru/?q=<query>` returns a pure redirect payload naming the
 canonical route; a second read fetches that route, which carries `searchCore`,
 `filtersV2` and `context` for the postconditions and for the request that
-follows. The rows come from a third call, to the items API (D-063). The visible
+follows. The listings come from a third call, to the items API (D-063). The visible
 form is not used and the session's region is preserved.
 
 Geo of the route the query landed on is carried into that request and confirmed
@@ -53,9 +54,9 @@ its own.
 `get-page` builds its transition only from the current canonical `searchUrl` and
 cross-checks `searchCore.page`, the pathname and every input query pair except
 `p`. DOM pagination links are not used: after an SPA location update they keep
-the old pathname. That document is what proves the page; its rows are then asked
-for separately, and the answer is cross-checked against it field by field before
-a single row is decoded.
+the old pathname. That document is what proves the page; its listings are then
+asked for separately, and the answer is cross-checked against it field by field
+before a single card is decoded.
 
 ## Decisions
 
@@ -65,15 +66,16 @@ a single row is decoded.
 - **D-018 — submitting is a `?q=` navigation, and a dissolved query is accepted.**
   A `q === query` guard rejected correct Avito results for a whole class of
   queries, and a UI click added flakiness on the first submit. A "the query
-  dissolved" marker was not added as its own column: the category route is
-  visible in the canonical `searchUrl` already. One bounded
+  dissolved" marker was not added as its own field: the category route is visible
+  in the canonical `searchUrl` already, and `query` on the envelope reads `null`
+  where the text dissolved. One bounded
   navigation retry is allowed if the redirect did not complete.
-- **D-019 — rows are never scraped from the DOM.** The scrape was deleted
+- **D-019 — listings are never scraped from the DOM.** The scrape was deleted
   entirely: rendering the catalog existed only to serve it, and without it a
   query costs light same-origin calls and `search` stops depending on CSS-module
   prefixes.
 - **D-063 — the document proves the page, the items API answers it.** All four
-  listing commands read rows from `/web/1/js/items` and postconditions from the
+  listing commands read listings from `/web/1/js/items` and postconditions from the
   SSR document, because that document's catalog is complete only in its first
   twenty cards (F-089). This is not the ranking in
   `carrier-selection.md` being overturned: the document is still the primary
@@ -81,19 +83,19 @@ a single row is decoded.
   postcondition it proved is kept and the API is cross-checked against it —
   preserved `searchCore` fields, preserved `params[...]`, the page number, and
   the route in the URL it generated. The cost is one extra request per call, and
-  the alternative was `get-page` answering with thirty rows out of fifty stripped
+  the alternative was `get-page` answering with thirty listings out of fifty stripped
   of `descriptionPreview`, `location`, `sellerName` and `imageCount`.
 
   It also removes a fork inside one command: `search` used to answer from the
   document when it was given no geo argument and from the API when it was, so the
-  same query returned two different qualities of row depending on a flag.
-- **D-024 — reservation is a flag, not a column.** `--remove-reserved` is a
+  same query returned two different qualities of listing depending on a flag.
+- **D-024 — reservation is a flag, not a field.** `--remove-reserved` is a
   declared local predicate over the page that came back, not an Avito filter
   (no server-side reservation filter exists). The three rules are identical in
   all four listing commands: only the flat boolean `catalog.items[].isReserved`
   is read; the page is trimmed but never topped up from the next one; a page
   where everything is reserved is an `EmptyResultError`, and a page where the
-  boolean is missing on even one row stops the command instead of guessing.
+  boolean is missing on even one listing stops the command instead of guessing.
 
 ## Facts
 
@@ -133,7 +135,7 @@ a single row is decoded.
   `values` is a prefix of `valuesAll`, `countHint` («Ещё 5 услуг») appears
   exactly when the two differ and names the remainder, so `valuesAll` is the
   whole table rather than a truncation. Titles were unique inside every list;
-  lists ran 1 to 27 entries, 7.5 on average, and 16 kB for a page of 50 rows.
+  lists ran 1 to 27 entries, 7.5 on average, and 16 kB for a page of 50 listings.
   The server-rendered card prints exactly `valuesAll`: the first two entries with
   their prices, the rest as bare titles, then the hint. Found only in Services —
   absent on all 50 cards of electronics, transport, animals, home and garden,
@@ -146,7 +148,7 @@ a single row is decoded.
 
 - **F-088 — a jobs query refuses on a card URL, not on a photo.** `search "резюме
   продавец" --location-id 637640` ends with `Avito catalog contains an invalid
-  item URL` (2026-08-18), while `search "продавец"` on the same city returns rows
+  item URL` (2026-08-18), while `search "продавец"` on the same city returns listings
   and `get-page` on `/moskva/rezume?q=продавец` decodes its fifty. Which card
   carries the URL is not established: the route that would show it answered with
   an access challenge, and a challenge is a full stop. So this is a second jobs
@@ -161,11 +163,21 @@ a single row is decoded.
   `/moskva/kvartiry/prodam` are ordinary catalog routes and read normally, so
   this is one route of real estate rather than the category.
 
+- **F-095 — `location` is null on most cards, and that is not the twenty/thirty
+  split.** `avito search "ddr5 32gb" --location-id 637640` through the items API,
+  2026-08-19: `descriptionPreview`, `sellerName`, `imageCount`, `published` and
+  `price` were non-null on 50 of 50, and `location` was null on 45 of 50. The
+  five that carried one were a metro reference with walking time («Китай-город,
+  до 5 мин.») or a bare city («Уфа»). So the field is empty because the card
+  draws no geo line, not because the carrier was thin: `location` does not belong
+  beside the three fields F-089 thins, and a caller reading it as a lost field
+  will be wrong nine times in ten.
+
 ## Risks
 
 - The consumer must read the canonical `searchUrl` to understand they received a
   category rather than a text search (F-038).
-- Reservation is exposed by no column, so a filtered page cannot be told apart
+- Reservation is exposed by no field, so a filtered page cannot be told apart
   from a genuinely short Avito page. `--remove-reserved` is mandatory in every
   link of the chain: a missed flag in `get-page`, `apply-filters` or
   `move-category` silently brings the reserved listings back.
@@ -179,6 +191,6 @@ a single row is decoded.
   document is still what `get-page` reads first, so D-063 did not fix this — but
   the items API answers `200` with an empty catalog at the same boundary (F-091),
   which is the material phase 20 now has to work with.
-- Sort order is not an output column, so there is nothing to confirm it with in
+- Sort order is not an output field, so there is nothing to confirm it with in
   `get-page`. The former guard over four hardcoded Russian labels was deleted — it
   would have killed pagination on a legitimately sorted URL (F-051).

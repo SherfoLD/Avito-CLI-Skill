@@ -7,18 +7,25 @@ How each command is built is in its domain file, [docs/areas/](areas/).
 
 ## Commands
 
-Ten commands, all read-only. `npm run check` is green; the offline suite is 215
-checks across sixteen suites. All ten fixtures pass live against the descriptor
-schemas (D-048, D-049).
+Ten commands, all read-only. `npm run check` is green; the offline suite is 217
+checks across sixteen suites, and all ten expectations pass live against Avito
+(2026-08-19).
 
-The row contract is a `z.strictObject` in each descriptor: `columns` is derived
-from it, the CLI parses every row through it before printing, the offline suites
-run the same parse, and `--help` prints the schema itself as a type (D-053).
-A row holds at most 16 columns (D-054), which is the only rule the runtime
-holds over a row's shape: the listing row declares 14, `get-item` 14 and
-`get-categories` 10. A `verify/<command>.mjs` fixture is a schema over the whole
-returned array, saying what that one request must answer with. What neither can
-express is four ESLint rules over the AST (`npm run lint`).
+Every command answers with **one JSON object**, declared as `output:
+z.strictObject({...})` in its descriptor. The CLI parses the whole answer through
+it before printing, the offline suites run the same parse, and there is no
+`--format` — the output is JSON and nothing else (D-048). A command that returns
+several of something answers with an envelope plus a list: the `searchUrl`, the
+effective region and the confirmed page sit on the envelope, and only what
+differs between the things returned sits inside them (D-073). The runtime holds
+three rules over the shape — `strictObject` at every level, 40 declared fields,
+3 objects deep (D-074) — and nothing else.
+
+`--help` prints that contract as TypeScript, from the descriptor's `type`, which
+is written by hand and held in step with the schema by `npm run check:commands`
+(D-053). An `expectations/<command>.mjs` file is a schema over the whole answer,
+saying what that one request must come back with. What none of them can express
+is four ESLint rules over the AST (`npm run lint`).
 
 What Avito answers with is declared in `src/schemas/`, one file per response,
 and a command imports it rather than describing the shape again (D-067). The
@@ -28,7 +35,7 @@ every request, postcondition and decode is Node (D-069). A command's offline
 suite therefore drives both halves over one set of stubbed routes.
 
 Where two commands read one carrier, they read it once: the category sidebar is
-one walk in `src/site/rubricator.mjs` that `get-categories` describes rows from
+one walk in `src/site/rubricator.mjs` that `get-categories` describes nodes from
 and `move-category` follows (D-071), and a URL Avito answered with is checked by
 one rule, the one that refuses what `requestedSearchUrl` would refuse to take.
 
@@ -62,9 +69,10 @@ interruption left is the one approval prompt per connection (F-071, F-073).
 | `get-seller-reviews` | [item](areas/item.md) | 2026-08-19 |
 
 Every command that returns a catalog page reads two carriers: the SSR document
-for the postconditions and the items API for the rows, because that document's
-catalog is complete only in its first twenty cards (F-089, D-063). A page is
-fifty complete rows on all four, and the same fifty whichever command asked.
+for the postconditions and the items API for the listings, because that
+document's catalog is complete only in its first twenty cards (F-089, D-063). A
+page is fifty complete listings on all four, and the same fifty whichever command
+asked.
 The page fetches those carriers and hands the catalog over as Avito sent it;
 the request, the postconditions and what a card means are all Node
 (`src/site/items.mjs`, `src/site/card.mjs`, D-065, D-069).
@@ -75,7 +83,7 @@ flat fields beside them carry the base price and a second copy (D-070, F-093).
 The location is the one field with two live carriers — two real-estate routes
 ship no `GeoStep` at all — and it reads from whichever the card has.
 
-The rows are `catalog.items` and nothing else. Avito appends a second list when
+The listings are `catalog.items` and nothing else. Avito appends a second list when
 a search runs short — near-misses from other regions and of other makes, headed
 by a placeholder naming what it relaxed — and those are not answers to the
 search: they are dropped, so a search that found nothing of its own ends in
@@ -85,9 +93,9 @@ The consumer flow is one chain around one carrier of state, the canonical `searc
 
 ```
 get-location <city>             → locationId
-search <query> --location-id    → rows + searchUrl
+search <query> --location-id    → items + searchUrl
 get-filters <searchUrl>         → keys, options, what is already applied
-apply-filters <searchUrl> --set → rows + a new searchUrl
+apply-filters <searchUrl> --set → items + a new searchUrl
 get-page <searchUrl> --page 2   → the next page
 get-item <url>                  → the full text, and the photos as files
 ```
@@ -112,14 +120,14 @@ the call — you cannot see it coming from the listing.
 | Class | Whose shape it is | What it disables | Where it gets fixed |
 |---|---|---|---|
 | `get-filters`: a named filter with no `defaultTitle` | the category's | flat rentals, garages (and vacancies, out of scope) | phase 13 |
-| row decoder: an item URL it will not accept | the category's | a jobs query mixing résumés and vacancies (F-088) | not planned — Jobs is out of scope |
+| listing decoder: an item URL it will not accept | the category's | a jobs query mixing résumés and vacancies (F-088) | not planned — Jobs is out of scope |
 
 Four classes left this list, and each time it was wrong not about the defect
 existing but about what the defect disabled.
 
 - The storefront slug with a dot in the `sellerId` decoder — the only one whose
   shape belonged to the **seller** rather than the category; it left along with
-  the column (D-038). It was found in Electronics, a category already walked twice.
+  the field (D-038). It was found in Electronics, a category already walked twice.
 - The sectioned `sectionedMultiselect` form was filed under tyres and wheels
   while it actually held all of Transport shut: both transport branches died on
   it without ever reaching the `slider` the phase had been written for
@@ -128,13 +136,13 @@ existing but about what the defect disabled.
   shut: `bannerCheckBoxWithImage` is present on all 12 routes checked. It turned
   out to be a checkbox with no vocabulary, applied with the value `1`
   (D-041, F-062).
-- The résumé refusal was not fixed but removed: it lived in the row decoder's
-  photo reader, and the photos left the listing row (D-061, F-087). What that
+- The résumé refusal was not fixed but removed: it lived in the listing decoder's
+  photo reader, and the photos left the listing item (D-061, F-087). What that
   freed is one route of Jobs, not the category — the same query mixed with
   vacancies refuses on something else entirely (F-088), and Jobs is no longer on
   the plan.
 
-Hence how to read this table: the "what it disables" column lists where the
+Hence how to read this table: the "what it disables" column names where the
 class was observed, not the boundary of its effect. For each remaining class the
 question "whose shape is this, and where else does that shape occur" has to be
 asked separately.
@@ -186,8 +194,8 @@ Cross-cutting. Risks specific to one command are in its domain file.
   be a refusal on the page past the last one, not a rate limit (F-061).
 - **`price` still does not say what it counts.** A floor travels as `minPrice`
   and a table as `hasPriceList` (D-056), but a rate does not: «150 ₽ за м²» is
-  `price: 150`, the unit sits in the payload and in no column (F-077). Nothing
-  refuses, and no fixture catches a wrong number — only a wrong shape.
+  `price: 150`, the unit sits in the payload and in no field (F-077). Nothing
+  refuses, and no expectation catches a wrong number — only a wrong shape.
 - A service's price list exists twice and the two copies disagree: the search
   card's is the index's and goes stale, `get-item`'s is what the page prints
   (F-081). Only the second one is returned.
@@ -202,10 +210,10 @@ Cross-cutting. Risks specific to one command are in its domain file.
   only arrives on the call — see the register above.
 - Every command depends on the undocumented internal shape of the SSR bootstrap
   and on seven undocumented endpoints. Any drift must end fail-closed.
-- The shared row decoder serves four listing commands, so one drift moves four.
+- The shared listing decoder serves four listing commands, so one drift moves four.
   Since D-070 the price and the description refuse rather than answer from
   another carrier; what is left silent is the location, which has two live
-  carriers, and the unit of a rate. The shared `LISTING_ROW` schema catches a
+  carriers, and the unit of a rate. The shared `LISTING_ITEM` schema catches a
   wrong *shape* on all four at once and says nothing about a wrong *meaning*.
 - `sellerName` is defended by no live check at all (D-028) — only the offline
   suite and human eyes.

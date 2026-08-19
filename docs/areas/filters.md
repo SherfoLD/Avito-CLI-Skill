@@ -2,16 +2,17 @@
 
 Confirmed live: 2026-08-16
 
-The shared row decoder, the row shape and the transport are in
+The shared listing decoder, the item shape and the transport are in
 [_platform.md](_platform.md).
 
 ## Contract
 
 `get-filters <searchUrl>` answers two questions: what can be applied to this
-route, and what is already applied. Six columns: `key`, `name`, `unit`,
-`valueSyntax`, `currentValue`, `options`. Budget: 2 requests.
+route, and what is already applied. It answers `{ searchUrl, filters }`, each
+filter carrying `key`, `name`, `unit`, `valueSyntax`, `currentValue`, `options`.
+Budget: 2 requests.
 
-The governing rule: **a row exists ⇔ the filter is applicable**. The absence of a
+The governing rule: **a filter is returned ⇔ it is applicable**. The absence of a
 key *is* "you cannot apply this"; there is no separate marker for it.
 `valueSyntax` is never `null` and says what to write after `key=`: `<value>`,
 `<value>[,<value>]`, `<text>[,<text>]`, `<from>..<to>` or `1`. `currentValue` is
@@ -71,10 +72,10 @@ that appears after applying will reach them on the next `get-filters`.
   triggered a firewall CAPTCHA. The bootstrap is the same backend state the MFE
   builds the visible form from, and reading it requires no UI mutation.
 - **D-010 — one object per filter with a map of options.**
-  `options: {"<value>":"<name>"}`, not a row per option: the flat contract
-  inflated a RAM schema of 26 filters and 491 values into 498 repeating rows. An
-  array of `[{value,name}]` is rejected by the row-depth rule; a map stays inside
-  the allowed depth.
+  `options: {"<value>":"<name>"}`, not one entry per option: the flat contract
+  inflated a RAM schema of 26 filters and 491 values into 498 repeating entries.
+  A map also states the shape of the lookup a caller actually does — value to
+  name — which a list of pairs leaves them to build.
 - **D-030 — several values of one filter go as a `,`-separated list.** Not an
   optimisation but the closing of a hole: they cannot be accumulated by chaining
   at all (F-050). Allowed only where Avito accepts them by the fresh schema
@@ -105,7 +106,7 @@ that appears after applying will reach them on the next `get-filters`.
   with the value `1`.** Avito declares the range form itself in the `inputs`
   block, and a round trip confirmed all of it (F-063): `params[<attrId>][from]`
   and `[to]`, answered by `{from, to}` in both carriers. So `numericRange` and
-  `slider` are one output row with `<from>..<to>`, told apart by `options`: the
+  `slider` are one output form with `<from>..<to>`, told apart by `options`: the
   first has none, the second has the dictionary both bounds come from. The order
   of a slider's bounds is checked against the order of its own list, not against
   the ID numbers: the numbers belong to Avito. `bannerCheckBoxWithImage` is not
@@ -113,7 +114,7 @@ that appears after applying will reach them on the next `get-filters`.
   content is presentation, and its state travels as `1` (F-062). It is entered in
   the map as `boolean` and applies through a bare key with no index. D-040 is
   untouched by this: a type absent from the map still stops the command.
-- **D-042 — a text field is an output row with its own syntax; a group heading is
+- **D-042 — a text field is a filter with its own syntax; a group heading is
   not a filter.** `keywords` applies through the same indexed list a multiselect
   uses, so it gets its own syntax entry `<text>[,<text>]` and an empty `options`:
   the field has no vocabulary and pretending otherwise is not allowed (F-064).
@@ -121,15 +122,15 @@ that appears after applying will reach them on the next `get-filters`.
   character for character. The price of the grammar was accepted deliberately: a
   word containing `,` or `;` cannot be expressed through `--set`, and a word
   shaped like `2015..2018` is rejected by type before the network rather than
-  going out under the wrong key. A `checkboxGroup` with empty `values` does not
-  become a row — it is a group heading whose values sit in `content` as separate
-  filters and are already returned (F-065).
+  going out under the wrong key. A `checkboxGroup` with empty `values` is not
+  returned — it is a group heading whose values sit in `content` as separate
+  filters and are already there (F-065).
 - **D-043 — an entry point is not a filter, and Avito's vocabulary is not
-  trimmed.** Two amendments to the same "a row exists ⇔ the filter is applicable"
+  trimmed.** Two amendments to the same "returned ⇔ applicable"
   rule, both found in parts. First: `garageEntrypoint` is entered in the type map
   with its own `entrypoint` normalisation, which never has a syntax — not now, and
   not if Avito one day sends it `values`. It is the mirror of D-041: a checkbox
-  with a picture has a value and therefore became a row, while the car picker has
+  with a picture has a value and is therefore returned, while the car picker has
   no value of its own and therefore does not — it only fills in three ordinary
   filters, which it names itself (F-066). The type is genuinely decoded rather
   than skipped: D-040 is untouched. Second: the vocabulary ceiling was raised from
@@ -138,7 +139,7 @@ that appears after applying will reach them on the next `get-filters`.
   manufacturers on truck parts, and trimming that list would reintroduce the very
   silent clamp this command exists to avoid (F-067).
 - **D-037 — `get-filters` returns only what is applicable and only what the
-  caller needs.** Twelve columns became six. Not one of the removed columns
+  caller needs.** Twelve fields became six. Not one of the removed fields
   enabled an action: `attrId` was the same number already inside `key`;
   `section` / `parentKey` described the shape of Avito's SSR tree; `type`
   duplicated `valueSyntax`; `optionsComplete` was the constant `true`;
@@ -157,7 +158,7 @@ that appears after applying will reach them on the next `get-filters`.
   while their DOM controls are collapsed. There is no separate schema XHR among
   the initial responses.
 - **F-024 — options have to be grouped.** The full RAM schema flattened is 498
-  rows instead of 26 objects. `key` and `attrId` stay separate fields inside the
+  entries instead of 26 objects. `key` and `attrId` stay separate fields inside the
   command: `price` proves they are not interchangeable.
 - **F-029 — short-key serialisation and the anatomy of `params`.** The confirmed
   table: `price → pmin/pmax`, `user`, `d`, `localPriority`, `sort → s`; ordinary
@@ -194,7 +195,7 @@ that appears after applying will reach them on the next `get-filters`.
   the network; Avito accepts two single-value `params[...]` in one call. But those
   keys did not reach the canonical URL at all — the choice went into the opaque
   `f=`, which is the second proof that application cannot be checked by URL shape.
-- **F-058 — half the sofa schema was applied by nothing.** 11 rows of 36 came out
+- **F-058 — half the sofa schema was applied by nothing.** 11 filters of 36 came out
   with `valueSyntax: null`: five `numericRange` inside `params[...]`, `keywords`,
   three `hidden`, a filter with an empty vocabulary, and `footWalkingMetro`.
   Three of them are hidden constraints of the route itself, belonging to the
@@ -212,7 +213,7 @@ that appears after applying will reach them on the next `get-filters`.
   is no longer any reason to read it. There is one `slider` there —
   `params[162396]` «Объём двигателя», 39 values with IDs and
   `inputs.from.id = params[162396][from]`. After the fix the routes return 46 and
-  22 rows, and the same fix opened tyres (`contains a malformed option`, phase 16)
+  22 filters, and the same fix opened tyres (`contains a malformed option`, phase 16)
   and cross-enduro — the regression route with the slider. The live round trip:
   `apply-filters --set 'params[110000]=329202;params[110008]=331255;price=1000000..2500000'`
   (BMW being exactly the repeated option) produced the canonical
@@ -251,8 +252,8 @@ that appears after applying will reach them on the next `get-filters`.
   `params[164865][0]=kingston` → 2874 → 2274. Case, spaces and Cyrillic come back
   character for character (`Kingston HyperX`), so exact comparison in the
   postcondition is safe. The live cycle through the commands:
-  `--set 'params[149569]=Kingston HyperX;params[164865]=б/у'` → 13 rows, and
-  `get-filters` returned exactly those two rows. Incidentally: the `defaultTitle`
+  `--set 'params[149569]=Kingston HyperX;params[164865]=б/у'` → 13 listings, and
+  `get-filters` returned exactly those two keys. Incidentally: the `defaultTitle`
   of the second field contains a literal `\n` sequence — that is Avito's own
   vocabulary and it passes through unchanged.
 - **F-065 — a `checkboxGroup` with an empty vocabulary is a group heading, not a
@@ -295,24 +296,24 @@ that appears after applying will reach them on the next `get-filters`.
   «Для автомобилей» the same key returns exactly 1000 options — the limit is drawn
   by Avito and it differs. The live round trip after raising the ceiling:
   `--set 'params[110548]=448904;params[121596]=2906246;price=..50000'` (KAMAZ,
-  trucks) → 50 rows, `get-filters` on the resulting URL returned exactly those
-  three keys, and the `options` column of that same filter stayed complete.
-- **F-072 — the order of `get-filters` rows belongs to Avito and is not stable.**
-  Two runs of the same command on the same URL return the same 31 rows and the
-  same 6 columns, every value identical when matched by `key`, in a different
+  trucks) → 50 listings, `get-filters` on the resulting URL returned exactly those
+  three keys, and the `options` of that same filter stayed complete.
+- **F-072 — the order of `get-filters` entries belongs to Avito and is not stable.**
+  Two runs of the same command on the same URL return the same 31 filters and the
+  same 6 fields, every value identical when matched by `key`, in a different
   order. Not a decoder difference. `filtersV2.Sections` arrives in a varying
   order between requests for the same URL: three runs of the same command on
   «Диваны» gave `main, locationGroup, checkboxes, displayOptions`, then
   `displayOptions` first, then `checkboxes, displayOptions` last. The sections
-  and their contents are the same each time; only their sequence moves. So a row
+  and their contents are the same each time; only their sequence moves. So a filter
   position means nothing here and two outputs must be compared by `key`, the way
-  a listing page is compared by `itemId` (F-042). Sorting the rows to hide it was
+  a listing page is compared by `itemId` (F-042). Sorting them to hide it was
   rejected for the same reason the alphabetized `attributes` was (F-070): an
   order Avito does not have is not ours to invent.
 - **F-051 — two defects found by reading the code during the rebuild.** The old
   filter command did not carry `metro` / `district` / `radius` into the request and
   did not check them as preserved, so a filter on a URL with a metro station could
-  silently return results for the whole city — and geo is exposed by no column, so
+  silently return results for the whole city — and geo is exposed by no field, so
   there was nothing to notice it with. The old schema command loaded the whole
   catalog page for the sake of one JSON blob in the markup. Both are closed by
   construction. The common cause: the contract fixed a command's input and output
@@ -326,7 +327,7 @@ that appears after applying will reach them on the next `get-filters`.
   ever a control. `footWalkingMetro` and `categoryId` are keys not of the
   `params[...]` form, whose carrier in `searchCore` is unconfirmed. The enum with
   an empty vocabulary left this list: it turned out to be a group heading whose
-  values are returned as separate rows (F-065), and `keywords` applies as of
+  values are returned separately (F-065), and `keywords` applies as of
   2026-08-16 (F-064).
 - **`footWalkingMetro` does not apply:** its carrier in `searchCore` is
   unconfirmed. Since 2026-08-16 it is not returned by `get-filters` either, so
@@ -338,9 +339,9 @@ that appears after applying will reach them on the next `get-filters`.
   `garageEntrypoint` were decoded, the price of that honesty is zero known
   categories: no unknown types remain on the walked routes, and the next one will
   mean exactly what it says.
-- **One row can carry a vocabulary of thousands of options** (F-067). The ceiling
+- **One filter can carry a vocabulary of thousands of options** (F-067). The ceiling
   now catches only the implausible, so the caller must be ready for an `options`
-  column of 12150 entries; trimming it on our side is not allowed — that would be
+  map of 12150 entries; trimming it on our side is not allowed — that would be
   a silent clamp. If such a response turns out to be inconvenient, the cure is a
   separate way to ask for the vocabulary, not quiet truncation.
 - **A word containing `,` or `;` cannot be expressed through `--set`**, and a word

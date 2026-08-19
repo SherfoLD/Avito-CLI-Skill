@@ -27,6 +27,8 @@ import { defineCommand } from '../runtime/command.mjs';
 import {
   count,
   decode,
+  idString,
+  itemUrl,
   optionalText,
   requiredText,
   text,
@@ -179,9 +181,9 @@ function decodeRatingContext(payload, expectedItemId) {
       : `Avito item API returned no item ID where ${expectedItemId} was expected`);
   }
 
-  // `ratingKey` / `reviewsCount` rather than the column names: this is the rating
-  // context of the listing, not a row, and naming it like one is how a carrier gets
-  // mistaken for output.
+  // `ratingKey` / `reviewsCount` rather than the answer's own names: this is the
+  // rating context of the listing, and naming it like output is how a carrier gets
+  // mistaken for one.
   const rating = buyerItem.rating;
   if (rating == null) return { ratingKey: null, reviewsCount: null };
 
@@ -194,7 +196,7 @@ function decodeRatingContext(payload, expectedItemId) {
 
 /**
  * Same source and semantics as `sellerReviewsCount` in `get-item` and the
- * listing rows: the visible summary counts scored reviews only, unlike
+ * listing items: the visible summary counts scored reviews only, unlike
  * `activeReviewsCount`. "нет отзывов" is a real zero.
  */
 function decodeReviewSummary(summary) {
@@ -208,7 +210,7 @@ function decodeReviewSummary(summary) {
   return parsed;
 }
 
-function decodeReviewRow(entry, sellerReviewsCount, position) {
+function decodeReview(entry, position) {
   const review = decode(REVIEW, entry?.value, `Avito review ${position}`);
   const textParts = review.textSections.map((section) => section.text).filter(Boolean);
 
@@ -223,7 +225,6 @@ function decodeReviewRow(entry, sellerReviewsCount, position) {
     text: textParts.join('\n') || null,
     answerText: review.answer?.text ?? null,
     answered: review.answer?.answered ?? null,
-    sellerReviewsCount,
   };
 }
 
@@ -280,11 +281,59 @@ function readNextPage(payload, ratingUserKey) {
   return { nextOffset, appliedSort: cleanText(parsed.searchParams.get('sortRating')) || null };
 }
 
+/**
+ * `score` is nullable because a review without one is a real class Avito prints
+ * under its own divider, and `sellerReviewsCount` because the visible summary is
+ * what carries it — a seller can have a feed and no summary.
+ */
+const OUTPUT = z.strictObject({
+  itemId: idString(),
+  itemUrl: itemUrl(),
+  sellerReviewsCount: count().nullable(),
+  sort: text().nullable(),
+  page: z.number().int().positive(),
+  reviews: z.array(z.strictObject({
+    reviewId: z.number().int().positive(),
+    score: z.number().int().min(1).max(5).nullable(),
+    stage: text().nullable(),
+    rated: text().nullable(),
+    authorName: text(),
+    authorRole: text().nullable(),
+    itemTitle: text().nullable(),
+    text: text().nullable(),
+    answerText: text().nullable(),
+    answered: text().nullable(),
+  })),
+});
+
+const OUTPUT_TYPE = `type Output = {
+  itemId: string;                     // the listing the seller was reached through
+  itemUrl: string;
+  sellerReviewsCount: number | null;  // from the visible summary; null where the seller has none
+  sort: string | null;                // the sort that was requested and confirmed; null means Avito's
+                                      // own default, which it does not report
+  page: number;                       // Avito fixes the page at 25 reviews
+  reviews: Review[];
+};
+
+type Review = {
+  reviewId: number;
+  score: number | null;               // 1..5; null is a real class of review, not a zero
+  stage: string | null;               // «Сделка состоялась», «Не договорились»
+  rated: string | null;               // the date as Avito rendered it
+  authorName: string;
+  authorRole: string | null;          // «Покупатель», «Клиент»
+  itemTitle: string | null;
+  text: string | null;
+  answerText: string | null;          // the seller's reply
+  answered: string | null;            // when they replied, as Avito rendered it
+};`;
+
 export default defineCommand({
   name: 'get-seller-reviews',
   description: 'Get the review feed of the seller behind a listing URL',
   access: 'read',
-  example: 'avito get-seller-reviews <itemUrl> --sort date_desc -f json',
+  example: 'avito get-seller-reviews <itemUrl> --sort date_desc',
   domain: 'www.avito.ru',
   args: [
     {
@@ -301,22 +350,8 @@ export default defineCommand({
     },
     { name: 'page', type: 'int', default: 1, help: 'Positive feed page number; Avito fixes the page at 25 reviews' },
   ],
-  // `score` is nullable because a review without one is a real class Avito
-  // prints under its own divider, and `sellerReviewsCount` because the visible
-  // summary is what carries it — a seller can have a feed and no summary.
-  row: z.strictObject({
-    reviewId: z.number().int().positive(),
-    score: z.number().int().min(1).max(5).nullable(),
-    stage: text().nullable(),
-    rated: text().nullable(),
-    authorName: text(),
-    authorRole: text().nullable(),
-    itemTitle: text().nullable(),
-    text: text().nullable(),
-    answerText: text().nullable(),
-    answered: text().nullable(),
-    sellerReviewsCount: count().nullable(),
-  }),
+  output: OUTPUT,
+  type: OUTPUT_TYPE,
   run: async (page, args) => {
     const { normalizedUrl, normalizedItemId, itemApiUrl } = normalizeItemUrl(args.itemUrl);
     const requestedSort = normalizeSort(args.sort);
@@ -425,13 +460,13 @@ export default defineCommand({
       }
     }
 
-    const rows = [];
+    const reviews = [];
     for (const entry of entries) {
       if (entry?.type !== 'rating') continue;
-      rows.push(decodeReviewRow(entry, reviewsCount, rows.length + offset + 1));
+      reviews.push(decodeReview(entry, reviews.length + offset + 1));
     }
 
-    if (!rows.length) {
+    if (!reviews.length) {
       throw new EmptyResultError(
         'avito get-seller-reviews',
         requestedPage > 1
@@ -440,6 +475,13 @@ export default defineCommand({
       );
     }
 
-    return rows;
+    return {
+      itemId: normalizedItemId,
+      itemUrl: normalizedUrl,
+      sellerReviewsCount: reviewsCount,
+      sort: requestedSort,
+      page: requestedPage,
+      reviews,
+    };
   },
 });

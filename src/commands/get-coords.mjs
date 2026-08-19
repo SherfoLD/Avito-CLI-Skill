@@ -5,7 +5,7 @@
  * Avito rewrites the request silently: a missing house number snaps to a
  * neighbour, an address existing in several cities resolves to one of them with
  * no ambiguity signal (F-045). That cannot be detected from a single response,
- * so the row carries Avito's own `normalizedAddress`, `kind` and `locality` for
+ * so the answer carries Avito's own `normalizedAddress`, `kind` and `locality` for
  * the caller to compare against what they asked for.
  */
 
@@ -88,11 +88,29 @@ function decodeCoords(payload) {
   };
 }
 
+const OUTPUT = z.strictObject({
+  address: text(),
+  kind: text(),
+  locality: text().nullable(),
+  latitude: LATITUDE,
+  longitude: LONGITUDE,
+  postalCode: text().nullable(),
+});
+
+const OUTPUT_TYPE = `type Output = {
+  address: string;            // the address as Avito normalized it, which is not always the one asked for
+  kind: string;               // Avito's own precision label: "house", "street", "locality", …
+  locality: string | null;
+  latitude: number;           // pass both to search --coords
+  longitude: number;
+  postalCode: string | null;
+};`;
+
 export default defineCommand({
   name: 'get-coords',
   description: 'Resolve an address to the coordinate pair avito search needs for --coords and --radius',
   access: 'read',
-  example: 'avito get-coords "Тверь, Советская улица, 11" -f json',
+  example: 'avito get-coords "Тверь, Советская улица, 11"',
   domain: 'www.avito.ru',
   args: [
     {
@@ -103,14 +121,8 @@ export default defineCommand({
       help: 'Address as a person would type it, for example "Тверь, Советская улица, 11"',
     },
   ],
-  row: z.strictObject({
-    address: text(),
-    kind: text(),
-    locality: text().nullable(),
-    latitude: LATITUDE,
-    longitude: LONGITUDE,
-    postalCode: text().nullable(),
-  }),
+  output: OUTPUT,
+  type: OUTPUT_TYPE,
   run: async (page, args) => {
     const address = normalizeAddress(args.address);
 
@@ -155,6 +167,6 @@ export default defineCommand({
       throw new CommandExecutionError('Avito coords API did not return JSON');
     }
 
-    return [decodeCoords(observed.payload)];
+    return decodeCoords(observed.payload);
   },
 });

@@ -1,11 +1,11 @@
 // Offline harness: `loadCommand` for a command module and its descriptor,
-// `assertRows` for what a command returned against the contract it declares,
+// `assertOutput` for what a command returned against the contract it declares,
 // and the check runner.
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
-import { parseRows } from '../src/runtime/schema.mjs';
+import { parseOutput } from '../src/runtime/schema.mjs';
 
 const PROJECT_ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 
@@ -37,16 +37,11 @@ export async function loadCommand(name, exportNames = []) {
 
 /**
  * Parse what a command returned through the contract it declares — the same
- * parse `bin/avito.mjs` runs before printing, so a suite cannot pass on a row a
- * caller would never be given.
+ * parse `bin/avito.mjs` runs before printing, so a suite cannot pass on an answer
+ * a caller would never be given.
  */
-export function assertRows(command, rows) {
-  return parseRows(command.row, rows, command.name);
-}
-
-/** The same, for a suite that built exactly one row. */
-export function assertRow(command, row) {
-  return assertRows(command, [row])[0];
+export function assertOutput(command, answer) {
+  return parseOutput(command.output, answer, command.name);
 }
 
 /** The error a call threw, or null if it did not throw. */

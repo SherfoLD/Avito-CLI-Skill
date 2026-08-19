@@ -14,7 +14,7 @@ const suites = [
   './schema.test.mjs',
   './lint-rules.test.mjs',
   './browser-config.test.mjs',
-  './verify-fixtures.test.mjs',
+  './expectations.test.mjs',
   './prelude.test.mjs',
   './card.test.mjs',
   './search.test.mjs',

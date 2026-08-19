@@ -1,11 +1,11 @@
 // Offline end-to-end for `avito move-category`: the real command over a synthetic
 // Avito SSR carrier for the source route, for the target category, and for the
-// items API the rows come from.
+// items API the listings come from.
 //
 // The target is resolved from the navigation state Avito itself rendered, never built from a
 // slug, so the checks below are about refusing every ambiguous or non-navigable answer.
 import {
-  assertRow, failureOf, loadCommand, runner,
+  assertOutput, failureOf, loadCommand, runner,
 } from './harness.mjs';
 import {
   FILTERS, ITEMS_API_PATH, ORIGIN, bootstrapHtml, browserPage, item, itemsApiResponse, searchCore,
@@ -60,7 +60,7 @@ const targetState = ({ core = {} } = {}) => ({
   },
 });
 
-// The rows of the moved-to category, on the carrier that ships all fifty complete (F-089).
+// The listings of the moved-to category, on the carrier that ships all fifty complete (F-089).
 const targetApi = ({ items = [item()], core = {}, url = TARGET } = {}) => ({
   match: API,
   contentType: 'application/json',
@@ -82,19 +82,24 @@ const routes = (...entries) => entries;
 
 const move = (routeList, args = {}) => {
   const page = browserPage(routeList);
-  return { page, rows: COMMAND.run(page, { searchUrl: SOURCE, to: 'Мобильные телефоны', ...args }) };
+  return { page, answer: COMMAND.run(page, { searchUrl: SOURCE, to: 'Мобильные телефоны', ...args }) };
 };
 
 const { check, assert, run } = runner();
 
 check('a visible sidebar option resolves to its Avito route and returns its listings', async () => {
-  const { page, rows } = move(routes(sourceRoute(), targetRoute(), targetApi()));
-  const returned = await rows;
+  const { page, answer } = move(routes(sourceRoute(), targetRoute(), targetApi()));
+  const returned = await answer;
   assert(page.calls.length === 3 && page.calls[0] === SOURCE && page.calls[1] === TARGET
     && page.calls[2].startsWith(API),
-  `expected the source, the target and its rows, got ${JSON.stringify(page.calls)}`);
-  assert(returned[0].searchUrl === TARGET, `unexpected searchUrl: ${returned[0].searchUrl}`);
-  assertRow(COMMAND, returned[0]);
+  `expected the source, the target and its listings, got ${JSON.stringify(page.calls)}`);
+  assert(returned.searchUrl === TARGET, `unexpected searchUrl: ${returned.searchUrl}`);
+  // The category is named as Avito spells it, and the query it had to preserve
+  // is stated beside it rather than left to be read out of the URL.
+  assert(returned.category === 'Мобильные телефоны', `unexpected category: ${returned.category}`);
+  assert(returned.query === 'xiaomi', `unexpected query: ${returned.query}`);
+  assert(returned.items.every((entry) => !('searchUrl' in entry)), 'the search URL must not repeat on every listing');
+  assertOutput(COMMAND, returned);
   assert(page.navigations.length === 1 && page.navigations[0] === 'https://www.avito.ru/robots.txt',
     `expected one robots.txt priming, got ${JSON.stringify(page.navigations)}`);
 });
@@ -109,16 +114,16 @@ check('a route that drops the text query is refused, not followed', async () => 
     ] }),
   ];
   const driven = move(routes(sourceRoute(sourceState({ nodes: leaky }))), { to: 'Аксессуары' });
-  const failure = await failureOf(() => driven.rows);
+  const failure = await failureOf(() => driven.answer);
   assert(failure?.code === 'ARGUMENT', `a query-dropping route was taken: ${failure && failure.code}`);
   assert(/drops the search query "xiaomi"/.test(failure.message), `unexpected message: ${failure.message}`);
   assert(/Мобильные телефоны/.test(failure.message), `the usable names must be offered: ${failure.message}`);
   assert(driven.page.calls.length === 1, 'the target was fetched despite a query-dropping route');
 });
 
-// On a query-less route Avito renders the whole ancestor chain as navigable back rows, so the
+// On a query-less route Avito renders the whole ancestor chain as navigable back entries, so the
 // upward move is a sidebar move there too — the breadcrumbs it also ships are never read.
-check('a query-less search widens through the sidebar back rows', async () => {
+check('a query-less search widens through the sidebar back entries', async () => {
   const backTarget = `${ORIGIN}/moskva/telefony?cd=1`;
   const browse = sourceState({ core: { query: '' }, nodes: [
     sideNode({ id: 1, name: 'Телефоны', url: '/moskva/telefony?cd=1', hasBack: true }),
@@ -129,22 +134,22 @@ check('a query-less search widens through the sidebar back rows', async () => {
     { match: backTarget, body: bootstrapHtml(targetState({ core: { query: '' } })) },
     { match: `${ORIGIN}${SOURCE_PATH}`, body: bootstrapHtml(browse) },
   ], { searchUrl: `${ORIGIN}${SOURCE_PATH}`, to: 'Телефоны' });
-  await driven.rows;
-  assert(driven.page.calls[1] === backTarget, `the back row must be followed, got ${driven.page.calls[1]}`);
+  await driven.answer;
+  assert(driven.page.calls[1] === backTarget, `the back entry must be followed, got ${driven.page.calls[1]}`);
 });
 
-// A row with no route of its own, and the route we are already on. No other
+// An entry with no route of its own, and the route we are already on. No other
 // carrier is consulted for a URL either of them lacks.
-check('a routeless row and the current route are refused with their reason', async () => {
+check('a routeless entry and the current route are refused with their reason', async () => {
   const routeless = move(routes(sourceRoute()), { to: 'Телефоны' });
-  const routelessFailure = await failureOf(() => routeless.rows);
-  assert(routelessFailure?.code === 'ARGUMENT', `routeless row followed: ${routelessFailure && routelessFailure.code}`);
+  const routelessFailure = await failureOf(() => routeless.answer);
+  assert(routelessFailure?.code === 'ARGUMENT', `routeless entry followed: ${routelessFailure && routelessFailure.code}`);
   assert(/hangs no route/.test(routelessFailure.message), `unexpected message: ${routelessFailure.message}`);
-  assert(routeless.page.calls.length === 1, 'the target was fetched despite an unusable row');
+  assert(routeless.page.calls.length === 1, 'the target was fetched despite an unusable entry');
 
   const current = move(routes(sourceRoute()), { to: 'Xiaomi' });
-  const currentFailure = await failureOf(() => current.rows);
-  assert(currentFailure?.code === 'ARGUMENT', `current row followed: ${currentFailure && currentFailure.code}`);
+  const currentFailure = await failureOf(() => current.answer);
+  assert(currentFailure?.code === 'ARGUMENT', `current entry followed: ${currentFailure && currentFailure.code}`);
   assert(/already on/.test(currentFailure.message), `unexpected message: ${currentFailure.message}`);
   assert(current.page.calls.length === 1, 'the target was fetched for the current category');
 
@@ -154,7 +159,7 @@ check('a routeless row and the current route are refused with their reason', asy
   const canonical = move(routes(sourceRoute(sourceState({
     nodes: [sideNode({ id: 1, name: 'Xiaomi', type: 2, isCurrent: true, url: withQuery('/moskva/telefony/xiaomi-ASgB') })],
   }))), { to: 'Xiaomi' });
-  const canonicalFailure = await failureOf(() => canonical.rows);
+  const canonicalFailure = await failureOf(() => canonical.answer);
   assert(canonicalFailure != null && /already on/.test(canonicalFailure.message),
     `a canonical copy of the current route was followed: ${canonicalFailure && canonicalFailure.message}`);
   assert(canonical.page.calls.length === 1, 'the target was fetched for the current category');
@@ -162,8 +167,8 @@ check('a routeless row and the current route are refused with their reason', asy
 
 // The route Avito could not place in a category: no `type=2` node anywhere, two
 // group heads both marked current, and their own routes are the only way out of
-// the search (F-084). The head is followed like any other row (D-057).
-check('a group head that carries a route is followed like any other row', async () => {
+// the search (F-084). The head is followed like any other entry (D-057).
+check('a group head that carries a route is followed like any other entry', async () => {
   const rootPath = '/moskva';
   const headPath = '/moskva/predlozheniya_uslug';
   const heads = [
@@ -182,15 +187,15 @@ check('a group head that carries a route is followed like any other row', async 
       body: bootstrapHtml(sourceState({ core: { categoryId: null }, nodes: heads })),
     },
   ], { searchUrl: `${ORIGIN}${rootPath}?q=xiaomi`, to: 'Услуги' });
-  const returned = await driven.rows;
+  const returned = await driven.answer;
   assert(driven.page.calls[1] === `${ORIGIN}${withQuery(headPath)}`, `the head route must be followed, got ${driven.page.calls[1]}`);
-  assert(driven.page.calls[2].startsWith(API), `the rows must come from the API, got ${driven.page.calls[2]}`);
-  assert(returned[0].searchUrl === `${ORIGIN}${withQuery(headPath)}`, `unexpected searchUrl: ${returned[0].searchUrl}`);
+  assert(driven.page.calls[2].startsWith(API), `the listings must come from the API, got ${driven.page.calls[2]}`);
+  assert(returned.searchUrl === `${ORIGIN}${withQuery(headPath)}`, `unexpected searchUrl: ${returned.searchUrl}`);
 });
 
 check('an unknown name lists the visible categories instead of guessing', async () => {
   const driven = move(routes(sourceRoute()), { to: 'Ноутбуки' });
-  const failure = await failureOf(() => driven.rows);
+  const failure = await failureOf(() => driven.answer);
   assert(failure?.code === 'ARGUMENT', `unknown name accepted: ${failure && failure.code}`);
   assert(/Мобильные телефоны/.test(failure.message) && /Аксессуары/.test(failure.message),
     `the visible names must be listed: ${failure.message}`);
@@ -205,13 +210,13 @@ check('one name pointing at two routes is refused, not resolved to the first', a
     ] }),
   ];
   const driven = move(routes(sourceRoute(sourceState({ nodes: twins, breadcrumbs: [] }))), { to: 'Аксессуары' });
-  const failure = await failureOf(() => driven.rows);
+  const failure = await failureOf(() => driven.answer);
   assert(failure?.code === 'ARGUMENT', `ambiguity resolved silently: ${failure && failure.code}`);
   assert(/matches 2 different Avito routes/.test(failure.message), `unexpected message: ${failure.message}`);
   assert(driven.page.calls.length === 1, 'the target was fetched despite an ambiguous name');
 });
 
-// The same name reached through two rows that lead to one route is not ambiguous: the
+// The same name reached through two sidebar entries that lead to one route is not ambiguous: the
 // caller asked for a category, and Avito named a single destination for it.
 check('the same route reached twice is not treated as ambiguous', async () => {
   const duplicated = [
@@ -220,64 +225,66 @@ check('the same route reached twice is not treated as ambiguous', async () => {
       sideNode({ id: 3, name: 'Мобильные телефоны', url: withQuery(TARGET_PATH) }),
     ] }),
   ];
-  const rows = await move(routes(
+  const resolved = await move(routes(
     sourceRoute(sourceState({ nodes: duplicated, breadcrumbs: [] })), targetRoute(), targetApi(),
-  )).rows;
-  assert(rows.length === 1, 'one destination must resolve');
+  )).answer;
+  assert(resolved.items.length === 1, 'one destination must resolve');
 });
 
 check('the name match ignores case and surrounding spaces only', async () => {
-  const rows = await move(routes(sourceRoute(), targetRoute(), targetApi()), { to: '  мобильные ТЕЛЕФОНЫ  ' }).rows;
-  assert(rows.length === 1, 'a case-different name must resolve');
+  const resolved = await move(routes(sourceRoute(), targetRoute(), targetApi()), { to: '  мобильные ТЕЛЕФОНЫ  ' }).answer;
+  assert(resolved.items.length === 1, 'a case-different name must resolve');
+  // The name comes back as Avito renders it, never as the caller typed it.
+  assert(resolved.category === 'Мобильные телефоны', `unexpected category: ${resolved.category}`);
 
-  const partial = await failureOf(() => move(routes(sourceRoute()), { to: 'Мобильные' }).rows);
+  const partial = await failureOf(() => move(routes(sourceRoute()), { to: 'Мобильные' }).answer);
   assert(partial != null, 'a partial name must not resolve');
 });
 
 // The city belongs to the session and to the URL, not to the category, so it must survive
 // the move even though the filters and the query deliberately may not.
-check('a location changed by the move is drift, not rows', async () => {
+check('a location changed by the move is drift, not listings', async () => {
   const failure = await failureOf(() => move(routes(
     sourceRoute(),
     targetRoute(targetState({ core: { locationId: 654918, locationName: 'Казань' } })),
-  )).rows);
+  )).answer);
   assert(failure?.code === 'COMMAND_EXEC', `location change accepted: ${failure && failure.code}`);
   assert(/changed the location/.test(failure.message), `unexpected message: ${failure.message}`);
 });
 
 // The URL Avito printed said the query survives; the state of the page it answered with is
 // what proves it. A query lost between the two is drift, not a narrower result set.
-check('a query lost on the way to the target is drift, not rows', async () => {
+check('a query lost on the way to the target is drift, not listings', async () => {
   const failure = await failureOf(() => move(routes(
     sourceRoute(), targetRoute(targetState({ core: { query: '' } })),
-  )).rows);
+  )).answer);
   assert(failure?.code === 'COMMAND_EXEC', `a lost query was accepted: ${failure && failure.code}`);
   assert(/dropped the search query/.test(failure.message), `unexpected message: ${failure.message}`);
 });
 
-check('a redirect away from the named route is drift, not rows', async () => {
+check('a redirect away from the named route is drift, not listings', async () => {
   const failure = await failureOf(() => move(routes(
     sourceRoute(),
     targetRoute(undefined, { responseUrl: `${ORIGIN}/moskva/telefony/drugoe-ASgB` }),
-  )).rows);
+  )).answer);
   assert(failure?.code === 'COMMAND_EXEC', `a redirect was accepted: ${failure && failure.code}`);
   assert(/different route/.test(failure.message), `unexpected message: ${failure.message}`);
 });
 
 check('a deep page and a challenge stop before the move', async () => {
   const deep = move(routes(sourceRoute(sourceState({ core: { page: 2 } }))));
-  const deepFailure = await failureOf(() => deep.rows);
+  const deepFailure = await failureOf(() => deep.answer);
   assert(deepFailure?.code === 'ARGUMENT', `a page-2 URL was moved: ${deepFailure && deepFailure.code}`);
   assert(deep.page.calls.length === 1, 'the target was fetched from a page-2 source');
 
   const blocked = await failureOf(() => move([
     { match: SOURCE, status: 429, body: '<html><title>Доступ ограничен</title></html>' },
-  ]).rows);
+  ]).answer);
   assert(blocked?.code === 'ACCESS', `429 not reported as access: ${blocked && blocked.code}`);
 });
 
 check('a target category with no listings is a typed empty result', async () => {
-  const failure = await failureOf(() => move(routes(sourceRoute(), targetRoute(), targetApi({ items: [] }))).rows);
+  const failure = await failureOf(() => move(routes(sourceRoute(), targetRoute(), targetApi({ items: [] }))).answer);
   assert(failure?.code === 'EMPTY_RESULT', `expected EMPTY_RESULT, got ${failure && failure.code}`);
 });
 
@@ -289,7 +296,7 @@ check('an empty target and a foreign search URL never reach the network', async 
     { searchUrl: '', to: 'Телефоны' },
   ]) {
     const driven = move(routes(sourceRoute(), targetRoute(), targetApi()), args);
-    const failure = await failureOf(() => driven.rows);
+    const failure = await failureOf(() => driven.answer);
     assert(failure?.code === 'ARGUMENT', `${JSON.stringify(args)} accepted: ${failure && failure.code}`);
     assert(driven.page.navigations.length === 0, `${JSON.stringify(args)} reached the browser`);
   }
@@ -298,11 +305,11 @@ check('an empty target and a foreign search URL never reach the network', async 
 check('remove-reserved works the same as in the other listing commands', async () => {
   const items = [item({ id: '8329291056', isReserved: true }), item({ id: '8288791269' })];
   const withItems = () => routes(sourceRoute(), targetRoute(), targetApi({ items }));
-  const filtered = await move(withItems(), { 'remove-reserved': true }).rows;
-  assert(filtered.length === 1 && filtered[0].itemId === '8288791269', 'the reserved row must be dropped');
+  const filtered = await move(withItems(), { 'remove-reserved': true }).answer;
+  assert(filtered.items.length === 1 && filtered.items[0].itemId === '8288791269', 'the reserved listing must be dropped');
 
-  const whole = await move(withItems()).rows;
-  assert(whole.length === 2, 'without the flag the page must come back whole');
+  const whole = await move(withItems()).answer;
+  assert(whole.items.length === 2, 'without the flag the page must come back whole');
 });
 
 export default await run('move-category');

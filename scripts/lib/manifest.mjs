@@ -63,7 +63,9 @@ export async function loadManifest() {
       domain: descriptor.domain,
       example: descriptor.example ?? null,
       args: descriptor.args.map((arg) => ({ ...arg })),
-      columns: [...descriptor.columns],
+      output: descriptor.output,
+      type: descriptor.type,
+      keys: [...descriptor.keys],
       sourceFile: path.relative(PROJECT_ROOT, filePath).replaceAll(path.sep, '/'),
       sourcePath: filePath,
     });
@@ -77,7 +79,7 @@ function isDescriptor(value) {
     && typeof value === 'object'
     && typeof value.name === 'string'
     && typeof value.site === 'string'
-    && Array.isArray(value.columns)
+    && Array.isArray(value.keys)
     && Array.isArray(value.args)
   );
 }

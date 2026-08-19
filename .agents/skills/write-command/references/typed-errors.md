@@ -4,7 +4,7 @@ Read this before writing the body of a command.
 
 A command has exactly two honest outcomes: correct data, or one of five typed
 errors. There is no third. Every silent middle ground — an empty array standing
-in for a failed fetch, a row with `unknown` in it, an argument bent into range —
+in for a failed fetch, an answer with `unknown` in it, an argument bent into range —
 converts a caught failure into an uncaught one.
 
 ## The five classes
@@ -52,7 +52,7 @@ Reserved for "the request worked and there is nothing". A search that matches
 nothing. A review feed page past the end. A category route that is a storefront
 hub with no listings at all.
 
-Not for a failed fetch. Not for a decoder that found no rows in a payload that
+Not for a failed fetch. Not for a decoder that found nothing in a payload that
 clearly has some — that is drift, and drift is `CommandExecutionError`.
 
 **`TimeoutError` — no answer in time.**
@@ -83,7 +83,7 @@ try {
 `npm run lint` fails on `return []` inside a catch. The fix is to
 throw `CommandExecutionError` with what actually went wrong.
 
-### Sentinel row
+### Sentinel value
 
 ```js
 sellerName: payload.seller?.name ?? 'unknown',
@@ -91,8 +91,8 @@ price: raw.price || 0,
 ```
 
 Both turn missing data into data. The first is caught by the linter; the second
-is caught by requiring the column to be positive in the verify fixture, which is
-why a numeric column that this request always fills belongs there.
+is caught by requiring the field to be positive in the live expectation, which is
+why a numeric field that this request always fills belongs there.
 
 There is a real distinction to hold here. `sellerName` is `null` when Avito
 withholds it, and that `null` is correct and load-bearing (D-028) — the wrong
@@ -109,7 +109,7 @@ const page = Math.min(requested, 50);   // ← the caller asked for 80 and got 5
 An out-of-range argument is an `ArgumentError`. The caller has to be able to tell
 "I asked for something impossible" from "I got what I asked for". This one is
 also why `--limit` does not exist anywhere: the request is paid for in full
-regardless, so the argument only threw away rows already received (D-022).
+regardless, so the argument only threw away listings already received (D-022).
 
 ## Failing closed under drift
 

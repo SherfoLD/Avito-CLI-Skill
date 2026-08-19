@@ -1,6 +1,6 @@
 /**
  * The catalog-card decoder: one Avito item as it arrives on the items API, and
- * the row the four listing commands hand over.
+ * the item the four listing commands hand over.
  *
  * What the card *shows* lives in `iva`, Avito's own list of rendered steps, and
  * two of those steps are the whole answer rather than the better half of one:
@@ -43,7 +43,7 @@ const CATALOG_ITEM = z.looseObject({
   // components. A step that is not a list is drift wearing the shape of an
   // absent one (F-093).
   iva: z.record(z.string(), z.array(z.unknown())),
-  // Avito ships the flag on every catalog card. Absent, it is a column with no
+  // Avito ships the flag on every catalog card. Absent, it is a field with no
   // answer; carrying anything but a boolean, it is drift (F-048, F-093).
   isReserved: z.boolean().nullish(),
   // An empty list is a listing with no photos (F-047); the key missing
@@ -146,7 +146,7 @@ export function itemPriceIsFloor(item) {
  * A services card can carry a whole table of prices instead of one, and then the
  * scalar beside it is a floor rather than a price (F-079). The table itself is
  * not returned: it is the search index's copy and it disagrees with the listing
- * page's (F-081), so the row says only that `get-item` has one to read.
+ * page's (F-081), so the item says only that `get-item` has one to read.
  */
 export function itemHasPriceList(item) {
   return (item?.priceList?.valuesAll?.length ?? 0) > 0;
@@ -207,7 +207,7 @@ export function reviewCount(value) {
 }
 
 /**
- * A stamp Avito did not send stays null like every other nullable column; a
+ * A stamp Avito did not send stays null like every other nullable field; a
  * stamp it sent in an impossible shape is drift and stops the call.
  */
 export function itemPublished(item) {
@@ -281,11 +281,11 @@ function itemUrl(item, itemId) {
 }
 
 /**
- * Decode a whole catalog: `catalog.items` and nothing else. The rows carry
- * `reserved`, which is not a column: `applyReservedFilter` reads it and
- * `listingRows` drops it.
+ * Decode a whole catalog: `catalog.items` and nothing else. Each decoded item
+ * carries `reserved`, which is not a field of the contract: `applyReservedFilter`
+ * reads it and `listingItems` drops it.
  */
-export function catalogRows(catalog) {
+export function catalogItems(catalog) {
   const decoded = decode(CATALOG, catalog, 'Avito catalog');
   const rawItems = decode(
     z.array(CATALOG_ITEM),
@@ -293,7 +293,7 @@ export function catalogRows(catalog) {
     'Avito catalog',
   );
 
-  const rows = [];
+  const items = [];
   const seenIds = new Set();
   for (const item of rawItems) {
     const itemId = cleanText(item?.id);
@@ -312,7 +312,7 @@ export function catalogRows(catalog) {
     const printedPrice = itemPrice(item);
     const isFloor = hasPriceList || itemPriceIsFloor(item);
     const seller = itemSeller(item);
-    rows.push({
+    items.push({
       itemId,
       title,
       price: isFloor ? null : printedPrice,
@@ -329,9 +329,9 @@ export function catalogRows(catalog) {
       reserved: itemReserved(item),
     });
   }
-  if (rawItems.length > 0 && rows.length === 0) {
+  if (rawItems.length > 0 && items.length === 0) {
     throw new CommandExecutionError('Avito catalog items could not be decoded');
   }
-  return rows;
+  return items;
 }
 

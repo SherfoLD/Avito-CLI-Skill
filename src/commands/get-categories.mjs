@@ -1,19 +1,19 @@
 /**
  * `avito get-categories` — the node half, which is all of the decoding. It
- * returns Avito's category sidebar as rows, in the order Avito drew it, so a
- * `name` can be fed straight into `move-category`.
+ * returns Avito's category sidebar in the order Avito drew it, so a `name` can
+ * be fed straight into `move-category`.
  *
- * The columns that are not a copy of the node:
+ * The fields that are not a copy of the node:
  *
  *   `role`           `branch`, `option`, `current` (the node's `type`, see
  *                    `src/site/rubricator.mjs`) or `back`, the way up
- *   `parent`         the visible name of the node this one hangs under, so a row
- *                    read on its own still says which branch it is on
- *   `navigable`      whether `move-category` can be pointed at this row: it has
- *                    a route and that route is not the one we are on (D-057)
- *   `preservesQuery` whether following this row keeps the text query. One that
- *                    drops it does not widen the search — it replaces it with a
- *                    plain category browse, which `move-category` refuses
+ *   `parent`         the visible name of the node this one hangs under, so a
+ *                    category read on its own still says which branch it is on
+ *   `navigable`      whether `move-category` can be pointed at it: it has a
+ *                    route and that route is not the one we are on (D-057)
+ *   `preservesQuery` whether following it keeps the text query. One that drops
+ *                    it does not widen the search — it replaces it with a plain
+ *                    category browse, which `move-category` refuses
  *
  * The whole tree is returned, every node of it. What a node's state means is
  * Avito's to say, not this command's: a branch that is collapsed and two group
@@ -25,7 +25,7 @@ import { CommandExecutionError, EmptyResultError } from '../runtime/errors.mjs';
 import { defineCommand } from '../runtime/command.mjs';
 import {
   decode,
-  rank,
+  idString,
   searchUrl,
   text,
   z,
@@ -39,7 +39,7 @@ import { answeredUrl, requestedSearchUrl } from '../site/url.mjs';
 const COMMAND = 'avito get-categories';
 
 // Avito's three node kinds (`src/site/rubricator.mjs`) plus the one this command
-// adds: `back`, the row that leads up out of the current category.
+// adds: `back`, the entry that leads up out of the current category.
 const SIDEBAR_ROLE = z.enum(['branch', 'option', 'current', 'back']);
 
 /** The search this sidebar belongs to. An empty query is a category browse. */
@@ -47,6 +47,11 @@ const CATEGORY_CONTEXT = z.object({
   query: z.string(),
   locationId: z.number().int().positive(),
 });
+
+/** The query as the caller reads it: an empty one is a category browse. */
+function cleanQuery(value) {
+  return String(value ?? '').replace(/\s+/g, ' ').trim() || null;
+}
 
 function normalizeQuery(value) {
   return String(value ?? '').replace(/\s+/g, ' ').trim().toLocaleLowerCase('ru-RU');
@@ -56,11 +61,53 @@ function targetPreservesQuery(targetUrl, currentQuery) {
   return normalizeQuery(targetUrl.searchParams.get('q')) === normalizeQuery(currentQuery);
 }
 
+/**
+ * `preservesQuery` and `targetUrl` are null together and only where there is no
+ * move to make: the route the search is already on, and a node Avito gave no
+ * route at all. `parent` is null at the top of the tree and nowhere else.
+ */
+const OUTPUT = z.strictObject({
+  query: text().nullable(),
+  locationId: idString(),
+  searchUrl: searchUrl(),
+  categories: z.array(z.strictObject({
+    role: SIDEBAR_ROLE,
+    name: text().max(MAX_NAME_LENGTH),
+    depth: z.number().int().nonnegative().max(MAX_DEPTH),
+    parent: text().max(MAX_NAME_LENGTH).nullable(),
+    current: z.boolean(),
+    hasChildren: z.boolean(),
+    navigable: z.boolean(),
+    preservesQuery: z.boolean().nullable(),
+    targetUrl: searchUrl().nullable(),
+  })),
+});
+
+const OUTPUT_TYPE = `type Output = {
+  query: string | null;      // the search this sidebar belongs to; null on a category browse
+  locationId: string;        // digits only
+  searchUrl: string;         // the URL this sidebar was read from
+  categories: Category[];    // the whole tree, in the order Avito drew it
+};
+
+type Category = {
+  role: "branch" | "option" | "current" | "back";
+  name: string;              // feed this into move-category --to
+  depth: number;             // nesting in the sidebar
+  parent: string | null;     // the branch it hangs under; null at the top
+  current: boolean;          // more than one can be current, where Avito placed the query in no
+                             // category and drew the candidate groups instead
+  hasChildren: boolean;
+  navigable: boolean;        // false for the route this search is already on, and for a routeless head
+  preservesQuery: boolean | null;  // null where there is no route; false is refused by move-category
+  targetUrl: string | null;  // the search URL moving here would land on
+};`;
+
 export default defineCommand({
   name: 'get-categories',
-  description: 'Get the whole Avito category sidebar of a search URL as a tree: where the search sits, and every route it can be moved to. Feed a name column value into avito move-category',
+  description: 'Get the whole Avito category sidebar of a search URL as a tree: where the search sits, and every route it can be moved to. Feed a name into avito move-category',
   access: 'read',
-  example: 'avito get-categories <searchUrl> -f json',
+  example: 'avito get-categories <searchUrl>',
   domain: 'www.avito.ru',
   args: [
     {
@@ -71,21 +118,8 @@ export default defineCommand({
       help: 'Search URL from avito search, apply-filters, move-category or get-page',
     },
   ],
-  // `preservesQuery` and `searchUrl` are null together and only where there is
-  // no move to make: the route the search is already on, and a node Avito gave
-  // no route at all. `parent` is null at the top of the tree and nowhere else.
-  row: z.strictObject({
-    rank: rank(),
-    role: SIDEBAR_ROLE,
-    name: text().max(MAX_NAME_LENGTH),
-    depth: z.number().int().nonnegative().max(MAX_DEPTH),
-    parent: text().max(MAX_NAME_LENGTH).nullable(),
-    current: z.boolean(),
-    hasChildren: z.boolean(),
-    navigable: z.boolean(),
-    preservesQuery: z.boolean().nullable(),
-    searchUrl: searchUrl().nullable(),
-  }),
+  output: OUTPUT,
+  type: OUTPUT_TYPE,
   run: async (page, args) => {
     const requestedUrl = requestedSearchUrl(args.searchUrl);
 
@@ -111,14 +145,13 @@ export default defineCommand({
       'Avito category navigation state',
     );
 
-    const rows = [];
+    const categories = [];
     for (const { node, depth, parent, role, route } of sidebarWalk(
       observed.state.rubricators?.side?.nodes,
       responseUrl,
     )) {
       const navigable = isFollowableNode(role, route, responseUrl.pathname);
-      rows.push({
-        rank: rows.length + 1,
+      categories.push({
         role: node.hasBack ? 'back' : role,
         name: node.name,
         depth,
@@ -127,14 +160,19 @@ export default defineCommand({
         hasChildren: node.children.length > 0,
         navigable,
         preservesQuery: navigable ? targetPreservesQuery(route, searchCore.query) : null,
-        searchUrl: navigable ? route.href : null,
+        targetUrl: navigable ? route.href : null,
       });
     }
 
-    if (rows.length === 0) {
+    if (categories.length === 0) {
       throw new EmptyResultError('avito get-categories', 'This Avito search has no category navigation');
     }
 
-    return rows;
+    return {
+      query: cleanQuery(searchCore.query),
+      locationId: String(searchCore.locationId),
+      searchUrl: responseUrl.href,
+      categories,
+    };
   },
 });

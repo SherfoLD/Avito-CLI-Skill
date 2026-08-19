@@ -1,18 +1,14 @@
 /**
- * The row contract as a value, and the one way an Avito payload becomes data.
+ * The output contract as a value, and the one way an Avito payload becomes data.
  *
- * A row schema is a `strictObject`: an undeclared key is a failure, not a value
- * that survives in `-f json` and vanishes in `-f table`. What a column holds is
- * the schema's own business — `assertRowSchema` checks the row itself, so a
- * violation fails at import rather than on a row.
+ * A command answers with one object. Its schema is a `strictObject` at every
+ * level: an undeclared key is a failure rather than a value that reaches a
+ * caller nobody told about it. `assertOutputSchema` checks the schema itself, so
+ * a violation fails at import rather than on an answer.
  *
  * `decode` is the other half: Avito's responses are validated with the same
  * schemas, and a failure becomes a typed error. Response-shape drift ends the
- * call; it never becomes a partial row.
- *
- * `rowTypeScript` is the same declaration turned outward: `--help` prints the
- * schema, so the caller reads the contract that is enforced rather than a
- * paraphrase of it kept somewhere else.
+ * call; it never becomes a partial answer.
  */
 
 import { z } from 'zod';
@@ -24,18 +20,7 @@ export { z };
 /** How many issues are named before the message is truncated. */
 const MAX_REPORTED_ISSUES = 3;
 
-const SCALAR_TYPES = new Set([
-  'string',
-  'number',
-  'boolean',
-  'bigint',
-  'enum',
-  'literal',
-  'null',
-  'date',
-]);
-
-// ── the shared column vocabulary ─────────────────────────────────────────────
+// ── the shared field vocabulary ──────────────────────────────────────────────
 
 /** A string that carries something. An empty one is missing data wearing a type. */
 export const text = () => z.string().min(1, 'must not be empty');
@@ -62,35 +47,25 @@ export const optionalText = () => cleanedText()
   .transform((value) => value || null)
   .default(null);
 
-/**
- * An Avito identifier as this CLI hands it over: digits, kept as a string.
- *
- * The `note` is what `--help` prints beside the column. A regex check exposes
- * only its pattern object, so a format states itself here or nowhere.
- */
+/** An Avito identifier as this CLI hands it over: digits, kept as a string. */
 export const idString = () => z.string()
-  .regex(/^\d+$/, 'must be an Avito ID of digits only')
-  .meta({ note: 'digits only' });
+  .regex(/^\d+$/, 'must be an Avito ID of digits only');
 
 /** Any absolute https URL — the host is checked by whoever owns that vocabulary. */
 export const httpsUrl = () => z.string()
-  .regex(/^https:\/\/[^\s]+$/, 'must be an absolute https URL')
-  .meta({ note: 'absolute https URL' });
+  .regex(/^https:\/\/[^\s]+$/, 'must be an absolute https URL');
 
 /** A canonical listing URL: no query, no fragment, ending in the item ID. */
 export const itemUrl = () => z.string().regex(
   /^https:\/\/www\.avito\.ru\/[^?#]+_\d+$/,
   'must be a canonical https://www.avito.ru listing URL with no query',
-).meta({ note: 'listing URL, no query' });
+);
 
 /** Any Avito search or catalog URL, query and all. */
 export const searchUrl = () => z.string().regex(
   /^https:\/\/www\.avito\.ru\/[^\s]*$/,
   'must be an https://www.avito.ru search URL',
-).meta({ note: 'search URL, query and all' });
-
-/** A 1-based position in the returned page. */
-export const rank = () => z.number().int().positive();
+);
 
 /** A count Avito reports. Zero is a real answer; a negative one is drift. */
 export const count = () => z.number().int().nonnegative();
@@ -109,20 +84,16 @@ export function decode(schema, value, subject) {
 }
 
 /**
- * The same parse, for a row this CLI is about to hand over. A row that fails its
- * own declared contract is drift on our side of the boundary and stops the call.
+ * The same parse, for the answer this CLI is about to hand over. An answer that
+ * fails its own declared contract is drift on our side of the boundary and stops
+ * the call.
  */
-export function parseRows(schema, rows, commandName) {
-  if (!Array.isArray(rows)) {
-    throw new CommandExecutionError(`avito ${commandName} returned something other than an array of rows`);
-  }
-  return rows.map((row, index) => {
-    const result = schema.safeParse(row);
-    if (result.success) return result.data;
-    throw new CommandExecutionError(
-      `avito ${commandName} produced a row that breaks its own contract at row ${index} — ${formatIssues(result.error)}`,
-    );
-  });
+export function parseOutput(schema, value, commandName) {
+  const result = schema.safeParse(value);
+  if (result.success) return result.data;
+  throw new CommandExecutionError(
+    `avito ${commandName} produced an answer that breaks its own contract — ${formatIssues(result.error)}`,
+  );
 }
 
 /** `point.latitude expected number, received string; kind is too small` */
@@ -136,142 +107,99 @@ export function formatIssues(error) {
   return hidden > 0 ? `${named.join('; ')} (and ${hidden} more)` : named.join('; ');
 }
 
-// ── what a row schema is allowed to be ───────────────────────────────────────
+// ── what an output schema is allowed to be ───────────────────────────────────
 
-/** The declared columns, in the order the schema declares them. */
-export function rowColumns(schema) {
+/**
+ * Total declared fields, counted once each wherever they sit. It replaces the
+ * flat key ceiling: nesting is allowed, and burying thirty fields one level down
+ * is still thirty fields the caller has to read (D-074).
+ */
+export const MAX_OUTPUT_LEAVES = 40;
+
+/** Envelope, the things in it, the things in those. Deeper is a tree (D-074). */
+export const MAX_OUTPUT_DEPTH = 3;
+
+/** The keys the answer itself carries. */
+export function outputKeys(schema) {
   return Object.keys(schema.shape);
 }
 
+/** Every key name declared anywhere in the schema, at any depth. */
+export function declaredKeyNames(schema) {
+  const names = new Set();
+  walk(schema, 1, {
+    onKey: (name) => names.add(name),
+    onLeaf: () => {},
+    fail: () => {},
+  });
+  return names;
+}
+
 /**
- * Check a row schema at definition time: strict, non-empty, within the key
- * ceiling, and camelCase throughout.
+ * Check an output schema at definition time: an object, strict at every level,
+ * camelCase throughout, within the field and depth ceilings.
  */
-export function assertRowSchema(name, schema, { maxKeys }) {
+export function assertOutputSchema(name, schema, { maxLeaves, maxDepth }) {
   const fail = (message) => {
     throw new Error(`Invalid command descriptor — ${name}: ${message}`);
   };
 
   if (schema?.def?.type !== 'object') {
-    fail('row must be a z.strictObject({...}) schema');
-  }
-  if (schema.def.catchall?.def?.type !== 'never') {
-    fail('row must be a z.strictObject, not z.object — an undeclared key has to fail, not pass through');
+    fail('output must be a z.strictObject({...}) schema — a command answers with one object');
   }
 
-  const columns = rowColumns(schema);
-  if (columns.length === 0) fail('row declares no columns');
-  if (columns.length > maxKeys) fail(`row declares ${columns.length} columns, ceiling is ${maxKeys}`);
+  let leaves = 0;
+  walk(schema, 1, {
+    onKey: (key, path) => {
+      if (!/^[a-z][A-Za-z0-9]*$/.test(key)) {
+        fail(`"${path}" is not camelCase — the key names are the agent-facing API`);
+      }
+    },
+    onLeaf: () => { leaves += 1; },
+    fail,
+  }, { maxDepth });
 
-  for (const column of columns) {
-    if (!/^[a-z][A-Za-z0-9]*$/.test(column)) {
-      fail(`column "${column}" is not camelCase — row keys are the agent-facing API`);
-    }
-  }
-}
-
-// ── the row as the consumer reads it ─────────────────────────────────────────
-
-/**
- * The row schema as a TypeScript declaration, which `--help` prints in place of
- * a list of column names: it is the one notation a consuming agent reads without
- * being taught it, and it carries what a list cannot — that a column may be
- * `null`, that another is a list, and that the answer as a whole is an array.
- */
-export function rowTypeScript(schema, typeName = 'Row') {
-  const members = rowColumns(schema).map((column) => {
-    const { type, note } = describeColumn(schema.shape[column]);
-    return { declaration: `  ${column}: ${type};`, note };
-  });
-  const width = Math.max(...members.map((member) => member.declaration.length));
-  return [
-    `type ${typeName} = {`,
-    ...members.map(({ declaration, note }) => (
-      note ? `${declaration.padEnd(width)}  // ${note}` : declaration
-    )),
-    '};',
-  ].join('\n');
-}
-
-/** A column this printer has no notation for. The offline suite refuses one. */
-function undescribed() {
-  return { type: 'unknown', note: null };
+  if (leaves === 0) fail('output declares no fields');
+  if (leaves > maxLeaves) fail(`output declares ${leaves} fields, ceiling is ${maxLeaves}`);
 }
 
 /**
- * Every shape the vocabulary can build has a notation here. A column that comes
- * back undescribed is one this printer has not been taught, which the offline
- * suite refuses across every command.
+ * One traversal over a declared shape. `depth` counts object nesting, so the
+ * envelope is 1 and the element of a list hanging off it is 2.
  */
-function describeColumn(schema) {
-  const described = describeShape(schema);
-  // A note declared on the column itself wins over one inherited from what it
-  // contains: `priceList` says what its prices are, `images` what its URLs are.
-  const own = schema?.meta?.()?.note ?? null;
-  return own ? { ...described, note: own } : described;
-}
-
-function describeShape(schema) {
+function walk(schema, depth, visitor, { maxDepth = Infinity } = {}, path = '') {
   const def = schema?.def;
-  if (!def) return undescribed();
-  if (def.type === 'nullable') {
-    const inner = describeColumn(def.innerType);
-    return { type: `${inner.type} | null`, note: inner.note };
-  }
-  if (def.type === 'optional' || def.type === 'default') return describeColumn(def.innerType);
-  if (def.type === 'union') {
-    const parts = (def.options ?? []).map(describeColumn);
-    if (parts.length === 0) return undescribed();
-    return {
-      type: parts.map((part) => part.type).join(' | '),
-      note: parts.find((part) => part.note)?.note ?? null,
-    };
+  if (!def) return;
+
+  if (def.type === 'nullable' || def.type === 'optional' || def.type === 'default') {
+    walk(def.innerType, depth, visitor, { maxDepth }, path);
+    return;
   }
   if (def.type === 'array') {
-    const inner = describeColumn(def.element);
-    return { type: `${inner.type}[]`, note: inner.note };
+    walk(def.element, depth, visitor, { maxDepth }, `${path}[]`);
+    return;
   }
   if (def.type === 'record') {
-    const inner = describeColumn(def.valueType);
-    return { type: `Record<string, ${inner.type}>`, note: inner.note };
+    walk(def.valueType, depth, visitor, { maxDepth }, `${path}{}`);
+    return;
+  }
+  if (def.type === 'union') {
+    for (const option of def.options ?? []) walk(option, depth, visitor, { maxDepth }, path);
+    return;
   }
   if (def.type === 'object') {
-    const fields = Object.entries(schema.shape ?? {})
-      .map(([field, value]) => `${field}: ${describeColumn(value).type}`);
-    if (fields.length === 0) return undescribed();
-    return { type: `{ ${fields.join('; ')} }`, note: null };
+    if (depth > maxDepth) {
+      visitor.fail(`"${path}" nests ${depth} objects deep, ceiling is ${maxDepth}`);
+    }
+    if (def.catchall?.def?.type !== 'never') {
+      visitor.fail(`"${path || 'output'}" must be a z.strictObject, not z.object — an undeclared key has to fail, not pass through`);
+    }
+    for (const [key, value] of Object.entries(schema.shape ?? {})) {
+      const keyPath = path ? `${path}.${key}` : key;
+      visitor.onKey(key, keyPath);
+      walk(value, depth + 1, visitor, { maxDepth }, keyPath);
+    }
+    return;
   }
-  if (def.type === 'literal' || def.type === 'enum') {
-    const values = def.type === 'literal' ? def.values ?? [] : Object.values(def.entries ?? {});
-    if (values.length === 0) return undescribed();
-    return { type: values.map((value) => JSON.stringify(value)).join(' | '), note: null };
-  }
-  const note = schema.meta?.()?.note ?? (def.type === 'number' ? numberNote(def) : null);
-  // A date reaches the caller through `JSON.stringify`, which is where it stops
-  // being one.
-  if (def.type === 'date') return { type: 'string', note: note ?? 'ISO 8601' };
-  if (SCALAR_TYPES.has(def.type)) return { type: def.type, note };
-  return undescribed();
-}
-
-/** `integer, 0..5` — the bounds a numeric column declares, in the order they read. */
-function numberNote(def) {
-  let minimum = null;
-  let maximum = null;
-  let integer = false;
-  for (const check of def.checks ?? []) {
-    const rule = check._zod?.def ?? check.def ?? {};
-    if (rule.check === 'number_format') integer = true;
-    if (rule.check === 'greater_than') minimum = rule;
-    if (rule.check === 'less_than') maximum = rule;
-  }
-
-  const parts = integer ? ['integer'] : [];
-  if (minimum && maximum && minimum.inclusive && maximum.inclusive) {
-    parts.push(`${minimum.value}..${maximum.value}`);
-  } else {
-    if (minimum) parts.push(`${minimum.inclusive ? '>=' : '>'} ${minimum.value}`);
-    if (maximum) parts.push(`${maximum.inclusive ? '<=' : '<'} ${maximum.value}`);
-  }
-  return parts.join(', ') || null;
+  visitor.onLeaf(path);
 }

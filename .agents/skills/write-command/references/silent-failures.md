@@ -7,23 +7,23 @@ Read this at Step 6 (decoding) and again at Step 11 (comparing against the page)
 
 ---
 
-## 1. The fixture was relaxed to make verify pass
+## 1. The expectation was relaxed to make verify pass
 
 **What you see.** `verify` reports `pattern "url" does not match /^https:\/\/www\.avito\.ru\/[^?]+_\d+$/`. Widening the pattern makes it green.
 
 **What is actually wrong.** The command lost a URL prefix, kept a query string, or picked up a relative path. A failing pattern is the check working.
 
-**Defence.** A failing fixture means the command is wrong. Tighten the command. The only legitimate reason to edit a fixture is that Avito changed shape — and then the fact goes into the domain file in the same commit.
+**Defence.** A failing expectation means the command is wrong. Tighten the command. The only legitimate reason to edit one is that Avito changed shape — and then the fact goes into the domain file in the same commit.
 
 ---
 
-## 2. The fixture was written from the same assumption as the code
+## 2. The expectation was written from the same assumption as the code
 
 **What you see.** Nothing. Both agree.
 
-**What is actually wrong.** `patterns.sellerId` in all five fixtures was `^[A-Za-z0-9_-]+$`, exactly the alphabet the decoder enforced. When a real seller slug turned out to be `agent.pc`, the fixture failed *after* the decoder was fixed — it had never been an independent check.
+**What is actually wrong.** The `sellerId` pattern in all five expectations was `^[A-Za-z0-9_-]+$`, exactly the alphabet the decoder enforced. When a real seller slug turned out to be `agent.pc`, the rule failed *after* the decoder was fixed — it had never been an independent check.
 
-**Defence.** A fixture rule should come from the visible page, not from the code you just wrote. Ask "where did I learn this constraint" — if the answer is "from my own implementation", it is not a check.
+**Defence.** An expectation rule should come from the visible page, not from the code you just wrote. Ask "where did I learn this constraint" — if the answer is "from my own implementation", it is not a check.
 
 ---
 
@@ -33,7 +33,7 @@ Read this at Step 6 (decoding) and again at Step 11 (comparing against the page)
 
 **What is actually wrong.** `textContent` of a container includes every descendant. The value is a non-empty string of the declared type, so nothing about its shape is wrong — only its meaning.
 
-**Defence.** A `.refine` in the fixture rejecting the bleed you actually saw. On the command side, a more precise anchor. Never trust `textContent.trim()` as sufficient.
+**Defence.** A `.refine` in the expectation rejecting the bleed you actually saw. On the command side, a more precise anchor. Never trust `textContent.trim()` as sufficient.
 
 ---
 
@@ -51,17 +51,17 @@ Read this at Step 6 (decoding) and again at Step 11 (comparing against the page)
 
 **What you see.** A number off by a factor of 10, 100 or 1000.
 
-**Defence.** Requiring the column to be positive catches a `|| 0` fallback but not a scale error. Comparing against the page has to compare the *magnitude*, not just the presence of digits.
+**Defence.** Requiring the field to be positive catches a `|| 0` fallback but not a scale error. Comparing against the page has to compare the *magnitude*, not just the presence of digits.
 
 ---
 
 ## 6. The flat field that is always there and always wrong
 
-**What you see.** Every row has a `location`, and most of them are null. Every row has a `description`, and all of them are empty.
+**What you see.** Every listing has a `location`, and most of them are null. Every listing has a `description`, and all of them are empty.
 
-**What is actually wrong.** On this site the flat item object is a decoy. `item.description` is empty in the SSR catalog, `item.location.name` was null on 39 of 50 rows, and `item.priceDetailed` is the base price. The visible values live in the `iva` steps.
+**What is actually wrong.** On this site the flat item object is a decoy. `item.description` is empty in the SSR catalog, `item.location.name` was null on 39 of 50 cards, and `item.priceDetailed` is the base price. The visible values live in the `iva` steps.
 
-**Defence.** When a field exists on every row and is empty on most, that is a signal you are reading the wrong carrier — not that the data is missing. The `descriptionPreview` divergence between commands went unnoticed for exactly this reason, because no fixture required `descriptionPreview` (F-041).
+**Defence.** When a field exists on every element and is empty on most, that is a signal you are reading the wrong carrier — not that the data is missing. The `descriptionPreview` divergence between commands went unnoticed for exactly this reason, because no expectation required `descriptionPreview` (F-041).
 
 ---
 
@@ -69,7 +69,7 @@ Read this at Step 6 (decoding) and again at Step 11 (comparing against the page)
 
 **What you see.** Every post has 0 likes. Every seller is `unknown`.
 
-**Defence.** `.positive()` on numeric columns in the fixture; `npm run lint` on the sentinel. Prefer `?.` to `||`. Every `|| 0` needs one question answered: is 0 a legal value here, or is this a missed read?
+**Defence.** `.positive()` on numeric fields in the expectation; `npm run lint` on the sentinel. Prefer `?.` to `||`. Every `|| 0` needs one question answered: is 0 a legal value here, or is this a missed read?
 
 ---
 
@@ -127,6 +127,6 @@ Read this at Step 6 (decoding) and again at Step 11 (comparing against the page)
 
 1. **Green does not mean right.** The checks prove the structure did not break. They cannot prove a value is the value. Comparing against the page by eye is a required step, not a nicety.
 2. **A field with a value is a more dangerous failure than an empty one.** Empty makes you look. Plausible makes you move on.
-3. **A fixture works as a set of claims.** A format catches a wrong shape, a required column catches loss, a `.refine` catches bleed and anything the rows must satisfy together, `.positive()` catches a fallback. Three of the four leaves a hole.
+3. **An expectation works as a set of claims.** A format catches a wrong shape, a required field catches loss, a `.refine` catches bleed and anything a list must satisfy together, `.positive()` catches a fallback. Three of the four leaves a hole.
 
 When you find the thirteenth, write it here.

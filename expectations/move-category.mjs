@@ -10,7 +10,11 @@ export const args = [
 // the filters belong to the category and may not (D-033). This pins the whole
 // URL because it is short enough to read, and because a move that dropped the
 // query would land on a plain category browse that looks like a wider page.
-export const rows = z.array(z.looseObject({
+export const output = z.looseObject({
   searchUrl: z.literal('https://www.avito.ru/moskva?cd=1&q=ddr5+32gb'),
-  price: z.number().positive(),
-})).min(1).max(50);
+  query: z.literal('ddr5 32gb'),
+  category: z.literal('Все категории'),
+  items: z.array(z.looseObject({
+    price: z.number().positive(),
+  })).min(1).max(50),
+});

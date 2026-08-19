@@ -61,7 +61,7 @@ check('no-empty-catch-fallback refuses a failed fetch that reads as no data', ()
 
 check('no-silent-sentinel refuses missing data wearing a plausible value', () => {
   refuses('no-silent-sentinel', 'const name = seller.name ?? "unknown";', /turns missing data into fake data/);
-  refuses('no-silent-sentinel', 'const city = row.city || "неизвестно";', /turns missing data into fake data/);
+  refuses('no-silent-sentinel', 'const city = card.city || "неизвестно";', /turns missing data into fake data/);
   refuses('no-silent-sentinel', 'const label = value ?? "N/A";', /turns missing data into fake data/);
 
   // Null is how this repository says "Avito did not send it".

@@ -2,7 +2,8 @@
 
 Private Avito CLI: ten read-only commands driving a user-owned Chrome over the
 DevTools Protocol. Code in [src/](src/), project memory in [docs/](docs/), live
-checks in [verify/](verify/), anonymised response samples in [evidence/](evidence/).
+checks in [expectations/](expectations/), anonymised response samples in
+[evidence/](evidence/).
 
 ## Before you work
 
@@ -17,7 +18,7 @@ A command that broke: [.agents/skills/fix-command/SKILL.md](.agents/skills/fix-c
 ## The rule the rest follow from
 
 A command returns correct data or it throws a typed error. There is no third
-outcome — no fallback value, no sentinel row, no empty array standing in for a
+outcome — no fallback value, no sentinel field, no empty list standing in for a
 failed fetch. A command that returns plausible, wrong data is worse than one
 that fails, because nobody goes looking.
 
@@ -50,13 +51,17 @@ that fails, because nobody goes looking.
   schema nobody can read and no offline suite reaches. What stays in the page is
   what only a browser has: a same-origin `fetch` with the user's cookies, and a
   real DOM.
-- The row contract is the `row` schema in the descriptor and nowhere else.
-  `columns` is derived from it, the CLI parses every row through it, and a
-  verify fixture says only what is true of its own request.
-- Do not relax a `verify/` fixture to get green, and do not weaken an offline
-  assertion. A failing rule means the command is wrong. The one legitimate
-  reason to edit a fixture is that Avito changed shape, and then the fact goes
-  into the domain file in the same commit.
+- A command answers with **one object**, declared as the `output` schema in the
+  descriptor and nowhere else. The CLI parses the whole answer through it before
+  printing. What is one fact about the answer goes on the envelope; what differs
+  between the things it returns goes inside them (D-073).
+- `type` beside it is that same contract as TypeScript, written by hand, and it
+  is what `--help` prints. Change one and you change the other in the same edit —
+  `npm run check:commands` refuses a name that is in one and not the other.
+- Do not relax an `expectations/` file to get green, and do not weaken an offline
+  assertion. A failing rule means the command is wrong. The one legitimate reason
+  to edit one is that Avito changed shape, and then the fact goes into the domain
+  file in the same commit.
 - Do not widen a guard past what you can justify. When the seller-slug alphabet
   failed on `agent.pc`, adding a dot would have failed on the next slug.
 - Look for the other copies before declaring a fix done. A rule that exists in
@@ -76,7 +81,7 @@ that test and keep coming back.
 **Narrating your own change.** The next agent starts from the tree as it is and
 has never seen what you replaced. "Everything is *now* checked where it is
 declared", "the part of the old convention audit a schema cannot replace",
-"*since* the row contract moved into the schema", "before the merge this file
+"*since* the contract moved into the schema", "before the merge this file
 rewrote source with a regex" — each describes a repository that does not exist,
 to a reader who cannot check the claim. Write what is true. Git holds what
 changed, and the commit message is where the change gets described.
@@ -109,11 +114,11 @@ eight files, it belongs in one of them, in one line.
 
 ```sh
 npm run check                # every static gate plus the offline suite
-npm run verify <command>     # live, against verify/<command>.mjs
+npm run verify <command>     # live, against expectations/<command>.mjs
 ```
 
 Both green, **and** the values compared against the visible page field by field.
-"It returned rows" is not a result; "this is the same number the page prints" is.
+"It returned data" is not a result; "this is the same number the page prints" is.
 
 ## After you work
 
@@ -129,14 +134,14 @@ Both green, **and** the values compared against the visible page field by field.
   journal, no log file, no dated "what we did today" section in any document —
   and there is no reason to start one. A document holds what is true now; git
   holds how it got that way.
-- Do not duplicate across layers: the flag list and the column list live in
-  `--help`, generated from the descriptor and its row schema, not in markdown.
+- Do not duplicate across layers: the flag list and the output type live in
+  `--help`, printed from the descriptor, not in markdown.
 
 ## Stop and ask
 
-- A fix needs a new argument, a new column, a retry, or a fallback value.
+- A fix needs a new argument, a new output field, a retry, or a fallback value.
 - Output would differ from what the command returned before, on any field, for a
   reason you cannot explain.
 - A data shape appears that is in no `docs/areas/*` file.
-- Three diagnose → fix → retry rounds are up. A fourth is where fixtures start
-  getting relaxed.
+- Three diagnose → fix → retry rounds are up. A fourth is where expectations
+  start getting relaxed.

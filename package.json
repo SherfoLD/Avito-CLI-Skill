@@ -12,10 +12,10 @@
   },
   "scripts": {
     "test": "node tests/run.mjs",
-    "check": "npm run lint && npm run check:commands && npm run check:fixtures && npm run check:secrets && npm run check:docs && npm test",
+    "check": "npm run lint && npm run check:commands && npm run check:expectations && npm run check:secrets && npm run check:docs && npm test",
     "lint": "eslint .",
     "check:commands": "node scripts/check-commands.mjs",
-    "check:fixtures": "node scripts/check-verify-fixtures.mjs",
+    "check:expectations": "node scripts/check-expectations.mjs",
     "check:secrets": "node scripts/check-no-secrets.mjs",
     "check:docs": "node scripts/check-doc-coverage.mjs",
     "advise:id-pairing": "node scripts/advise-listing-id-pairing.mjs",

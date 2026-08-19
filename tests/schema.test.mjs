@@ -1,22 +1,20 @@
-// Offline checks for the row contract itself.
+// Offline checks for the output contract itself.
 //
 // Every other suite leans on this machinery, so a schema layer that silently
 // accepted everything would make all of them pass while checking nothing. It is
 // exercised here directly, including the failures it is supposed to produce.
-import { loadCommand, runner } from './harness.mjs';
+import { runner } from './harness.mjs';
 import { defineCommand } from '../src/runtime/command.mjs';
 import { loadManifest } from '../scripts/lib/manifest.mjs';
 import {
   count,
   decode,
-  httpsUrl,
+  declaredKeyNames,
   idString,
   itemUrl,
   optionalText,
-  parseRows,
-  rank,
+  parseOutput,
   requiredText,
-  rowTypeScript,
   text,
   z,
 } from '../src/runtime/schema.mjs';
@@ -29,7 +27,8 @@ const base = {
   access: 'read',
   domain: 'www.avito.ru',
   args: [],
-  run: async () => [],
+  type: 'type Output = {\n  itemId: string;\n};',
+  run: async () => ({}),
 };
 
 function refusesDescriptor(descriptor, pattern) {
@@ -43,111 +42,147 @@ function refusesDescriptor(descriptor, pattern) {
   assert(pattern.test(failure.message), `unexpected message: ${failure.message}`);
 }
 
-check('a row schema must be strict, so an undeclared key cannot pass through', () => {
-  refusesDescriptor({ row: z.object({ itemId: idString() }) }, /must be a z\.strictObject/);
-  refusesDescriptor({ row: z.array(z.string()) }, /must be a z\.strictObject/);
-  refusesDescriptor({ row: z.strictObject({}) }, /declares no columns/);
+check('the answer is one object, strict at every level', () => {
+  refusesDescriptor({ output: z.object({ itemId: idString() }) }, /must be a z\.strictObject/);
+  refusesDescriptor({ output: z.array(z.strictObject({ itemId: idString() })) }, /must be a z\.strictObject/);
+  refusesDescriptor({ output: z.strictObject({}) }, /declares no fields/);
+  // A loose object one level down is the whole reason the check recurses: it
+  // would pass every gate and hand a caller keys nobody declared.
+  refusesDescriptor(
+    { output: z.strictObject({ items: z.array(z.object({ itemId: idString() })) }) },
+    /"items\[\]" must be a z\.strictObject/,
+  );
 });
 
-check('a column holds whatever its schema declares, tables and trees alike', () => {
+check('a field holds whatever its schema declares, tables and trees alike', () => {
   const accepted = defineCommand({
     ...base,
-    row: z.strictObject({
+    type: 'type Output = {\n  title: string;\n  price: number;\n  images: string[];\n'
+      + '  attributes: Record<string, string>;\n  role: string;\n  priceList: Entry[];\n'
+      + '  seller: Seller;\n};\ntype Entry = { title: string; price: string };\n'
+      + 'type Seller = { name: string };',
+    output: z.strictObject({
       title: text(),
       price: z.number().nullable(),
       images: z.array(z.string()),
       attributes: z.record(text(), text()),
       role: z.enum(['a', 'b']),
       priceList: z.array(z.strictObject({ title: text(), price: text() })).nullable(),
-      // Nesting past a table is the schema author's call, not the runtime's.
-      groups: z.array(z.strictObject({ values: z.array(z.strictObject({ title: text() })) })),
-      rows: z.array(z.array(z.string())),
-      seller: z.object({ name: text() }),
-      nested: z.record(text(), z.strictObject({ title: text() })),
+      seller: z.strictObject({ name: text() }),
     }),
   });
-  assert(accepted.columns.length === 10, 'a row of ten columns must be accepted');
+  assert(accepted.keys.length === 7, `seven fields must be accepted, got ${accepted.keys.length}`);
 });
 
-check('a flat record is a column of its own, and it prints as one', () => {
-  const command = defineCommand({
-    ...base,
-    row: z.strictObject({
-      itemId: idString(),
-      priceList: z.array(z.strictObject({ title: text(), price: text() })).nullable(),
-    }),
-  });
-  const printed = rowTypeScript(command.row);
-  assert(
-    printed.includes('priceList: { title: string; price: string }[] | null;'),
-    `the table column must print its record, got:\n${printed}`,
-  );
-});
+check('the field ceiling counts leaves wherever they sit, and depth stops a tree', () => {
+  // Twenty-one envelope fields each holding two is forty-two leaves: burying
+  // them one level down is still forty-two fields the caller has to read.
+  const deep = Object.fromEntries(Array.from({ length: 21 }, (_, index) => [
+    `group${index}`,
+    z.array(z.strictObject({ title: text(), value: text() })),
+  ]));
+  refusesDescriptor({ output: z.strictObject(deep) }, /declares 42 fields, ceiling is 40/);
 
-check('the column ceiling and the naming rule are checked against the schema', () => {
-  const seventeen = Object.fromEntries(
-    Array.from({ length: 17 }, (_, index) => [`column${index}`, text()]),
-  );
-  refusesDescriptor({ row: z.strictObject(seventeen) }, /declares 17 columns, ceiling is 16/);
-  refusesDescriptor({ row: z.strictObject({ item_id: idString() }) }, /column "item_id" is not camelCase/);
-  refusesDescriptor({ row: z.strictObject({ ItemId: idString() }) }, /column "ItemId" is not camelCase/);
-});
-
-check('columns are derived from the schema and cannot be declared beside it', () => {
-  const command = defineCommand({
-    ...base,
-    row: z.strictObject({ itemId: idString(), title: text(), price: count().nullable() }),
-  });
-  assert(
-    command.columns.join(',') === 'itemId,title,price',
-    `columns must follow the schema declaration order, got ${command.columns.join(',')}`,
-  );
   refusesDescriptor(
-    { row: z.strictObject({ itemId: idString() }), columns: ['itemId'] },
-    /columns are derived from row/,
+    {
+      output: z.strictObject({
+        items: z.array(z.strictObject({
+          seller: z.strictObject({ badges: z.array(z.strictObject({ title: text() })) }),
+        })),
+      }),
+    },
+    /nests 4 objects deep, ceiling is 3/,
   );
 });
 
-check('a row that breaks its own contract ends the call with a typed error', () => {
-  const row = z.strictObject({ itemId: idString(), url: itemUrl(), price: count().nullable() });
-  const good = { itemId: '8030214066', url: 'https://www.avito.ru/moskva/divan_8030214066', price: null };
+check('the key names are camelCase, at every depth', () => {
+  refusesDescriptor({ output: z.strictObject({ item_id: idString() }) }, /"item_id" is not camelCase/);
+  refusesDescriptor({ output: z.strictObject({ ItemId: idString() }) }, /"ItemId" is not camelCase/);
+  refusesDescriptor(
+    { output: z.strictObject({ items: z.array(z.strictObject({ item_id: idString() })) }) },
+    /"items\[\]\.item_id" is not camelCase/,
+  );
+});
 
-  assert(parseRows(row, [good], 'example').length === 1, 'a valid row must pass');
+check('the answer keys are derived from the schema, and rows are refused outright', () => {
+  const command = defineCommand({
+    ...base,
+    type: 'type Output = {\n  query: string;\n  items: Item[];\n};\ntype Item = { itemId: string };',
+    output: z.strictObject({ query: text(), items: z.array(z.strictObject({ itemId: idString() })) }),
+  });
+  assert(command.keys.join(',') === 'query,items', `keys must follow the declaration order, got ${command.keys.join(',')}`);
+  refusesDescriptor({ row: z.strictObject({ itemId: idString() }) }, /the contract is 'output'/);
+  refusesDescriptor({ output: z.strictObject({ itemId: idString() }), columns: ['itemId'] }, /there are no columns/);
+});
+
+check('a command declares the type --help prints, and it names Output', () => {
+  refusesDescriptor({ output: z.strictObject({ itemId: idString() }), type: undefined }, /needs a 'type'/);
+  refusesDescriptor(
+    { output: z.strictObject({ itemId: idString() }), type: 'interface Output { itemId: string }' },
+    /must declare "type Output = \{"/,
+  );
+});
+
+check('declaredKeyNames reaches every name the answer can carry', () => {
+  const names = declaredKeyNames(z.strictObject({
+    query: text(),
+    items: z.array(z.strictObject({
+      itemId: idString(),
+      priceList: z.array(z.strictObject({ title: text() })),
+    })),
+    lookup: z.record(text(), z.strictObject({ label: text() })),
+  }));
+  for (const name of ['query', 'items', 'itemId', 'priceList', 'title', 'lookup', 'label']) {
+    assert(names.has(name), `${name} is missing from ${[...names].join(', ')}`);
+  }
+});
+
+check('an answer that breaks its own contract ends the call with a typed error', () => {
+  const output = z.strictObject({
+    searchUrl: z.string(),
+    items: z.array(z.strictObject({ itemId: idString(), url: itemUrl(), price: count().nullable() })),
+  });
+  const item = { itemId: '8030214066', url: 'https://www.avito.ru/moskva/divan_8030214066', price: null };
+  const good = { searchUrl: 'https://www.avito.ru/moskva', items: [item] };
+
+  assert(parseOutput(output, good, 'example').items.length === 1, 'a valid answer must pass');
 
   const cases = [
     [{ ...good, extra: 1 }, /Unrecognized key/],
-    [{ ...good, itemId: 'not-an-id' }, /itemId/],
+    [{ ...good, items: [{ ...item, extra: 1 }] }, /Unrecognized key/],
+    [{ ...good, items: [{ ...item, itemId: 'not-an-id' }] }, /items\.0\.itemId/],
     // The listing URL keeps no query: a search URL bleeding into it is exactly
     // the confusion the pattern exists to catch.
-    [{ ...good, url: `${good.url}?context=abc` }, /url/],
-    [{ ...good, price: -1 }, /price/],
-    [{ itemId: good.itemId, url: good.url }, /price/],
+    [{ ...good, items: [{ ...item, url: `${item.url}?context=abc` }] }, /items\.0\.url/],
+    [{ ...good, items: [{ ...item, price: -1 }] }, /items\.0\.price/],
+    [{ ...good, items: [{ itemId: item.itemId, url: item.url }] }, /items\.0\.price/],
+    [[good], /expected object/i],
   ];
   for (const [broken, pattern] of cases) {
     let failure = null;
     try {
-      parseRows(row, [broken], 'example');
+      parseOutput(output, broken, 'example');
     } catch (error) {
       failure = error;
     }
-    assert(failure != null, `accepted a broken row: ${JSON.stringify(broken)}`);
+    assert(failure != null, `accepted a broken answer: ${JSON.stringify(broken)}`);
     assert(failure.code === 'COMMAND_EXEC', `expected COMMAND_EXEC, got ${failure.code}`);
     assert(pattern.test(failure.message), `unexpected message: ${failure.message}`);
-    assert(/row 0/.test(failure.message), `the failing row must be named: ${failure.message}`);
+    assert(/breaks its own contract/.test(failure.message), `the failure must say so: ${failure.message}`);
   }
 });
 
 check('a key present with an undefined value is missing, not empty', () => {
-  // JSON.stringify drops the key and the table prints a blank cell, so an
-  // undefined column reaches the caller as neither present nor null.
-  const row = z.strictObject({ published: z.string().nullable() });
+  // JSON.stringify drops the key, so an undefined field reaches the caller as
+  // neither present nor null.
+  const output = z.strictObject({ published: z.string().nullable() });
   let failure = null;
   try {
-    parseRows(row, [{ published: undefined }], 'example');
+    parseOutput(output, { published: undefined }, 'example');
   } catch (error) {
     failure = error;
   }
-  assert(failure != null && /published/.test(failure.message), 'an undefined column must fail');
+  assert(failure != null && /published/.test(failure.message), 'an undefined field must fail');
 });
 
 check('decode turns Avito drift into a typed error naming the path', () => {
@@ -180,56 +215,15 @@ check('Avito text is normalized, and a structure is never stringified into one',
   assert(schema.safeParse({ name: {} }).success === false, 'a structure must not become text');
 });
 
-check('the printed type says what a list of column names cannot', () => {
-  const printed = rowTypeScript(z.strictObject({
-    itemId: idString(),
-    price: z.number().nonnegative().nullable(),
-    sellerRating: z.number().min(0).max(5).nullable(),
-    reviewsCount: count(),
-    position: rank(),
-    role: z.enum(['option', 'current']),
-    images: z.array(httpsUrl()),
-    attributes: z.record(text(), text()),
-    url: itemUrl(),
-  }));
-
-  const expected = [
-    'itemId: string;',                            // the format only the vocabulary knows
-    'price: number | null;',                      // nullable, and not optional
-    'sellerRating: number | null;',
-    'reviewsCount: number;',
-    'position: number;',
-    'role: "option" | "current";',
-    'images: string[];',
-    'attributes: Record<string, string>;',
-    'url: string;',
-  ];
-  for (const member of expected) {
-    assert(printed.includes(member), `${member} is not in the printed type:\n${printed}`);
-  }
-
-  const notes = ['// digits only', '// 0..5', '// integer, >= 0', '// integer, > 0', '// listing URL, no query'];
-  for (const note of notes) {
-    assert(printed.includes(note), `${note} is not in the printed type:\n${printed}`);
-  }
-  assert(printed.startsWith('type Row = {') && printed.endsWith('};'), `the block is not a declaration:\n${printed}`);
-});
-
-check('every command prints a type, and no column of one arrives as unknown', async () => {
+check('every command prints the contract it enforces', async () => {
   for (const entry of await loadManifest()) {
-    const { COMMAND } = await loadCommand(entry.name);
-    const printed = rowTypeScript(COMMAND.row);
-    // A column reaching `unknown` means the printer and the flatness rule stopped
-    // agreeing on what a column may be, which is invisible in a passing `--help`.
-    assert(!/unknown/.test(printed), `${entry.name} prints an undescribed column:\n${printed}`);
-    assert(
-      printed.split('\n').length === COMMAND.columns.length + 2,
-      `${entry.name} prints ${printed.split('\n').length - 2} members for ${COMMAND.columns.length} columns`,
-    );
-    for (const column of COMMAND.columns) {
-      assert(printed.includes(`  ${column}: `), `${entry.name} does not print ${column}`);
+    for (const name of declaredKeyNames(entry.output)) {
+      assert(
+        new RegExp(`^[ \\t]*${name}\\??:`, 'm').test(entry.type),
+        `avito ${entry.name} declares ${name} and does not print it`,
+      );
     }
   }
 });
 
-export default await run('schema — the row contract and how Avito payloads become data');
+export default await run('schema — the output contract and how Avito payloads become data');

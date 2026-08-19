@@ -6,20 +6,21 @@ Transport and the shared rules are in [_platform.md](_platform.md).
 
 ## Contract
 
-`get-item <url>` accepts a full listing URL, normally from a listing row. The
-columns are in `--help`, printed from the schema (D-053).
+`get-item <url>` accepts a full listing URL, normally from a listing item. It
+answers with the listing itself — one flat object, no envelope, because there is
+one of it. The fields are in `--help` (D-053).
 
 The command is called for three of them: `description` — the full text instead
 of the truncated `descriptionPreview`; the photographs, which exist at their
 original size here and nowhere else; and `priceList` — the price table of a
-service, which the listing row reports only the existence of (D-056). The rest
-are already in the listing row and do not justify a separate call.
+service, which a listing item reports only the existence of (D-056). The rest are
+already in the listing item and do not justify a separate call.
 
 The photographs are files, not URLs. `--images-dir <dir>` takes a directory the
 caller owns, the command creates `<dir>/<itemId>/` and writes `01.jpg`, `02.jpg`
 … in gallery order, and `images` carries the absolute paths (D-059). Without the
 flag nothing is fetched and nothing is written.
-`publishedText` is the one column the listing row states more precisely: there
+`publishedText` is the one field a listing item states more precisely: there
 the same date arrives as the machine-readable moment `published`, here only as a
 string, exactly as Avito prints it (F-059, D-039).
 
@@ -59,7 +60,7 @@ against `sortRating` in the server's `nextPage`.
   endpoint, and it is the same `buyerItem` read through the other carrier.
 - **D-017 — three flat nullable seller fields.** The fourth was `sellerId`,
   removed by D-038, and the freed slot went to `publishedText` (D-039);
-  `priceList` was the thirteenth column (D-056) and `imageCount` the fourteenth
+  `priceList` was the thirteenth field (D-056) and `imageCount` the fourteenth
   (D-060). Media is accepted only from `*.img.avito.st`.
 - **D-059 — the photos are written to disk by this command and by no other.**
   A URL to a binary is nothing a caller can open, so `--images-dir` writes the
@@ -71,24 +72,24 @@ against `sortRating` in the server's `nextPage`.
   run without the flag away. Nothing converts an image: the request asks for
   jpeg and gets it (F-086), and any other content type stops the command.
 - **D-060 — `imageCount` says what exists, `images` says what was written.**
-  Two columns instead of one list of URLs: `imageCount` is read from the item on
+  Two fields instead of one list of URLs: `imageCount` is read from the item on
   every run, and `images` is `null` when no directory was named, `[]` when the
-  listing has no photos, and a list of paths otherwise. The listing row carries
-  the count and nothing else (D-061).
+  listing has no photos, and a list of paths otherwise. A listing item carries the
+  count and nothing else (D-061).
 - **D-021 — the review feed accepts a listing URL, and `get-item` does not
-  change.** The option "replace one of `get-item`'s columns with `reviewsUrl`"
+  change.** The option "replace one of `get-item`'s fields with `reviewsUrl`"
   was rejected: such a link would just be `<itemUrl>#open-reviews-list`, it
   carries no `ratingUserKey` and it saves no requests. The option "accept
   `ratingUserKey` as an argument" was rejected: it exposes an internal hash, and
   Avito accepts someone else's key silently.
 - **D-064 — the visible DOM is not a carrier of `get-item`.** Reading the
-  rendered page through `data-marker` anchors yields a row that looks like the
+  rendered page through `data-marker` anchors yields an answer that looks like the
   other two and means something else: no seller, no photo count, no price table,
   and a price re-parsed out of printed text. Both carriers this command has are
-  the same `buyerItem`, so every column carries one meaning — `priceList` and
+  the same `buyerItem`, so every field carries one meaning — `priceList` and
   `imageCount` are not nullable, and an empty table says only that Avito priced
-  the listing with a number. A layer that answers with fewer columns is a
-  fallback value in the shape of a row.
+  the listing with a number. A layer that answers with fewer fields is a fallback
+  value in the shape of a listing.
 
 ## Facts
 
@@ -134,9 +135,9 @@ against `sortRating` in the server's `nextPage`.
   shape is still in the payload for whoever reads it next.
 - **F-093 — the item page's hydration state is readable at the load event.**
   `window.__staticRouterHydrationData` is inline in the document Avito serves,
-  so the fallback decodes a complete row with `settleMs: 0` and no `page.wait`
+  so the fallback decodes a complete listing with `settleMs: 0` and no `page.wait`
   at all: a goods listing and a service, twice each, decoded 788–1505 ms after
-  the navigation started, price table and gallery included, and the goods row
+  the navigation started, price table and gallery included, and the goods listing
   matched the item API field for field. So the one rendered page this CLI opens
   is not waited on, and `page.wait` stays what `cdp.mjs` says it is — a bounded
   backoff, never a courtesy gap. Replayed 2026-08-18,
@@ -210,7 +211,7 @@ against `sortRating` in the server's `nextPage`.
   joined by `вчера в 19:15` (a BMW X5 listing, 2026-08-16), so Avito prints
   relative days too — a form with no year and no number at all. `сегодня в 12:20`
   and last-year forms have still not been observed. A consumer who needs the date
-  as a quantity needs the listing row with `published`, not this column.
+  as a quantity needs a listing item with `published`, not this field.
   Incidentally: the date is the moment of publication, and re-listing moves it, so
   "created" does not follow from it.
 - **There is no machine-readable date in reviews at all:** `rated` and `answered`
@@ -220,4 +221,4 @@ against `sortRating` in the server's `nextPage`.
   is validated strictly; the hydration fallback must stay working, and it is the
   only one left.
 - Both carriers are the same `buyerItem`, so a shape change in it takes the
-  command out entirely rather than dropping it to a thinner row (D-064).
+  command out entirely rather than dropping it to a thinner answer (D-064).

@@ -70,7 +70,7 @@ steps:
 |---|---|---|
 | Card text | `iva.DescriptionStep[].payload.description` | `item.description` — empty in the SSR catalog |
 | Shown price | `iva.PriceStep[].payload.priceDetailed` | `item.priceDetailed` — the base price, differs whenever a bonus applies |
-| Location line | `geo.geoReferences[0]` | `item.location.name` — was null on 39 of 50 rows |
+| Location line | `geo.geoReferences[0]` | `item.location.name` — was null on 39 of 50 cards |
 | Reservation | `catalog.items[].isReserved` | none; the visible plaque is drawn from this boolean |
 
 Photos: never name a size. Take the largest variant whose key parses as
@@ -88,7 +88,7 @@ one.
 6. **The page size belongs to Avito** — 50 listings, 25 reviews — and no page-size parameter exists. The `limit=300` seen in older material belongs to the filter-option suggest endpoint, not the catalog. The review feed ignores `limit` outright.
 7. **The geocoder rewrites the address silently**: a missing house number snaps to a neighbour, a multi-city address resolves to one of them without any ambiguity flag. Return `normalizedAddress` alongside the point.
 8. **The seller has three identifiers.** `seller.hashId`, the `/user/<id>|/brands/<id>` route segment, and `buyerItem.rating.userKey` for the review feed are all different values.
-9. **A private seller has no identity for an anonymous caller.** Without a session the catalog ships an empty `iva.UserInfoStep` on those cards (14 of 50 and 22 of 50 rows on two pages of one route) and the item API blanks every profile link while `seller.name` becomes the placeholder `Пользователь`. The flat `rating` survives on the same card, and companies (`/brands/...`) are unaffected — so seller ID and seller rating must be nullable independently of each other. The profile route itself still answers `200`; only the payload withholds it.
+9. **A private seller has no identity for an anonymous caller.** Without a session the catalog ships an empty `iva.UserInfoStep` on those cards (14 of 50 and 22 of 50 cards on two pages of one route) and the item API blanks every profile link while `seller.name` becomes the placeholder `Пользователь`. The flat `rating` survives on the same card, and companies (`/brands/...`) are unaffected — so seller ID and seller rating must be nullable independently of each other. The profile route itself still answers `200`; only the payload withholds it.
 10. **There is no seller reviews page.** The visible link is the `#open-reviews-list` modal anchor; `/user/<hashId>/reviews` answers `404`.
 11. **A refinement request replaces a filter, it never adds to it.** The items API is rebuilt from the current `searchCore.params`, so applying one value of a filter and then another drops the first: several values of one filter must travel in one request as `params[id][0]`, `params[id][1]`, …. Avito confirms the whole set in both `searchCore.params` and `filtersV2.currentValue`, and accepts several different filters in one request too.
 12. **`429` and hCaptcha are real and recur.** Stop without interacting, do not retry, do not weaken validation.

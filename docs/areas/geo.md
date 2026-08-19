@@ -11,19 +11,22 @@ identifiers.
 `get-location <query>` resolves a visible name into an Avito location ID. The
 `--geo metro|districts` mode turns it into a directory of geo IDs for one exactly
 matched location; `--geo-query` filters by the visible station or district name.
-Columns: `rank`, `locationId`, `locationName`, `geoMode`, `geoId`, `geoName`,
-`geoGroup`.
+It answers `{ query, geoMode, locations, geo }` in both modes: without `--geo`,
+`locations` is what Avito matched and `geo` is empty; with it, `locations` holds
+the one location the name resolved to exactly and `geo` its stations or
+districts.
 
-The columns are split deliberately: `locationName` always means a city or a
-region, `geoName` a station or a district. Neither changes meaning between modes.
+The two lists are split deliberately: a `locationName` always means a city or a
+region, a `geoName` a station or a district. Neither changes meaning between
+modes.
 
 `--limit` is `1..10` in resolver mode (matching the observed UI request) and
 `1..400` in `--geo` mode, defaulting to 400. The default matters: without it,
 Moscow with its 357 stations would return an `ArgumentError` rather than a list.
 
-`get-coords <address>` is a pure resolver: one address in, one point out.
-Columns: `address`, `kind`, `locality`, `latitude`, `longitude`, `postalCode`.
-Budget: 2 requests. It touches neither the region, nor the search context, nor
+`get-coords <address>` is a pure resolver: one address in, one point out, as one
+flat object — `address`, `kind`, `locality`, `latitude`, `longitude`,
+`postalCode`. Budget: 2 requests. It touches neither the region, nor the search context, nor
 the radius.
 
 The `address` it returns is Avito's own `normalizedAddress`, not what was passed in.
@@ -41,7 +44,7 @@ Three undocumented directories, all read-only through the browser context:
 available if the fresh location configuration reports the corresponding
 capability: for a city with no metro, `--geo metro` returns an `ArgumentError`
 rather than an empty list. A truncated slice is never passed off as a complete
-directory: if `--geo-query` leaves more rows than `--limit`, the command returns
+directory: if `--geo-query` leaves more entries than `--limit`, the command returns
 an `ArgumentError` stating the actual count.
 
 `get-coords` calls `/web/1/coords/by_address?address=<string>` in one request,

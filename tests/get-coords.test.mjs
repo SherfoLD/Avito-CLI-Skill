@@ -57,16 +57,14 @@ const ok = (payload) => ({
   payload,
 });
 
-check('a house resolves to one row carrying Avito own normalized address', async () => {
+check('a house resolves to Avito own normalized address', async () => {
   const page = makePage(ok(HOUSE));
-  const rows = await COMMAND.run(page, { address: '  Тверская   улица, 6 ' });
-  assert(rows.length === 1, 'expected exactly one row');
-  const [row] = rows;
-  assert(row.address === HOUSE.normalizedAddress, `normalized address not returned: ${row.address}`);
-  assert(row.kind === 'house' && row.locality === 'Москва', 'kind or locality not decoded');
-  assert(row.latitude === 55.760256 && row.longitude === 37.611446, 'coordinates not decoded');
-  assert(row.postalCode === '125009', 'postal code not decoded');
-  assert(Object.keys(row).length === COMMAND.columns.length, 'row shape drifted from the declared columns');
+  const answer = await COMMAND.run(page, { address: '  Тверская   улица, 6 ' });
+  assert(answer.address === HOUSE.normalizedAddress, `normalized address not returned: ${answer.address}`);
+  assert(answer.kind === 'house' && answer.locality === 'Москва', 'kind or locality not decoded');
+  assert(answer.latitude === 55.760256 && answer.longitude === 37.611446, 'coordinates not decoded');
+  assert(answer.postalCode === '125009', 'postal code not decoded');
+  assert(Object.keys(answer).length === COMMAND.keys.length, 'the answer drifted from the declared fields');
 
   assert(page.calls.goto.length === 1 && page.calls.goto[0] === ROBOTS, `expected one robots.txt priming, got ${JSON.stringify(page.calls.goto)}`);
   const { requestUrl } = page.calls.evaluateWithArgs[0].args;
@@ -75,9 +73,9 @@ check('a house resolves to one row carrying Avito own normalized address', async
 });
 
 check('a bare city resolves to its centre without a postal code', async () => {
-  const rows = await COMMAND.run(makePage(ok(LOCALITY)), { address: 'Казань' });
-  assert(rows[0].kind === 'locality' && rows[0].locality === 'Казань', 'locality row not decoded');
-  assert(rows[0].postalCode === null, 'missing postal code must be null, not empty text');
+  const answer = await COMMAND.run(makePage(ok(LOCALITY)), { address: 'Казань' });
+  assert(answer.kind === 'locality' && answer.locality === 'Казань', 'a locality was not decoded');
+  assert(answer.postalCode === null, 'missing postal code must be null, not empty text');
 });
 
 check('an unknown address is a typed empty result, never a city centre', async () => {

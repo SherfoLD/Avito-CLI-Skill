@@ -1,5 +1,5 @@
 /**
- * `/web/1/js/items` — the response the four catalog commands read their rows
+ * `/web/1/js/items` — the response the four catalog commands read their listings
  * from.
  *
  * Four carriers travel in it and every one of them is read: `searchCore` proves

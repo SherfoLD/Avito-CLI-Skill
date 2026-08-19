@@ -4,7 +4,7 @@
  * about" without parsing English.
  *
  * A command either returns correct data or throws one of these. There is no
- * third outcome — no fallback value, no sentinel row, no empty array standing
+ * third outcome — no fallback value, no sentinel field, no empty list standing
  * in for a failed fetch.
  */
 
@@ -48,7 +48,7 @@ export class ArgumentError extends CliError {
 /**
  * The request went out and what came back cannot be decoded into the declared
  * contract: an HTTP refusal, a challenge, a drifted response shape, or a
- * postcondition that did not hold. Never soften this into a partial row.
+ * postcondition that did not hold. Never soften this into a partial answer.
  */
 export class CommandExecutionError extends CliError {
   constructor(message, hint, details) {

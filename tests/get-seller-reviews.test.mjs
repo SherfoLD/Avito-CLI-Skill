@@ -3,7 +3,7 @@
 //
 // The synthetic feed mirrors what was confirmed live in F-046: an ordered entries array of
 // score / searchParametersV2 / info / rating blocks, reviews without a score field, an
-// answer object on some rows, and a server-generated nextPage that echoes the applied sort.
+// answer object on some entries, and a server-generated nextPage that echoes the applied sort.
 import { loadCommand, runner } from './harness.mjs';
 import { evaluateRunner } from './carrier.mjs';
 // The browser half of this command is the shared JSON read: it has no decoding of
@@ -164,23 +164,28 @@ check('the feed request carries fromItem, the server page size and no sort by de
   assert(feed.searchParams.get('sortRating') === null, 'no sort must be sent without --sort');
 });
 
-check('rows decode the visible review, and an unscored review keeps score null', async () => {
+check('the feed decodes the visible review, and an unscored review keeps score null', async () => {
   const page = makePage(defaultResponder(feedPayload({
     entries: [scoreBlock(), schemaBlock('date_desc'), reviewEntry(), INFO, UNSCORED],
   })));
-  const rows = await COMMAND.run(page, { itemUrl: ITEM_URL });
+  const answer = await COMMAND.run(page, { itemUrl: ITEM_URL });
 
-  assert(rows.length === 2, `expected two review rows, got ${rows.length}`);
-  assert(Object.keys(rows[0]).length === COMMAND.columns.length, 'a row must fill exactly the declared columns');
-  for (const column of COMMAND.columns) assert(column in rows[0], `column ${column} is missing`);
+  assert(answer.reviews.length === 2, `expected two reviews, got ${answer.reviews.length}`);
+  for (const key of COMMAND.keys) assert(key in answer, `${key} is missing from the answer`);
+  // The seller's total is one number for the whole feed, and no longer repeats
+  // on all twenty-five reviews (D-073).
+  assert(answer.sellerReviewsCount === 829, 'sellerReviewsCount must come from the visible item summary');
+  assert(answer.itemId === ITEM_ID && answer.page === 1 && answer.sort === null,
+    `the subject of the feed must be named: ${JSON.stringify({ itemId: answer.itemId, page: answer.page })}`);
+  assert(answer.reviews.every((review) => !('sellerReviewsCount' in review)),
+    'the seller total must not repeat on every review');
 
-  const [scored, unscored] = rows;
+  const [scored, unscored] = answer.reviews;
   assert(scored.reviewId === 467199178 && scored.score === 5, 'the scored review lost its identity or score');
   assert(scored.stage === 'Сделка состоялась' && scored.rated === '7 августа', 'stage/rated must stay visible strings');
   assert(scored.authorName === 'Арина' && scored.authorRole === 'Покупатель', 'author fields drifted');
   assert(scored.text === 'Нужный товар был в наличии, без проблем', 'review text drifted');
   assert(scored.answerText === null && scored.answered === null, 'a review without an answer must stay null');
-  assert(scored.sellerReviewsCount === 829, 'sellerReviewsCount must come from the visible item summary');
 
   assert(unscored.score === null, 'a review without a score must not collapse to 0');
   assert(unscored.stage === 'Не договорились', 'the unscored stage drifted');
@@ -200,9 +205,9 @@ check('a review that ships photos decodes without them', async () => {
     ],
   });
   const page = makePage(defaultResponder(feedPayload({ entries: [scoreBlock(), withImages] })));
-  const [row] = await COMMAND.run(page, { itemUrl: ITEM_URL });
-  assert(!('images' in row), 'a review row must carry no photo column');
-  assert(row.text.length > 0, 'the review text must survive a payload that carries photos');
+  const [review] = (await COMMAND.run(page, { itemUrl: ITEM_URL })).reviews;
+  assert(!('images' in review), 'a review must carry no photo field');
+  assert(review.text.length > 0, 'the review text must survive a payload that carries photos');
 });
 
 check('a seller without a rating is an empty result, not an empty success', async () => {
@@ -247,8 +252,9 @@ check('a deep page confirms the sort through the server-generated nextPage', asy
   const good = makePage(defaultResponder(feedPayload({
     entries: [reviewEntry()], nextOffset: 50, sort: 'score_asc',
   })));
-  const rows = await COMMAND.run(good, { itemUrl: ITEM_URL, sort: 'score_asc', page: 2 });
-  assert(rows.length === 1, 'the deep page must return its rows');
+  const answer = await COMMAND.run(good, { itemUrl: ITEM_URL, sort: 'score_asc', page: 2 });
+  assert(answer.reviews.length === 1, 'the deep page must return its reviews');
+  assert(answer.page === 2 && answer.sort === 'score_asc', 'the confirmed page and sort must be reported');
   assert(good.calls.requests.length === 2, 'a confirmed deep page must not cost a third request');
 
   const drifted = makePage(defaultResponder(feedPayload({
@@ -272,8 +278,8 @@ check('a deep last page with a sort costs one bounded confirmation request', asy
     if (index === 2) return ok(feedPayload({ entries: [reviewEntry()] }));
     return ok(feedPayload({ entries: [scoreBlock(), schemaBlock('score_asc'), reviewEntry()] }));
   });
-  const rows = await COMMAND.run(page, { itemUrl: ITEM_URL, sort: 'score_asc', page: 2 });
-  assert(rows.length === 1, 'the last page must still return its rows');
+  const answer = await COMMAND.run(page, { itemUrl: ITEM_URL, sort: 'score_asc', page: 2 });
+  assert(answer.reviews.length === 1, 'the last page must still return its reviews');
   assert(page.calls.requests.length === 3, `expected one confirmation request, got ${page.calls.requests.length - 2}`);
   const confirmation = new URL(page.calls.requests[2]);
   assert(confirmation.searchParams.get('offset') === '0', 'the confirmation must read the feed start');
@@ -291,8 +297,8 @@ check('the whole server page is returned, never a local slice of it', async () =
   const entries = [scoreBlock(), schemaBlock('date_desc')];
   for (let index = 0; index < 25; index += 1) entries.push(reviewEntry({ id: 400000000 + index }));
   const page = makePage(defaultResponder(feedPayload({ entries, nextOffset: 25 })));
-  const rows = await COMMAND.run(page, { itemUrl: ITEM_URL });
-  assert(rows.length === 25, `expected every review Avito served, got ${rows.length}`);
+  const answer = await COMMAND.run(page, { itemUrl: ITEM_URL });
+  assert(answer.reviews.length === 25, `expected every review Avito served, got ${answer.reviews.length}`);
   assert(new URL(page.calls.requests[1]).searchParams.get('limit') === '25',
     'the request must keep the page size the Avito UI itself sends');
   assert(!('limit' in Object.fromEntries(COMMAND.args.map((arg) => [arg.name, arg]))),

@@ -1,6 +1,6 @@
 // Offline checks for which browser a run talks to.
 //
-// The failure this layer exists to prevent leaves no trace in any row: the CLI
+// The failure this layer exists to prevent leaves no trace in the answer: the CLI
 // connects to a browser nobody chose and reports whatever that one answers. So
 // what is checked here is the precedence between the four layers, and that a
 // choice which cannot be one is refused at the moment it is made rather than on

@@ -1,10 +1,10 @@
 /**
  * `avito get-item` — the node half.
  *
- * One row out of one of two carriers of the same object, tried in order: the
- * item API, then the hydration state the rendered listing page still holds.
- * They are never mixed — a half-decoded API item is discarded rather than
- * patched, because a row assembled from two carriers has no single meaning.
+ * One listing out of one of two carriers of the same object, tried in order: the
+ * item API, then the hydration state the rendered listing page still holds. They
+ * are never mixed — a half-decoded API item is discarded rather than patched,
+ * because an answer assembled from two carriers has no single meaning.
  */
 
 import {
@@ -72,7 +72,7 @@ function asExecutionError(error, action) {
   throw new CommandExecutionError(`${action} failed: ${message}`);
 }
 
-function toOutputRow(decodedItem, normalizedUrl, imageFiles) {
+function toOutput(decodedItem, normalizedUrl, imageFiles) {
   return {
     itemId: decodedItem.decodedItemId,
     title: decodedItem.decodedTitle,
@@ -109,11 +109,60 @@ export function describeApiFailure(apiAttempt) {
   return 'unexpected buyerItem schema or item ID';
 }
 
+/**
+ * The listing item of `search`, minus what belongs to a card (`minPrice`,
+ * `hasPriceList`) and plus what only the listing page has: the whole
+ * description, the original-size photos, the price list a service is priced by
+ * (D-056), and `publishedText` — the rendered string, because the page carries
+ * no machine-readable date anywhere (D-039, F-059).
+ */
+const OUTPUT = z.strictObject({
+  itemId: idString(),
+  title: text(),
+  price: z.number().nonnegative().nullable(),
+  // Empty is "Avito priced this listing with a number, not a table".
+  priceList: z.array(z.strictObject({ title: text(), price: text() })),
+  location: text().nullable(),
+  description: text().nullable(),
+  attributes: z.record(text(), text()),
+  publishedText: text().nullable(),
+  sellerName: text().nullable(),
+  sellerRating: z.number().min(0).max(5).nullable(),
+  sellerReviewsCount: count().nullable(),
+  imageCount: count(),
+  // Two empties that are different answers, which is why this is not one list.
+  images: z.array(text()).nullable(),
+  url: itemUrl(),
+});
+
+const OUTPUT_TYPE = `type Output = {
+  itemId: string;                // digits only
+  title: string;
+  price: number | null;          // null where the listing is priced by a table or a phrase
+  priceList: PriceEntry[];       // empty where Avito priced this listing with one number
+  location: string | null;
+  description: string | null;    // the whole text, not the card's truncation
+  attributes: Record<string, string>;  // the visible characteristics table
+  publishedText: string | null;  // Avito's rendered string — no year, no seconds, Moscow time
+  sellerName: string | null;     // null for a private seller in an anonymous session
+  sellerRating: number | null;   // 0..5
+  sellerReviewsCount: number | null;
+  imageCount: number;            // read on every run, whether or not the files were written
+  images: string[] | null;       // files written by --images-dir in gallery order;
+                                 // null when it was not passed, [] when there are no photos
+  url: string;                   // canonical listing URL, no query
+};
+
+type PriceEntry = {
+  title: string;
+  price: string;                 // as Avito wrote it: «от 1 500 ₽», «Цена договорная»
+};`;
+
 export default defineCommand({
   name: 'get-item',
-  description: 'Get one listing in full: the complete description, a service price list and, on request, the original photos written to a directory you name — none of which a search row carries',
+  description: 'Get one listing in full: the complete description, a service price list and, on request, the original photos written to a directory you name — none of which a search result carries',
   access: 'read',
-  example: 'avito get-item <url> --images-dir /tmp/photos -f json',
+  example: 'avito get-item <url> --images-dir /tmp/photos',
   domain: 'www.avito.ru',
   args: [
     { name: 'url', type: 'string', required: true, positional: true, help: 'Full https://www.avito.ru item URL from avito search' },
@@ -123,31 +172,8 @@ export default defineCommand({
       help: 'Existing absolute directory to write the photos into; the command creates <dir>/<itemId>/ and fills it with 01.jpg, 02.jpg … in gallery order',
     },
   ],
-  // The listing row of `search`, minus what belongs to a card (`minPrice`,
-  // `hasPriceList`, `searchUrl`) and plus what only the listing page has: the
-  // whole description, the original-size photos, the price list a service is
-  // priced by (D-056), and `publishedText` — the rendered string, because the
-  // page carries no machine-readable date anywhere (D-039, F-059).
-  row: z.strictObject({
-    itemId: idString(),
-    title: text(),
-    price: z.number().nonnegative().nullable(),
-    // Empty is "Avito priced this listing with a number, not a table".
-    priceList: z.array(z.strictObject({ title: text(), price: text() }))
-      .meta({ note: "price as Avito wrote it: «от 1 500 ₽», «Цена договорная»" }),
-    location: text().nullable(),
-    description: text().nullable(),
-    attributes: z.record(text(), text()),
-    publishedText: text().nullable(),
-    sellerName: text().nullable(),
-    sellerRating: z.number().min(0).max(5).nullable(),
-    sellerReviewsCount: count().nullable(),
-    imageCount: count(),
-    // Two empties that are different answers, which is why this is not one list.
-    images: z.array(text()).nullable()
-      .meta({ note: 'files written by --images-dir, gallery order; null when it was not passed, [] when the listing has no photos' }),
-    url: itemUrl(),
-  }),
+  output: OUTPUT,
+  type: OUTPUT_TYPE,
   run: async (page, args) => {
     const { normalizedUrl, normalizedItemId, itemApiUrl } = normalizeItemUrl(args.url);
     const photoDirectory = args['images-dir'] == null ? null : assertPhotoDirectory(args['images-dir']);
@@ -158,7 +184,7 @@ export default defineCommand({
       const imageFiles = photoDirectory === null
         ? null
         : await savePhotos(decodedItem.decodedImages, { directory: photoDirectory, itemId: normalizedItemId });
-      return [toOutputRow(decodedItem, normalizedUrl, imageFiles)];
+      return toOutput(decodedItem, normalizedUrl, imageFiles);
     };
 
     let apiContextReady = false;

@@ -14,14 +14,15 @@
  * Usage: node scripts/advise-listing-id-pairing.mjs
  */
 
+import { declaredKeyNames } from '../src/runtime/schema.mjs';
 import { loadManifest } from './lib/manifest.mjs';
 
-/** Commands whose rows are individually fetchable things. */
+/** Commands whose items are individually fetchable things. */
 const LISTING_NAMES = new Set(['search', 'get-page', 'apply-filters', 'move-category']);
-/** Commands that fetch one thing by something a listing row could carry. */
+/** Commands that fetch one thing by something a listing could carry. */
 const DETAIL_NAMES = new Set(['get-item', 'get-seller-reviews']);
 
-const ID_COLUMN_PATTERNS = [/^id$/i, /Id$/, /_id$/i, /^url$/i, /^slug$/i];
+const ID_PATTERNS = [/^id$/i, /Id$/, /_id$/i, /^url$/i, /^slug$/i];
 
 const manifest = await loadManifest();
 const detail = manifest.filter((entry) => DETAIL_NAMES.has(entry.name) && entry.access === 'read');
@@ -34,17 +35,19 @@ if (manifest.length === 0) {
 
 console.log(`Checked ${listings.length} listing command(s) against ${detail.length} detail command(s).`);
 
-const findings = listings.filter((entry) => !entry.columns.some((column) => ID_COLUMN_PATTERNS.some((pattern) => pattern.test(column))));
+const findings = listings
+  .map((entry) => ({ entry, names: [...declaredKeyNames(entry.output)] }))
+  .filter(({ names }) => !names.some((name) => ID_PATTERNS.some((pattern) => pattern.test(name))));
 
 if (findings.length === 0) {
-  console.log('OK - every listing carries a column a detail command can take.');
+  console.log('OK - every listing carries a field a detail command can take.');
   process.exit(0);
 }
 
 console.log('');
-for (const entry of findings) {
+for (const { entry, names } of findings) {
   console.log(`  • ${entry.name}`);
-  console.log(`      columns: [${entry.columns.join(', ')}]`);
+  console.log(`      fields: [${names.join(', ')}]`);
   console.log(`      detail commands: ${detail.map((item) => item.name).join(', ') || '(none)'}`);
 }
-console.log('\nAdvisory only. If a row genuinely has nothing to fetch, this is fine.');
+console.log('\nAdvisory only. If a list genuinely has nothing to fetch, this is fine.');

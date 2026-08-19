@@ -82,7 +82,7 @@ should have been JSON.
 
 Everything else: argument validation, the request a fetch is pointed at, the
 postconditions on what came back, typed errors, and turning an Avito payload into
-rows. All of it is Node, in `src/commands/`, `src/site/` and `src/schemas/`.
+answer. All of it is Node, in `src/commands/`, `src/site/` and `src/schemas/`.
 
 The guards that do remain here are hand-written because `zod` cannot cross
 `Function.prototype.toString()` any more than any other import can. That is the

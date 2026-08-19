@@ -4,7 +4,7 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 
-import { assertRow, loadCommand, readCommandSource, readPageSource, runner } from './harness.mjs';
+import { assertOutput, loadCommand, readCommandSource, readPageSource, runner } from './harness.mjs';
 import { decodeBuyerItem } from '../src/site/item.mjs';
 import { assertPhotoDirectory, savePhotos } from '../src/site/photos.mjs';
 
@@ -34,7 +34,7 @@ function buyerItem({
   ratingScore = 4.9,
   locationName = 'Москва',
   // The only date the listing surface carries anywhere: a rendered string, no year and no
-  // seconds. The exact instant lives in the search row instead (F-059).
+  // seconds. The exact instant lives on the search card instead (F-059).
   sortFormatedDate = '14 августа в 02:15',
   // A service is priced by a table and by nothing else: the scalar carriers are all
   // empty, and the page prints the groups exactly as they arrive (F-080).
@@ -83,7 +83,7 @@ check('a price string with two numbers falls back to the base price instead of c
 
 // A service has no price, it has a table of them, and the listing page prints nothing
 // where a goods listing prints its number. The entries keep Avito's own strings, and the
-// groups merge because a column holds a table rather than a tree (F-080).
+// groups merge because the field holds a table rather than a tree (F-080).
 check('a price table replaces the price, and a listing priced by a number keeps one', () => {
   const service = decode({
     priceString: '',
@@ -140,8 +140,8 @@ check('attributes merge condition and category params and fail closed on a confl
 
 check('the publication date is passed through as Avito rendered it', () => {
   assert(decode().decodedPublishedText === '14 августа в 02:15', 'the rendered date must survive untouched');
-  assert(decode({ sortFormatedDate: false }).decodedPublishedText === null, 'an absent date must be a null column');
-  assert(decode({ sortFormatedDate: '' }).decodedPublishedText === null, 'an empty date must be a null column');
+  assert(decode({ sortFormatedDate: false }).decodedPublishedText === null, 'an absent date must read as null');
+  assert(decode({ sortFormatedDate: '' }).decodedPublishedText === null, 'an empty date must read as null');
   // Nothing here parses the string into a date Avito never sent, so the only failure left is
   // a carrier that stopped being a string at all.
   assert(decode({ sortFormatedDate: 1786662941000 }) === null, 'a non-string date carrier must fail closed');
@@ -217,11 +217,11 @@ check('the fallback primes robots.txt and reads the hydration state, never the D
   assert(source.includes("const ORIGIN_BOOTSTRAP_URL = 'https://www.avito.ru/robots.txt'"), 'priming must use the lightweight origin');
   assert(source.includes('page.goto(ORIGIN_BOOTSTRAP_URL'), 'the API context must be primed through robots.txt, not the homepage');
   assert(browserSource.includes('__staticRouterHydrationData'), 'the fallback must read the hydration state of the rendered page');
-  assert(source.includes('decodeBuyerItem(fallbackObserved?.buyerItem'), 'the fallback row must come from the shared decoder');
+  assert(source.includes('decodeBuyerItem(fallbackObserved?.buyerItem'), 'the fallback must come from the shared decoder');
   assert(!/decodeBuyerItem/.test(browserSource), 'the page half hands the carrier over, it does not decode it');
-  // Both carriers are the same object, so both rows have one meaning per column (D-064).
+  // Both carriers are the same object, so both have one meaning per field (D-064).
   assert(!/querySelector|data-marker=/.test(browserSource), 'the rendered page must not be read through DOM anchors');
-  assert(!/domObserved/.test(source), 'no column may be assembled from the visible page');
+  assert(!/domObserved/.test(source), 'no field may be assembled from the visible page');
 });
 
 check('the primed origin is never text-scanned for a challenge, the API response is', () => {
@@ -353,7 +353,7 @@ check('anything but a photo this CLI can hand over stops the call, leaving no pa
   }
 });
 
-check('get-item writes the gallery only when it was asked to, and the row says which', async () => {
+check('get-item writes the gallery only when it was asked to, and the answer says which', async () => {
   const root = temporaryDirectory();
   const realFetch = globalThis.fetch;
   try {
@@ -363,17 +363,15 @@ check('get-item writes the gallery only when it was asked to, and the row says w
       return answer('image/jpeg', url);
     };
 
-    const [written] = await COMMAND.run(apiPage(twoPhotos()), { url: ITEM_URL, 'images-dir': root });
-    const row = assertRow(COMMAND, written);
-    assert(row.imageCount === 2, `expected two photos, got ${row.imageCount}`);
-    assert(row.images.length === 2 && row.images[0] === path.join(root, ITEM_ID, '01.jpg'),
-      `unexpected paths ${JSON.stringify(row.images)}`);
+    const written = assertOutput(COMMAND, await COMMAND.run(apiPage(twoPhotos()), { url: ITEM_URL, 'images-dir': root }));
+    assert(written.imageCount === 2, `expected two photos, got ${written.imageCount}`);
+    assert(written.images.length === 2 && written.images[0] === path.join(root, ITEM_ID, '01.jpg'),
+      `unexpected paths ${JSON.stringify(written.images)}`);
     assert(requests === 2, `expected one request per photo, got ${requests}`);
 
-    const [plain] = await COMMAND.run(apiPage(twoPhotos()), { url: ITEM_URL });
-    const plainRow = assertRow(COMMAND, plain);
-    assert(plainRow.images === null, 'without the flag the row states that nothing was written');
-    assert(plainRow.imageCount === 2, 'the count is read from the item either way');
+    const plain = assertOutput(COMMAND, await COMMAND.run(apiPage(twoPhotos()), { url: ITEM_URL }));
+    assert(plain.images === null, 'without the flag the answer states that nothing was written');
+    assert(plain.imageCount === 2, 'the count is read from the item either way');
     assert(requests === 2, 'a run without the flag must not touch the photo CDN');
   } finally {
     globalThis.fetch = realFetch;

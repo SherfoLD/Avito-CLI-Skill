@@ -34,10 +34,10 @@ export default [
     languageOptions: { globals: globals.browser },
   },
   {
-    // A suite carries the exact response Avito sent and a fixture the exact
+    // A suite carries the exact response Avito sent and an expectation the exact
     // request that was verified live, identifiers included. That is evidence,
     // not a pinned identifier.
-    files: ['tests/**/*.mjs', 'verify/*.mjs'],
+    files: ['tests/**/*.mjs', 'expectations/*.mjs'],
     rules: { 'avito-cdp/no-site-vocabulary': 'off' },
   },
 ];

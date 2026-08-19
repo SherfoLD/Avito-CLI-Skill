@@ -1,6 +1,6 @@
 ---
 name: write-command
-description: Use when writing a new command for this repository, or changing what an existing one returns. Takes you from first look at a page, through picking a carrier and decoding fields, to a green offline suite and a live verify fixture. For a command that used to work and now fails, use fix-command instead.
+description: Use when writing a new command for this repository, or changing what an existing one returns. Takes you from first look at a page, through picking a carrier and decoding fields, to a green offline suite and a live expectation. For a command that used to work and now fails, use fix-command instead.
 allowed-tools: Read, Edit, Write, Grep, Bash(npm:*), Bash(node:*), Bash(git:*)
 ---
 
@@ -9,10 +9,10 @@ allowed-tools: Read, Edit, Write, Grep, Bash(npm:*), Bash(node:*), Bash(git:*)
 You are adding or changing a read-only command that drives the user's own Chrome
 over the DevTools Protocol. The target is one closed loop: **evidence you
 replayed yourself → a decoded carrier → a command → a green offline suite → a
-live verify fixture you tightened by hand.**
+live expectation you tightened by hand.**
 
-Nothing here is finished at "it returned rows". A command that returns
-plausible, wrong data is worse than one that fails, because nobody goes looking.
+Nothing here is finished at "it returned data". A command that returns plausible,
+wrong data is worse than one that fails, because nobody goes looking.
 
 ## Before anything
 
@@ -104,7 +104,7 @@ Write the carrier note
 Decode the fields — compare at least one against the visible page by eye
   │  (references/silent-failures.md before you trust anything)
   ▼
-Design the columns (references/output-design.md)
+Design the answer (references/output-design.md)
   │
   ▼
 Write src/commands/<name>.mjs — and a page half only if you need one
@@ -116,7 +116,7 @@ Offline suite: npm test          ── red ──→ fix the command, never the
 Live: npm run verify <name>      ── red ──→ fix-command skill
   │
   ▼
-Seed the fixture, then TIGHTEN IT BY HAND (references/verify-fixtures.md)
+Seed the expectation, then TIGHTEN IT BY HAND (references/live-expectations.md)
   │
   ▼
 Compare the values against the visible page, field by field
@@ -156,17 +156,23 @@ npm run check                    ── green ──→ DONE
        [ ] unknown code → compare two records that differ in exactly one visible
            way; never guess from the name
        [ ] check at least one decoded value against the visible page by eye
-[ ] 7. Design the row schema (references/output-design.md):
+[ ] 7. Design the answer (references/output-design.md):
+       [ ] one object; an envelope plus a list where there are several of
+           something. Identical across every element → envelope; different
+           between them → element
        [ ] camelCase, aligned with the neighbouring commands
-       [ ] at most 16 columns; what a column holds is yours to declare, and
-           flat is still the form a caller reads fastest
-       [ ] order: identity → the business numbers → metadata
+       [ ] at most 40 declared fields, at most 3 objects deep
+       [ ] order: identity → what was asked → what came back → the list
        [ ] reuse the vocabulary in src/runtime/schema.mjs before writing a regex
        [ ] nullable where Avito can legitimately withhold it — and say why
-       [ ] if this is a listing command, import LISTING_ROW; do not restate it
+       [ ] if this is a listing command, import LISTING_ITEM; do not restate it
 [ ] 8. Write the command:
        [ ] copy the closest existing neighbour rather than starting blank
-       [ ] descriptor first: description, args with help text, row schema, example
+       [ ] descriptor first: description, args with help text, output schema,
+           the hand-written `type` beside it, example
+       [ ] write `type` as you write the schema, with the comment on each field
+           that says what it means and what its null says — that comment is the
+           only reason it is hand-written
        [ ] declare Avito's response in src/schemas/ and read it with `decode(...)`
        [ ] reach for src/browser/commands/carriers.mjs before writing a page
            half: one document read and one JSON GET are already there
@@ -177,21 +183,22 @@ npm run check                    ── green ──→ DONE
        [ ] add a suite that runs the real command against synthetic routes —
            `browserPage(routes)` in tests/carrier.mjs drives both halves
        [ ] assert the request budget: how many requests, which, and in what order
-       [ ] assertRows(COMMAND, rows) — the contract, not just the key count
+       [ ] assertOutput(COMMAND, answer) — the contract, not just the key count
        [ ] npm test green
 [ ] 10. Live verify:
-        [ ] run it once for real and read the rows
-        [ ] write verify/<name>.mjs: `args`, and `rows` as a schema over the
-            whole returned array. Put in what is true of THIS request — the
-            subject it resolved, the sort it applied, the page it returned.
-            Formats true of every row belong in the row schema instead.
+        [ ] run it once for real and read the answer
+        [ ] write expectations/<name>.mjs: `args`, and `output` as a schema over
+            the whole answer. Put in what is true of THIS request — the subject
+            it resolved, the sort it applied, the page it returned. Formats true
+            of every request belong in the output schema instead.
+        [ ] reach for the envelope first: it carries what the command proved
         [ ] name the tightest thing that is true: z.literal over a regex, a
             regex over .min(1)
         [ ] .length(n) when the count is a fact about the route, .refine for
-            anything the rows must satisfy together
+            anything a list must satisfy together
         [ ] run verify again and confirm it still passes
 [ ] 11. Compare the values against the visible page, field by field. Not
-        "did it return rows" — "is this the same number the page prints".
+        "did it return data" — "is this the same number the page prints".
 [ ] 12. Write the memory:
         [ ] a new fact or decision → its domain file, one line of
             "what we observed → what follows", with the next free F-0xx / D-0xx
@@ -216,9 +223,9 @@ npm run check                    ── green ──→ DONE
 | | 200 but empty | prove which: change one parameter and see if it moves |
 | 6, decoding | two fields both look right | [references/silent-failures.md](references/silent-failures.md) §3 — compare against a record whose value you can read on the page |
 | 9, offline | an assertion is in the way | the assertion is right until proven otherwise. Fix the command. |
-| 10, verify | a `pattern` rule fails | check the value against the page **first**. Value right → the pattern is too tight. Value wrong → your mapping is wrong. Never relax the fixture to get green. |
-| | `breaks its own contract at row N` | the row stopped matching its schema. Either the response no longer has the field, or your args changed the shape. Find out which before touching anything. |
-| | a column is always `null` | the field path is wrong — back to step 6 |
+| 10, verify | a `pattern` rule fails | check the value against the page **first**. Value right → the pattern is too tight. Value wrong → your mapping is wrong. Never relax the expectation to get green. |
+| | `breaks its own contract` | the answer stopped matching its schema, and the message names the path. Either the response no longer has the field, or your args changed the shape. Find out which before touching anything. |
+| | a field is always `null` | the field path is wrong — back to step 6 |
 | 11, comparison | the number is off by a factor | units. Avito's and yours disagree. |
 
 ## References
@@ -227,20 +234,21 @@ npm run check                    ── green ──→ DONE
 |---|---|
 | [references/recon.md](references/recon.md) | Step 3: driving Chrome through MCP, and what to look at in what order |
 | [references/carrier-selection.md](references/carrier-selection.md) | Step 5: the carrier classes, their contracts and their real maintenance cost |
-| [references/output-design.md](references/output-design.md) | Step 7: naming, types, order, the key ceiling and what a column is worth |
+| [references/output-design.md](references/output-design.md) | Step 7: the envelope rule, naming, types, order, the ceilings and what a field is worth |
 | [references/command-template.md](references/command-template.md) | Step 8: file layout, the descriptor, the split between the Node half and the page half |
 | [references/typed-errors.md](references/typed-errors.md) | Step 8, before writing the body: which error goes where, and the three silent anti-patterns |
 | [references/offline-suites.md](references/offline-suites.md) | Step 9: synthetic carriers, budget assertions, what an offline suite can and cannot prove |
-| [references/verify-fixtures.md](references/verify-fixtures.md) | Step 10: what a fixture claims, and what belongs in the row schema instead |
+| [references/live-expectations.md](references/live-expectations.md) | Step 10: what an expectation claims, and what belongs in the output schema instead |
 | [references/silent-failures.md](references/silent-failures.md) | Step 6 and Step 11: the ways a green check hides wrong data |
 
 ## Conventions this repository holds to
 
 - A command module default-exports `defineCommand({...})`. The descriptor is the
   contract: `--help` prints it, the checks read it, the CLI enforces it.
-- The row is a `z.strictObject` in `row`, and `columns` is derived from it. There
-  is no second list to keep in step, and an undeclared key is a failure rather
-  than a value that quietly disappears from `-f table`.
+- The answer is one object, a `z.strictObject` in `output`, strict at every
+  level: an undeclared key is a failure rather than a value a caller was never
+  told about. `type` beside it is the same contract as TypeScript, hand-written,
+  and `npm run check:commands` refuses a name that is in one and not the other.
 - A command is `src/commands/<name>.mjs`. Everything it decides lives there,
   in `src/site/` and in `src/schemas/`. `src/browser/` is only what a browser
   is needed for — a same-origin fetch and a real DOM — and most commands reach
@@ -248,7 +256,7 @@ npm run check                    ── green ──→ DONE
   writing a page half at all. Shared page code goes in `src/browser/prelude/`,
   which is inlined into every call under two rules `src/browser/README.md` states.
 - Known failures throw one of the five typed errors. Never `return []` from a
-  catch, never a sentinel row, never `Math.min` on an argument the caller gave you.
+  catch, never a sentinel value, never `Math.min` on an argument the caller gave you.
 - Raw dumps live in `evidence/` (anonymised, committed) or `/tmp` (anything
   else). Never in `src/`, never in the repository root.
 - A comment says what the code cannot: an Avito fact, a trap, a contract not

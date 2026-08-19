@@ -24,9 +24,9 @@ reason before departing from it:
   category tree. One document fetch gives the canonical URL, `searchCore`, the
   filter schema and the navigation tree at once, and it is the only carrier that
   can be addressed by a URL at all.
-- **Rows are the exception, and it is measured.** That same document's
+- **The listings are the exception, and it is measured.** That same document's
   `catalog.items` is complete only in its first twenty of fifty (F-089), so the
-  four listing commands read the postconditions from it and the rows from
+  four listing commands read the postconditions from it and the listings from
   `/web/1/js/items` (D-063). The API is not a substitute for the document — it is
   asked in the terms of a `searchCore` only the document has (F-090).
 - The seven internal JSON endpoints are `internal-unstable` by declaration. They
@@ -50,7 +50,7 @@ JSON is not:
   after twenty cards, and the endpoint answers with all fifty (F-089). A ranking
   of carriers rests on what each one actually carries, so it is re-measured by
   reading both side by side rather than inherited — this one held for everything
-  in the document except its rows.
+  in the document except its listings.
 
 Neither reason retires the document. Both add a second call to it.
 
@@ -100,13 +100,13 @@ rendered page's hydration state — and that is deliberate: the primary is an
 undocumented endpoint, so a second reading of the same object bounds the risk.
 But every fallback is also a way for the command to keep answering with
 different semantics after the primary drifts, and that is what a third layer
-over the visible DOM did to this command's columns (D-064).
+over the visible DOM did to this command's fields (D-064).
 
-The listing row shows the cost directly. The flat `item.description`,
+The listing item shows the cost directly. The flat `item.description`,
 `item.priceDetailed` and `item.location.name` all still exist and are all wrong
-in a specific way — empty, base price, and null on most rows. They stay as
+in a specific way — empty, base price, and null on most cards. They stay as
 fallbacks, which is exactly why carrier drift there produces different data
-rather than a refusal. The only defence is a fixture rule that fires when the
+rather than a refusal. The only defence is an expectation rule that fires when the
 fallback value shows up, and the price has no such rule today.
 
 So: a fallback needs a reason, and the reason has to be that the fallback is

@@ -18,8 +18,8 @@ import { ArgumentError, CommandExecutionError, EmptyResultError } from '../runti
 import { defineCommand } from '../runtime/command.mjs';
 import { CATALOG_DOCUMENT, SIDEBAR_DOCUMENT } from '../schemas/document.mjs';
 import { MAX_NAME_LENGTH } from '../schemas/rubricator.mjs';
-import { LISTING_ROW, applyReservedFilter, listingRows } from '../site/listing.mjs';
-import { catalogRows } from '../site/card.mjs';
+import { LISTING_ITEM, LISTING_ITEM_TYPE, applyReservedFilter, listingItems } from '../site/listing.mjs';
+import { catalogItems } from '../site/card.mjs';
 import {
   CATALOG_KEYS,
   SIDEBAR_KEYS,
@@ -36,6 +36,7 @@ import {
   preservedParamsDrift,
   sealItemsApiUrl,
 } from '../site/items.mjs';
+import { idString, searchUrl as searchUrlField, text, z } from '../runtime/schema.mjs';
 import { isFollowableNode, sidebarWalk } from '../site/rubricator.mjs';
 import { cleanText, comparableText } from '../site/text.mjs';
 import { answeredUrl, requestedSearchUrl } from '../site/url.mjs';
@@ -64,7 +65,7 @@ function normalizeBoolean(value, label) {
 }
 
 /**
- * Every sidebar row of the source document, split into the ones this search can
+ * Every sidebar entry of the source document, split into the ones this search can
  * be moved to and the ones it cannot, with the reason.
  *
  * The sidebar has never been observed dropping the query; `dropsQuery` stays
@@ -91,7 +92,10 @@ function collectSidebar(nodes, sourceUrl, sourceQuery) {
   return { candidates, blocked };
 }
 
-/** The one route the requested name resolves to, or an argument error naming what is there. */
+/**
+ * The one route the requested name resolves to, or an argument error naming what
+ * is there. The name comes back as Avito rendered it, not as it was typed.
+ */
 function resolveTarget({ candidates, blocked }, target, sourceQuery) {
   const visibleNames = [...new Set(candidates.map((entry) => entry.categoryName))];
   const printable = visibleNames.slice(0, VISIBLE_NAMES).join(', ') || 'none';
@@ -103,7 +107,7 @@ function resolveTarget({ candidates, blocked }, target, sourceQuery) {
       const reason = blockedMatch.reason === 'current'
         ? 'is the route this search is already on; moving there is not a move'
         : blockedMatch.reason === 'routeless'
-          ? `is a sidebar row Avito hangs no route on${blockedMatch.hasChildren ? '; move to one of its children instead' : ''}`
+          ? `is a sidebar entry Avito hangs no route on${blockedMatch.hasChildren ? '; move to one of its children instead' : ''}`
           : `is reachable only through a route that drops the search query "${sourceQuery}",`
             + ' which would return an unrelated category listing instead of this search.'
             + ` Categories that keep the query: ${printable}`;
@@ -121,14 +125,34 @@ function resolveTarget({ candidates, blocked }, target, sourceQuery) {
       `category "${target}" matches ${targets.length} different Avito routes on this page; no route is chosen for you`,
     );
   }
-  return new URL(targets[0]);
+  return { targetUrl: new URL(targets[0]), categoryName: matches[0].categoryName };
 }
+
+const OUTPUT = z.strictObject({
+  query: text().nullable(),
+  category: text().max(MAX_NAME_LENGTH),
+  locationId: idString(),
+  locationName: text(),
+  searchUrl: searchUrlField(),
+  items: z.array(LISTING_ITEM),
+});
+
+const OUTPUT_TYPE = `type Output = {
+  query: string | null;   // the query that survived the move; a move that drops it is refused
+  category: string;       // the category moved into, spelled as Avito renders it
+  locationId: string;     // digits only — the move never changes the region
+  locationName: string;
+  searchUrl: string;      // the new URL; the previous category's filter keys no longer apply to it
+  items: Item[];          // page 1 of the new category
+};
+
+${LISTING_ITEM_TYPE}`;
 
 export default defineCommand({
   name: 'move-category',
   description: 'Widen or narrow the category Avito auto-detected for a search URL. This changes which filters exist and which listings come back, so re-read avito get-filters afterwards',
   access: 'read',
-  example: "avito move-category <searchUrl> --to 'Телефоны' -f json",
+  example: "avito move-category <searchUrl> --to 'Телефоны'",
   domain: 'www.avito.ru',
   args: [
     {
@@ -142,7 +166,7 @@ export default defineCommand({
       name: 'to',
       type: 'string',
       required: true,
-      help: 'Target category, exactly the visible name from the name column of avito get-categories; only names it marks preservesQuery are accepted for a search that has a text query',
+      help: 'Target category, exactly the visible name from the name field of avito get-categories; only names it marks preservesQuery are accepted for a search that has a text query',
     },
     {
       name: 'remove-reserved',
@@ -151,7 +175,8 @@ export default defineCommand({
       help: 'Drop the listings Avito marks as reserved; Avito has no server-side filter for them, so the page comes back shorter',
     },
   ],
-  row: LISTING_ROW,
+  output: OUTPUT,
+  type: OUTPUT_TYPE,
   run: async (page, args) => {
     const requestedUrl = requestedSearchUrl(args.searchUrl);
     const requestedName = normalizeTargetName(args.to);
@@ -175,7 +200,7 @@ export default defineCommand({
     }
     const sourceUrl = answeredUrl(source.responseUrl, 'category URL');
     const sourceQuery = cleanText(sourceCore.query);
-    const targetUrl = resolveTarget(
+    const { targetUrl, categoryName } = resolveTarget(
       collectSidebar(source.state.rubricators?.side?.nodes, sourceUrl, sourceQuery),
       requestedName,
       sourceQuery,
@@ -220,7 +245,7 @@ export default defineCommand({
     }
     const resultParamEntries = coreParamEntries(resultCore, 'Avito searchCore after the move');
 
-    // The move is proved; the rows are asked for separately, because the SSR
+    // The move is proved; the listings are asked for separately, because the SSR
     // catalog of the target route ships only its first twenty cards in full (F-089).
     const apiUrl = itemsApiUrl();
     carrySearchCore(apiUrl, resultCore);
@@ -245,14 +270,18 @@ export default defineCommand({
       throw new CommandExecutionError('Avito items API answered on a different route');
     }
 
-    const decodedRows = catalogRows(api.catalog);
-    if (decodedRows.length === 0) {
+    const decoded = catalogItems(api.catalog);
+    if (decoded.length === 0) {
       throw new EmptyResultError(COMMAND, 'The target Avito category has no listings');
     }
 
-    return listingRows(
-      applyReservedFilter(decodedRows, removeReserved, COMMAND),
-      resultUrl.href,
-    );
+    return {
+      query: sourceQuery || null,
+      category: categoryName,
+      locationId: String(locationId),
+      locationName: searchLocation,
+      searchUrl: resultUrl.href,
+      items: listingItems(applyReservedFilter(decoded, removeReserved, COMMAND)),
+    };
   },
 });

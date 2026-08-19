@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * `avito` — the CLI entry point: find the command, parse its declared arguments,
- * open one browser context, print the rows. Every rule about what an argument
+ * open one browser context, print the answer. Every rule about what an argument
  * may be lives in the descriptor, and `--help` is generated from it.
  *
  * An unknown flag is refused rather than ignored: a caller who mistypes
@@ -14,7 +14,7 @@ import * as path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import { ArgumentError, CliError, EXIT_CODES, exitCodeFor } from '../src/runtime/errors.mjs';
-import { parseRows, rowTypeScript } from '../src/runtime/schema.mjs';
+import { parseOutput } from '../src/runtime/schema.mjs';
 import { brokerEnabled, openBrowserContext } from '../src/runtime/cdp.mjs';
 import { liveBroker, stopBroker } from '../src/runtime/broker-client.mjs';
 import {
@@ -29,7 +29,6 @@ import {
 
 const PROJECT_ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const COMMANDS_DIR = path.join(PROJECT_ROOT, 'src', 'commands');
-const FORMATS = new Set(['json', 'table']);
 
 async function loadCommands() {
   if (!fs.existsSync(COMMANDS_DIR)) return new Map();
@@ -45,13 +44,13 @@ async function loadCommands() {
 }
 
 function usage(commands) {
-  const lines = ['avito <command> [arguments] [--format json|table]', '', 'Commands:'];
+  const lines = ['avito <command> [arguments]', '', 'Commands:'];
   const width = Math.max(...[...commands.keys()].map((name) => name.length), 1);
   for (const descriptor of commands.values()) {
     lines.push(`  ${descriptor.name.padEnd(width)}  ${firstSentence(descriptor.description)}`);
   }
-  lines.push('', 'Run `avito <command> --help` for the arguments of one command and the type');
-  lines.push('of the rows it answers with. `avito --version` names the build, for a report.');
+  lines.push('', 'Every command prints one JSON object. Run `avito <command> --help` for its');
+  lines.push('arguments and the type of that object. `avito --version` names the build.');
   lines.push('');
   lines.push('The browser is a Chromium you already own. Three ways to reach it:');
   lines.push('  --browser-profile <dir>  a running browser with chrome://inspect debugging on');
@@ -95,10 +94,9 @@ function commandHelp(descriptor) {
     lines.push('');
   }
   lines.push('Output:');
-  lines.push('  A JSON array of Row — one element per result, and an array even when there');
-  lines.push('  is exactly one. `-f table` prints the same rows as a table.');
+  lines.push('  One JSON object, printed to stdout.');
   lines.push('');
-  for (const line of rowTypeScript(descriptor.row).split('\n')) lines.push(`  ${line}`);
+  for (const line of descriptor.type.split('\n')) lines.push(line ? `  ${line}` : '');
   lines.push('');
   if (descriptor.example) lines.push('Example:', `  ${descriptor.example}`, '');
   return lines.join('\n');
@@ -171,25 +169,6 @@ function splitFlag(token) {
 function asInteger(flag, value) {
   if (!/^-?\d+$/.test(String(value))) throw new ArgumentError(`--${flag} must be an integer`);
   return Number(value);
-}
-
-function renderTable(rows, columns) {
-  if (rows.length === 0) return '';
-  const cell = (value) => {
-    if (value === null || value === undefined) return '';
-    if (Array.isArray(value)) return String(value.length);
-    return String(value);
-  };
-  const widths = columns.map((column) => Math.max(
-    column.length,
-    ...rows.map((row) => cell(row[column]).length),
-  ));
-  const line = (values) => values.map((value, index) => value.padEnd(widths[index])).join('  ').trimEnd();
-  return [
-    line(columns),
-    line(widths.map((width) => '-'.repeat(width))),
-    ...rows.map((row) => line(columns.map((column) => cell(row[column])))),
-  ].join('\n');
 }
 
 /**
@@ -317,7 +296,7 @@ async function main() {
     return wantsHelp ? EXIT_CODES.SUCCESS : EXIT_CODES.USAGE_ERROR;
   }
 
-  // `session` and `browser` are not commands: they have no rows and touch no
+  // `session` and `browser` are not commands: they answer with no data and touch no
   // site. One makes the long-lived connection visible and stoppable, the other
   // settles which browser that connection is made to.
   if (name === 'session' || name === 'browser') {
@@ -347,13 +326,14 @@ async function main() {
   }
 
   const rest = argv.slice(argv.indexOf(name) + 1);
-  const options = { format: 'json', browserUrl: undefined };
+  const options = { browserUrl: undefined };
   const forwarded = [];
   for (let index = 0; index < rest.length; index += 1) {
     const token = rest[index];
-    if (token === '-f' || token === '--format') {
-      options.format = rest[++index];
-      continue;
+    // Named rather than left to "unexpected argument": this used to select a
+    // format, and a caller repeating it deserves to be told the answer is JSON.
+    if (token === '-f' || token === '--format' || token.startsWith('--format=')) {
+      throw new ArgumentError('there is no output format to choose — every command prints one JSON object');
     }
     if (token === '--browser-url') {
       options.browserUrl = rest[++index];
@@ -369,10 +349,6 @@ async function main() {
     }
     forwarded.push(token);
   }
-  if (!FORMATS.has(options.format)) {
-    throw new ArgumentError(`format must be one of: ${[...FORMATS].join(', ')}`);
-  }
-
   const args = parseArguments(descriptor, forwarded);
 
   const context = await openBrowserContext({
@@ -387,11 +363,8 @@ async function main() {
     await context.release();
   }
 
-  // The only gate that sees the row a caller actually gets.
-  const rows = parseRows(descriptor.row, returned, descriptor.name);
-
-  if (options.format === 'table') console.log(renderTable(rows, descriptor.columns));
-  else console.log(JSON.stringify(rows, null, 2));
+  // The only gate that sees the answer a caller actually gets.
+  console.log(JSON.stringify(parseOutput(descriptor.output, returned, descriptor.name), null, 2));
   return EXIT_CODES.SUCCESS;
 }
 

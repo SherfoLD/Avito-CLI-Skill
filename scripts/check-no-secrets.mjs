@@ -2,10 +2,10 @@
 /**
  * check-no-secrets.mjs — nothing session-bound enters the repository.
  *
- * Evidence fixtures are recorded from a real logged-in browser, so the shortest
+ * Evidence samples are recorded from a real logged-in browser, so the shortest
  * path from "I captured a response" to "a cookie is in git history" is one
- * careless copy. This scans everything that is committed — evidence fixtures,
- * verify fixtures, docs, source — for the shapes of a credential.
+ * careless copy. This scans everything that is committed — evidence samples,
+ * expectations, docs, source — for the shapes of a credential.
  *
  * It cannot prove absence; it catches the mistake that actually happens. Trace
  * dumps are the other half of the same rule and are handled by .gitignore,
@@ -19,7 +19,7 @@ import * as path from 'node:path';
 
 import { PROJECT_ROOT, relativeToRoot } from './lib/paths.mjs';
 
-const SCAN_DIRS = ['evidence', 'verify', 'docs', 'src', 'tests', 'scripts', 'skills'];
+const SCAN_DIRS = ['evidence', 'expectations', 'docs', 'src', 'tests', 'scripts', 'skills'];
 const SCAN_EXTENSIONS = new Set(['.json', '.md', '.mjs', '.js']);
 const SKIP_DIRS = new Set(['node_modules', 'traces', '.git']);
 
@@ -35,11 +35,17 @@ const PATTERNS = [
 const findings = [];
 
 for (const dir of SCAN_DIRS) {
-  walk(path.join(PROJECT_ROOT, dir));
+  const full = path.join(PROJECT_ROOT, dir);
+  // A directory that was renamed away is scanned by nothing, which looks exactly
+  // like a directory with no secrets in it.
+  if (!fs.existsSync(full)) {
+    console.error(`${dir}/ is named here and does not exist — this check is scanning less than it claims.`);
+    process.exit(1);
+  }
+  walk(full);
 }
 
 function walk(dir) {
-  if (!fs.existsSync(dir)) return;
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
     if (SKIP_DIRS.has(entry.name)) continue;
     const full = path.join(dir, entry.name);

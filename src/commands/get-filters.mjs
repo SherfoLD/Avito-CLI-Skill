@@ -1,7 +1,7 @@
 /**
  * `avito get-filters` — the node half, which is nearly all of it.
  *
- * The rule that shapes the file: **a row exists ⇔ `apply-filters` can set the
+ * The rule that shapes the file: **a filter is returned ⇔ `apply-filters` can set the
  * key.** Everything `filtersV2` carries for Avito's own rendering — section
  * codes, attrIds, nesting, API type names, suggest and form flags, hidden route
  * constraints — is resolved here and never reaches the caller (D-037).
@@ -16,15 +16,15 @@ import {
   EmptyResultError,
 } from '../runtime/errors.mjs';
 import { defineCommand } from '../runtime/command.mjs';
-import { text, z } from '../runtime/schema.mjs';
+import { searchUrl, text, z } from '../runtime/schema.mjs';
 import { FILTER_STATE } from '../schemas/filters.mjs';
 import { filterOptions, flattenFilters } from '../site/filters.mjs';
 import { primeOrigin, readDocument } from '../site/carriers.mjs';
-import { requestedSearchUrl } from '../site/url.mjs';
+import { answeredUrl, requestedSearchUrl } from '../site/url.mjs';
 
 const COMMAND = 'avito get-filters';
 // What a caller may write as the value of a key. `valueSyntaxFor` returns one
-// of these or `null` for "not applicable", and the `valueSyntax` column accepts
+// of these or `null` for "not applicable", and the `valueSyntax` field accepts
 // exactly these.
 const SYNTAX = Object.freeze({
   ON: '1',
@@ -85,7 +85,7 @@ const MAX_CURRENT_VALUE_LENGTH = 2000;
 
 // `String({})` is `[object Object]`, which is non-empty and passes every check
 // downstream, so a structure where a value belongs stops the call instead of
-// becoming a row (src/runtime/schema.mjs). It reaches here from a filter whose
+// being returned (src/runtime/schema.mjs). It reaches here from a filter whose
 // type says list and whose currentValue is a range — the schema allows both,
 // because on a range filter that object is the answer.
 function scalarOrNull(value, subject = 'Avito filter schema') {
@@ -112,9 +112,9 @@ function rangeOrNull(from, to) {
 }
 
 // Derived from what `apply-filters` serializes, not from the filter type alone. `null` here
-// means the key cannot be applied, so it is not a row at all.
+// means the key cannot be applied, so it is not returned at all.
 //
-// Both ranges share `<from>..<to>`; the `options` column is what separates them — empty
+// Both ranges share `<from>..<to>`; the `options` field is what separates them — empty
 // means the bound is a plain number, non-empty means it is one of those option values
 // (F-063). A keyword field also has no vocabulary, so its syntax says so (F-064).
 function valueSyntaxFor(filterKey, normalizedType, optionCount) {
@@ -210,32 +210,54 @@ function normalizeOption(rawOption, key) {
   return { optionValue, optionName };
 }
 
-export default defineCommand({
-  name: 'get-filters',
-  description: 'Get every filter you can apply to a search URL, with the values it accepts and what is already applied to this URL. Pass key and value straight into avito apply-filters',
-  access: 'read',
-  example: 'avito get-filters <searchUrl> -f json',
-  domain: 'www.avito.ru',
-  args: [
-    { name: 'searchUrl', type: 'string', required: true, positional: true, help: 'Search URL from avito search, apply-filters, move-category or get-page' },
-  ],
-  // A row exists if and only if `apply-filters` can set the key, so `key` and
-  // `valueSyntax` are never null: a filter that cannot be applied is not a row.
-  // `options` is empty for a range with plain numeric bounds and for a keyword
-  // field, which is what separates those from an enum (F-063, F-064).
-  row: z.strictObject({
+/**
+ * A filter is here if and only if `apply-filters` can set the key, so `key` and
+ * `valueSyntax` are never null: a filter that cannot be applied is not returned.
+ * `options` is empty for a range with plain numeric bounds and for a keyword
+ * field, which is what separates those from an enum (F-063, F-064).
+ */
+const OUTPUT = z.strictObject({
+  searchUrl: searchUrl(),
+  filters: z.array(z.strictObject({
     key: z.string().regex(FILTER_KEY_PATTERN, 'must be params[<attrId>] or a short key'),
     name: text().max(MAX_LABEL_LENGTH),
     unit: text().max(MAX_LABEL_LENGTH).nullable(),
     valueSyntax: VALUE_SYNTAX,
     currentValue: text().max(MAX_CURRENT_VALUE_LENGTH).nullable(),
     options: z.record(text().max(MAX_OPTION_VALUE_LENGTH), text().max(MAX_LABEL_LENGTH)),
-  }),
+  })),
+});
+
+const OUTPUT_TYPE = `type Output = {
+  searchUrl: string;       // the URL these filters belong to; they change with the category
+  filters: Filter[];       // every filter apply-filters can set here, and nothing else
+};
+
+type Filter = {
+  key: string;             // params[<attrId>] or a short key — pass it verbatim to apply-filters
+  name: string;
+  unit: string | null;     // «₽», «км»
+  valueSyntax: "<value>" | "<value>[,<value>]" | "<text>[,<text>]" | "<from>..<to>" | "1";
+  currentValue: string | null;  // what is applied to this URL now; null means nothing is
+  options: Record<string, string>;  // value → visible name; empty means a free numeric range
+};`;
+
+export default defineCommand({
+  name: 'get-filters',
+  description: 'Get every filter you can apply to a search URL, with the values it accepts and what is already applied to this URL. Pass key and value straight into avito apply-filters',
+  access: 'read',
+  example: 'avito get-filters <searchUrl>',
+  domain: 'www.avito.ru',
+  args: [
+    { name: 'searchUrl', type: 'string', required: true, positional: true, help: 'Search URL from avito search, apply-filters, move-category or get-page' },
+  ],
+  output: OUTPUT,
+  type: OUTPUT_TYPE,
   run: async (page, args) => {
     const requestedUrl = requestedSearchUrl(args.searchUrl);
 
     await primeOrigin(page, COMMAND);
-    const { state } = await readDocument(page, {
+    const { state, responseUrl } = await readDocument(page, {
       requestUrl: requestedUrl,
       stage: 'schema',
       keep: ['url', 'searchCore', 'filtersV2'],
@@ -255,7 +277,7 @@ export default defineCommand({
     const rawFilters = flattenFilters(sections);
 
     const searchCore = state.searchCore;
-    const rows = [];
+    const filters = [];
     const seenKeys = new Set();
     let totalOptionCount = 0;
 
@@ -306,7 +328,7 @@ export default defineCommand({
       }
 
       const shortKey = SHORT_KEYS[filterKey];
-      rows.push({
+      filters.push({
         key: filterKey,
         name: filterName,
         unit: cleanLabel(rawFilter.dimension) || null,
@@ -320,9 +342,12 @@ export default defineCommand({
       });
     }
 
-    if (rows.length === 0) {
+    if (filters.length === 0) {
       throw new EmptyResultError(COMMAND, 'This Avito route has no filter this command can apply');
     }
-    return rows;
+    return {
+      searchUrl: answeredUrl(responseUrl, 'Avito filter state URL', requestedUrl).href,
+      filters,
+    };
   },
 });

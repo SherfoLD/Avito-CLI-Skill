@@ -3,13 +3,13 @@
  *
  * `locationName` always means a city or a region and `geoName` always means a
  * station or a district, in both modes, so a caller never has to know which mode
- * produced a row.
+ * produced an answer.
  *
  * Two rules stop a plausible wrong answer:
  *
  * `--geo` needs exactly one *exact* name match among the suggestions. Avito
  * suggests neighbours freely, and taking the first would list the metro of a
- * city nobody asked about while the rows looked perfectly normal.
+ * city nobody asked about while the answer looked perfectly normal.
  *
  * A result larger than `--limit` is refused, never truncated. Moscow has 357
  * stations, and returning 10 with no sign that 347 were dropped is the silent
@@ -27,7 +27,6 @@ import {
   decode,
   idString,
   optionalText,
-  rank,
   requiredText,
   text,
   z,
@@ -42,7 +41,7 @@ import { readAccessState } from '../browser/commands/get-location.mjs';
 
 const SUGGEST_LIMIT = 10;
 const GEO_LIMIT = 400;
-// The two tabs of Avito's geo filter. The argument, the column and the
+// The two tabs of Avito's geo filter. The argument, the field and the
 // directory call all read this one enum.
 const GEO_MODE = z.enum(['metro', 'districts']);
 
@@ -131,8 +130,8 @@ function decodeSuggestions(payload, query) {
   }
 
   // The `suggested*` prefix marks these as the decoder's own shape, the way
-  // `api*` does in the card decoder: a suggestion is not a row, and it carries
-  // one field — the label with its parent region — that no column has.
+  // `api*` does in the card decoder: a suggestion is not the answer, and it carries
+  // one thing — the label with its parent region — that the answer has no field for.
   return result.locations.map((entry) => {
     const name = entry.names[1];
     const parentName = entry.parent?.names?.[1] ?? null;
@@ -209,30 +208,58 @@ function decodeDistricts(payload) {
   }));
 }
 
+/**
+ * Both modes answer with the same two lists. In suggestion mode `locations` is
+ * what Avito matched and `geo` is empty; in geo mode `locations` holds the one
+ * location the name resolved to exactly, and `geo` is that location's stations
+ * or districts.
+ */
+const OUTPUT = z.strictObject({
+  query: text(),
+  geoMode: GEO_MODE.nullable(),
+  locations: z.array(z.strictObject({
+    locationId: idString(),
+    locationName: text(),
+  })),
+  geo: z.array(z.strictObject({
+    geoId: idString(),
+    geoName: text(),
+    geoGroup: text().nullable(),
+  })),
+});
+
+const OUTPUT_TYPE = `type Output = {
+  query: string;
+  geoMode: "metro" | "districts" | null;   // null unless --geo was passed
+  locations: Location[];      // the matches; in geo mode, the single exact one
+  geo: GeoEntry[];            // empty unless --geo was passed
+};
+
+type Location = {
+  locationId: string;         // digits only — this is what search --location-id takes
+  locationName: string;
+};
+
+type GeoEntry = {
+  geoId: string;              // digits only — search --metro / --district takes these
+  geoName: string;
+  geoGroup: string | null;    // the metro line, or the okrug the district sits in
+};`;
+
 export default defineCommand({
   name: 'get-location',
   description: 'Resolve a city or region name to the location ID avito search needs, and list the metro and district IDs of that location. Run this before searching in a specific place',
   access: 'read',
-  example: 'avito get-location <query> --geo metro --geo-query <text> -f json',
+  example: 'avito get-location <query> --geo metro --geo-query <text>',
   domain: 'www.avito.ru',
   args: [
     { name: 'query', type: 'string', required: true, positional: true, help: 'City or region name' },
-    { name: 'limit', type: 'int', help: 'Maximum rows: 1-10 suggestions, 1-400 geo entries' },
+    { name: 'limit', type: 'int', help: 'Maximum entries: 1-10 locations, 1-400 geo entries' },
     { name: 'geo', type: 'string', help: 'List geo IDs instead of suggestions: metro or districts' },
     { name: 'geo-query', type: 'string', help: 'Filter geo entries by visible station or district name' },
   ],
-  // `locationName` always means a city or a region and `geoName` always means a
-  // station or a district, in both modes. In suggestion mode the four geo
-  // columns are null together; in geo mode none of them is.
-  row: z.strictObject({
-    rank: rank(),
-    locationId: idString(),
-    locationName: text(),
-    geoMode: GEO_MODE.nullable(),
-    geoId: idString().nullable(),
-    geoName: text().nullable(),
-    geoGroup: text().nullable(),
-  }),
+  output: OUTPUT,
+  type: OUTPUT_TYPE,
   run: async (page, args) => {
     const query = cleanText(args.query);
     if (!query) {
@@ -272,15 +299,15 @@ export default defineCommand({
     );
 
     if (!geoMode) {
-      return suggestions.slice(0, limit).map((entry, index) => ({
-        rank: index + 1,
-        locationId: entry.suggestedId,
-        locationName: entry.suggestedName,
+      return {
+        query,
         geoMode: null,
-        geoId: null,
-        geoName: null,
-        geoGroup: null,
-      }));
+        locations: suggestions.slice(0, limit).map((entry) => ({
+          locationId: entry.suggestedId,
+          locationName: entry.suggestedName,
+        })),
+        geo: [],
+      };
     }
 
     const location = resolveExactLocation(suggestions, query);
@@ -338,14 +365,15 @@ export default defineCommand({
       seenIds.add(entry.geoId);
     }
 
-    return matched.map((entry, index) => ({
-      rank: index + 1,
-      locationId: location.suggestedId,
-      locationName: location.suggestedName,
+    return {
+      query,
       geoMode,
-      geoId: entry.geoId,
-      geoName: entry.geoName,
-      geoGroup: entry.geoGroup,
-    }));
+      locations: [{ locationId: location.suggestedId, locationName: location.suggestedName }],
+      geo: matched.map((entry) => ({
+        geoId: entry.geoId,
+        geoName: entry.geoName,
+        geoGroup: entry.geoGroup,
+      })),
+    };
   },
 });

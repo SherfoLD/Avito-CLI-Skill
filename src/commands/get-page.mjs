@@ -7,11 +7,11 @@
  *
  * The document is what proves the page. Avito canonicalizes the URL it is given,
  * and a search URL that quietly lost a filter still returns fifty perfectly
- * plausible listings — nothing in the rows would show it. So the canonical URL
+ * plausible listings — nothing in the listings would show it. So the canonical URL
  * is compared pair by pair against the requested one with `p` excluded, and
  * `searchCore.page` must be the requested number rather than merely a number.
  *
- * The rows come from the items API, which the document's own `searchCore` and
+ * The listings come from the items API, which the document's own `searchCore` and
  * `context` address: the SSR catalog carries only its first twenty cards in
  * full, and the same page through the API is complete on all fifty (F-089).
  */
@@ -19,8 +19,8 @@
 import { ArgumentError, CommandExecutionError, EmptyResultError } from '../runtime/errors.mjs';
 import { defineCommand } from '../runtime/command.mjs';
 import { CATALOG_DOCUMENT } from '../schemas/document.mjs';
-import { LISTING_ROW, applyReservedFilter, listingRows } from '../site/listing.mjs';
-import { catalogRows } from '../site/card.mjs';
+import { LISTING_ITEM, LISTING_ITEM_TYPE, applyReservedFilter, listingItems } from '../site/listing.mjs';
+import { catalogItems } from '../site/card.mjs';
 import {
   CATALOG_KEYS,
   primeOrigin,
@@ -38,6 +38,7 @@ import {
   preservedParamsDrift,
   sealItemsApiUrl,
 } from '../site/items.mjs';
+import { idString, searchUrl as searchUrlField, text, z } from '../runtime/schema.mjs';
 import { cleanText, comparableText } from '../site/text.mjs';
 import { answeredUrl, requestedSearchUrl } from '../site/url.mjs';
 
@@ -71,18 +72,39 @@ function sameList(left, right) {
   return left.length === right.length && left.every((value, index) => value === right[index]);
 }
 
+const OUTPUT = z.strictObject({
+  query: text().nullable(),
+  locationId: idString(),
+  locationName: text(),
+  page: z.number().int().positive(),
+  searchUrl: searchUrlField(),
+  items: z.array(LISTING_ITEM),
+});
+
+const OUTPUT_TYPE = `type Output = {
+  query: string | null;   // the search this page belongs to; null on a plain category browse
+  locationId: string;     // digits only
+  locationName: string;
+  page: number;           // the page Avito served, proved against its own state before decoding
+  searchUrl: string;      // canonical URL of this page
+  items: Item[];
+};
+
+${LISTING_ITEM_TYPE}`;
+
 export default defineCommand({
   name: 'get-page',
-  description: 'Get another result page of a search URL. Returns the same listing columns as avito search',
+  description: 'Get another result page of a search URL. Returns the same listing fields as avito search',
   access: 'read',
-  example: 'avito get-page <searchUrl> --page 2 -f json',
+  example: 'avito get-page <searchUrl> --page 2',
   domain: 'www.avito.ru',
   args: [
     { name: 'searchUrl', type: 'string', required: true, positional: true, help: 'Search URL from avito search, apply-filters or move-category, with every filter already applied to it' },
     { name: 'page', type: 'int', required: true, help: 'Positive result-page number' },
     { name: 'remove-reserved', type: 'bool', default: false, help: 'Drop the listings Avito marks as reserved; Avito has no server-side filter for them, so the page comes back shorter' },
   ],
-  row: LISTING_ROW,
+  output: OUTPUT,
+  type: OUTPUT_TYPE,
   run: async (page, args) => {
     const sourceUrl = new URL(requestedSearchUrl(args.searchUrl));
     const requestedPage = normalizePage(args.page);
@@ -145,7 +167,7 @@ export default defineCommand({
     const api = await readCatalogPage(page, apiUrl, document.responseUrl, COMMAND);
 
     // Nothing about the page may change on the way to the second carrier: the
-    // document already named the search, and the API is being asked for its rows.
+    // document already named the search, and the API is being asked for its listings.
     const driftedField = preservedCoreDrift(documentCore, api.searchCore, [
       ...PRESERVED_CORE_FIELDS, 'locationId', 'metroId', 'districtId',
     ]);
@@ -168,16 +190,20 @@ export default defineCommand({
       throw new CommandExecutionError('Avito items API returned an unexpected page number in its URL');
     }
 
-    const decodedRows = catalogRows(api.catalog);
-    if (decodedRows.length === 0) {
+    const decoded = catalogItems(api.catalog);
+    if (decoded.length === 0) {
       throw new EmptyResultError(COMMAND, 'The requested Avito result page has no listings');
     }
 
     // The document's canonical URL, not the API's: this is the URL the next
     // command pages, and the API answers about a route rather than to one.
-    return listingRows(
-      applyReservedFilter(decodedRows, removeReserved, COMMAND),
-      resultUrl.href,
-    );
+    return {
+      query: cleanText(documentCore.query) || null,
+      locationId: String(locationId),
+      locationName: searchLocation,
+      page: requestedPage,
+      searchUrl: resultUrl.href,
+      items: listingItems(applyReservedFilter(decoded, removeReserved, COMMAND)),
+    };
   },
 });

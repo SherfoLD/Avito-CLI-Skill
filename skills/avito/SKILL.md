@@ -10,9 +10,10 @@ Ten read-only commands over the user's own Chrome. **You call the CLI.** You do
 not open pages, inject scripts, assemble requests or decode responses — every
 command already does that, with the guards that make its answer trustworthy.
 
-The output is already JSON — a plain array of rows, one element per result, and
-an array even when a command returns exactly one. `-f table` is the option, for
-showing a person; `avito <command> --help` prints the type of the rows.
+The output is already JSON, and it is always **one object**. A command that
+returns several of something answers with an envelope plus a list: what is true
+of the whole answer sits at the top level, and only what differs between the
+results sits inside them. `avito <command> --help` prints the exact type.
 
 ## Before the first command
 
@@ -43,70 +44,82 @@ click it the connection simply waits.
 
 ## The chain
 
-State travels in one carrier: the canonical `searchUrl`, which every listing row
-repeats. Take it from a row and hand it to the next command.
+State travels in one carrier: the canonical `searchUrl`, at the top level of
+every answer that has one. Take it from there and hand it to the next command.
 
 ```
-avito get-location "Тверь"                          → locationId
-avito search "ddr5 32gb" --location-id 637640       → rows + searchUrl
-avito get-filters <searchUrl>                       → keys, options, what is applied
-avito apply-filters <searchUrl> --set 'price=1000..5000'  → rows + a new searchUrl
+avito get-location "Тверь"                          → locations[].locationId
+avito search "ddr5 32gb" --location-id 637640       → searchUrl + items[]
+avito get-filters <searchUrl>                       → filters[]: keys, options, what is applied
+avito apply-filters <searchUrl> --set 'price=1000..5000'  → a new searchUrl + items[]
 avito get-page <searchUrl> --page 2                 → the next page
 avito get-item <url> --images-dir <dir>             → full text, and the photos as files
 ```
 
+The four listing commands also state, at the top level, the region Avito actually
+searched (`locationId`, `locationName`) and the query it actually ran (`query`,
+`null` where the text dissolved into a category). Avito substitutes both
+silently, so read them rather than assuming the request was honoured.
+
 One ordering rule: `apply-filters` and `move-category` accept page 1 only and
 refuse a URL carrying `p=<n>`. So filters and category first, depth after.
 
-`get-categories` answers with the whole sidebar tree: `depth` and `parent` say
-where a row hangs, and `navigable` says whether the row has a route to move to
-at all — a branch heading is a destination like any other, and what is never one
-is the category the search is already in. `move-category` takes a row that is
-`navigable` **and** `preservesQuery: true`; it refuses the rest with the reason.
-When Avito could not place a query in any category at all, several rows come
-back with `current: true`: those are the candidate groups it drew instead, and
-moving into one of them is how you choose.
+`get-categories` answers with the whole sidebar tree in `categories`: `depth` and
+`parent` say where an entry hangs, and `navigable` says whether it has a route to
+move to at all — a branch heading is a destination like any other, and what is
+never one is the category the search is already in. `move-category` takes an
+entry that is `navigable` **and** `preservesQuery: true`; it refuses the rest
+with the reason. When Avito could not place a query in any category at all,
+several entries come back with `current: true`: those are the candidate groups it
+drew instead, and moving into one of them is how you choose.
 
 ## The commands
 
 | Command | Subject | Gives you |
 |---|---|---|
-| `search <query>` | a query | the first page, plus the `searchUrl` everything else takes. Geo lives here: `--location-id`, `--metro`, `--district`, `--coords`, `--radius` |
+| `search <query>` | a query | the first page in `items`, plus the `searchUrl` everything else takes. Geo lives here: `--location-id`, `--metro`, `--district`, `--coords`, `--radius` |
 | `get-page <searchUrl> --page <n>` | a search URL | another page of the same search |
 | `get-filters <searchUrl>` | a search URL | every filter you can apply here, with its values and what is already set |
 | `apply-filters <searchUrl> --set <selections>` | a search URL | the narrowed listing and a new `searchUrl` |
 | `get-categories <searchUrl>` | a search URL | where you can move from here; feed a `name` into `move-category` |
 | `move-category <searchUrl> --to <name>` | a search URL | the listing in another category |
-| `get-item <url>` | a listing URL | the full description, a service's price table, and the original photos written to a directory you name |
-| `get-seller-reviews <itemUrl>` | a listing URL | the seller's review feed |
-| `get-location <query>` | a city or region name | the location ID `search` needs, and metro/district IDs |
+| `get-item <url>` | a listing URL | the listing itself, flat: the full description, a service's price table, and the original photos written to a directory you name |
+| `get-seller-reviews <itemUrl>` | a listing URL | the seller's review feed in `reviews`, with `sellerReviewsCount` at the top level |
+| `get-location <query>` | a city or region name | `locations` with the ID `search` needs, and `geo` with metro/district IDs |
 | `get-coords <address>` | an address | the coordinate pair `--coords` needs |
 
-Run `avito <command> --help` for the arguments and for the row type it answers
-with. That is the contract; this file does not restate it — what follows is only
-what a type cannot say.
+Run `avito <command> --help` for the arguments and for the type it answers with.
+That is the contract; this file does not restate it — what follows is only what a
+type cannot say.
 
 ## Reading the output
 
-**A listing row is a card, not a listing.** `descriptionPreview` is text Avito
-already truncated for the card, and `imageCount` is a number of photos, not the
-photos. Both are complete only in `get-item`, and neither can be derived from a
-row.
+**An entry in `items` is a card, not a listing.** `descriptionPreview` is text
+Avito already truncated for the card, and `imageCount` is a number of photos, not
+the photos. Both are complete only in `get-item`, and neither can be derived from
+a card.
 
-**Some pages arrive complete for twenty rows and thin for the other thirty.**
+**Some pages arrive complete for twenty entries and thin for the other thirty.**
 `get-page`, `move-category` and a `search` with no geo argument read the page
 Avito renders, and it carries only its first twenty cards in full: after that
-`descriptionPreview`, `location`, `sellerName` and `imageCount` are `null` — not
-because the listing lacks them, but because the page did not carry them.
-`itemId`, `title`, `price`, `published` and the URL are on every row regardless.
-A `search` with `--location-id` (or another geo argument) and `apply-filters` go
-through a different source and return all fifty complete, so narrowing a search
-also thickens it. If a thin row matters, open it with `get-item`.
+`descriptionPreview`, `sellerName` and `imageCount` are `null` — not because the
+listing lacks them, but because the page did not carry them. `itemId`, `title`,
+`price`, `published` and the URL are on every entry regardless. A `search` with
+`--location-id` (or another geo argument) and `apply-filters` go through a
+different source where those three are filled on all fifty, so narrowing a search
+also thickens it. If a thin entry matters, open it with `get-item`.
 
-**`searchUrl` tells you what you actually got.** Avito canonicalises any query
-into a category route, and sometimes the text query dissolves into that category
-entirely. So a result is not guaranteed to be a text match for what you asked;
-read `searchUrl` to see whether you received a search or a category.
+**`location` is not part of that split, and it is usually `null`.** It is the geo
+line Avito draws on the card — a metro station with walking time, or a city — and
+most cards do not have one: 45 of 50 on a live page that was complete in every
+other field. Read `null` there as "this card shows no place", never as a thin
+page or a lost field. The listing's real address is only on the listing itself.
+
+**`query` and `searchUrl` tell you what you actually got.** Avito canonicalises
+any query into a category route, and sometimes the text query dissolves into that
+category entirely — that is what `query: null` means. So a result is not
+guaranteed to be a text match for what you asked; read both before treating the
+listings as answers to your words.
 
 **`price` is a price or it is `null`** — it is never a teaser. On services Avito
 usually advertises a floor or a whole price list, and neither is what the work
@@ -116,18 +129,18 @@ costs, so:
   work costs — it printed «от 500 ₽», or it priced the listing by a table and put
   one number on the card. Treat it as a starting point, never as a price.
 - `hasPriceList: true` means that table exists. `get-item` returns it as
-  `priceList`; the row does not carry it, because the copy search holds can be
-  out of date.
+  `priceList`; a card does not carry it, because the copy search holds can be out
+  of date.
 - both `null` means Avito printed a phrase — «Цена договорная». `price: 0` is not
   that: it means the listing really is free.
 
-One thing the row still does not tell you: whether a number is a rate. «150 ₽ за
+One thing a card still does not tell you: whether a number is a rate. «150 ₽ за
 м²» arrives as `price: 150` like any other 150, so on services do not compare
 prices across listings without opening them.
 
-**`published` is an exact instant** (ISO 8601, UTC) in a listing row.
-`publishedText` in `get-item` is Avito's rendered string — no year, no seconds,
-Moscow time. If you need the date as a value, use the row.
+**`published` is an exact instant** (ISO 8601, UTC) on a card. `publishedText` in
+`get-item` is Avito's rendered string — no year, no seconds, Moscow time. If you
+need the date as a value, use the card.
 
 **A `null` the type allows is Avito withholding, not a gap in the decoding.**
 `sellerName` is null for private sellers when the browser session is not logged
@@ -140,7 +153,7 @@ one: a photo URL is a binary you have no way to open. `get-item` writes the file
 instead.
 
 ```
-avito get-item <url> --images-dir /tmp/<your-own-dir> -f json
+avito get-item <url> --images-dir /tmp/<your-own-dir>
 ```
 
 Pass a directory of your own that already exists, given as an absolute path — a
@@ -149,12 +162,12 @@ temporary one you made for this task is exactly right. The command creates
 order, so photos of different listings never mix, and puts the absolute paths in
 `images`. They are ordinary JPEGs; open them the way you open any local image.
 
-Two columns say two different things:
+Two fields say two different things:
 
-- `imageCount` — how many photos the listing has. Every listing row carries it,
-  and so does `get-item`, whether or not you asked for the files. In a listing
-  row `null` is not zero: it means the page did not carry that card's photo block
-  (see the twenty/thirty split above). `get-item` always reads the count.
+- `imageCount` — how many photos the listing has. Every card carries it, and so
+  does `get-item`, whether or not you asked for the files. On a card `null` is not
+  zero: it means the page did not carry that card's photo block (see the
+  twenty/thirty split above). `get-item` always reads the count.
 - `images` — the files that were written. `null` means you did not pass
   `--images-dir`, an empty list means the listing has no photos, and otherwise
   it is one path per photo.
@@ -179,7 +192,7 @@ avito apply-filters <searchUrl> --set 'price=1000..5000;params[112691]=757883,75
   optional ends, and `key=` with no value clears it.
 - Pass every filter you want in **one** call. Chaining does not accumulate values
   of the same filter — the second call replaces the first.
-- A range's `options` column tells you what its bounds are: empty means numbers,
+- A range's `options` tells you what its bounds are: empty means numbers,
   non-empty means you pick from those values.
 - A word containing `,` or `;` cannot be expressed in this grammar.
 - After `move-category`, re-read `get-filters`: the previous category's keys are
@@ -189,7 +202,7 @@ avito apply-filters <searchUrl> --set 'price=1000..5000;params[112691]=757883,75
 
 `--remove-reserved` drops the listings Avito marks as reserved. Avito has no
 server-side filter for it, so the page simply comes back shorter, and nothing in
-the output says which rows were dropped.
+the output says which were dropped.
 
 It is **per call**. If you want reserved listings gone, pass it to every command
 in the chain — `search`, `get-page`, `apply-filters`, `move-category`. A missed
@@ -228,8 +241,8 @@ wrong reason for a refusal. Read them as "expected here", not as something to
 retry through.
 
 - **`get-page` past the last page of results** reports a CAPTCHA or a rate-limit
-  cooldown when it usually means there is no such page. Check the row count of
-  the page you have before asking for the next one.
+  cooldown when it usually means there is no such page. Check how many `items` the
+  page you have came back with before asking for the next one.
 - **Real estate**: `get-filters` refuses the whole category when Avito ships a
   named filter without a name — flat rentals and garages are the confirmed
   routes. Search itself works; narrowing does not.

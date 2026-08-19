@@ -22,28 +22,29 @@ the implementation drifts. Nothing here is a copy of the code.
   to make a test pass is a fact deleted.
 - `run.mjs` — the suite list. A new suite is added here or it does not run, and
   a suite named here but absent fails the run rather than being skipped.
-- `harness.mjs` — `loadCommand`, `assertRows` / `assertRow` and the check runner.
-  `assertRows` parses what a command returned through the schema it declares —
+- `harness.mjs` — `loadCommand`, `assertOutput` and the check runner.
+  `assertOutput` parses what a command returned through the schema it declares —
   the same parse `bin/avito.mjs` runs before printing — so a suite cannot pass on
-  a row a caller would never be given. The `exportNames` argument of
+  an answer a caller would never be given. The `exportNames` argument of
   `loadCommand` is a check in its own right: the suites name the helpers they
   cover, so the boundary between the node half and the browser half fails loudly
   if an export moves.
-- `schema.test.mjs` — the row contract itself: a non-strict, oversized, nested or
-  snake_case row is refused at definition time, an undeclared or undefined column
-  ends the call, and `decode` names the path that drifted. Then the same contract
-  turned outward: the type `--help` prints carries the nullability, the lists and
-  the bounds, and no column of any command comes back undescribed (D-053).
+- `schema.test.mjs` — the output contract itself: a non-strict, oversized, too
+  deeply nested or snake_case answer is refused at definition time — at every
+  level, not only the top — an undeclared or undefined field ends the call, and
+  `decode` names the path that drifted. Then the same contract turned outward:
+  every name the schema declares is printed by the `type` the command hands to
+  `--help` (D-053).
 - `lint-rules.test.mjs` — the four repository ESLint rules, each given the code
   it must refuse and the honest code it must ignore. `npx eslint .` reporting
   nothing is only good news if the rules can report something.
-- `verify-fixtures.test.mjs` — everything about the live fixtures that can be
-  checked without a browser: that each one loads and names columns its command
-  returns, that a fixture constraining nothing is refused, and that the matcher
-  reports the row and the column rather than passing them.
-- `card.test.mjs` — the catalog decoder: one Avito card against the fourteen
-  columns four commands declare, and every place a payload stops the call rather
-  than becoming a plausible row — a photo list that is not a list, a stamp in
+- `expectations.test.mjs` — everything about the live expectations that can be
+  checked without a browser: that each one loads and names fields its command
+  returns at the path it names them, that one constraining nothing is refused,
+  and that the matcher reports the path rather than passing it.
+- `card.test.mjs` — the catalog decoder: one Avito card against the thirteen
+  fields four commands declare, and every place a payload stops the call rather
+  than becoming a plausible listing — a photo list that is not a list, a stamp in
   seconds, a price table in an unknown shape, an item URL that does not end in
   its own id.
 - `search.test.mjs` — the Node half of `search`: navigation budget, the
@@ -68,10 +69,10 @@ the implementation drifts. Nothing here is a copy of the code.
   not apply.
 - `get-filters.test.mjs` — the only suite that is entirely Node-side, because
   the command is: the page half fetches one document and everything that
-  decides what a filter is happens outside the page. It pins which keys become
-  rows at all, the syntax each advertises, and the applied value written in that
-  same syntax.
-- `get-categories.test.mjs` — the failure paths a fixture cannot reach: a node
+  decides what a filter is happens outside the page. It pins which keys are
+  returned at all, the syntax each advertises, and the applied value written in
+  that same syntax.
+- `get-categories.test.mjs` — the failure paths a live expectation cannot reach: a node
   whose state contradicts its type, two current categories at once, a URL off
   the site. You cannot ask Avito for a malformed sidebar.
 - `get-location.test.mjs` — the rules that stop a plausible wrong answer:
@@ -82,7 +83,7 @@ the implementation drifts. Nothing here is a copy of the code.
   geocoder, plus the source-text check that the primed origin is never scanned
   for a challenge (F-044).
 - `move-category.test.mjs` — the sidebar walk and the postconditions of a move:
-  a name that is not a navigable row is refused with the names that are, and the
+  a name that is not a navigable category is refused with the names that are, and the
   city and the query must survive a move that is allowed to change the filters.
 
 - `get-seller-reviews.test.mjs` — the two-request flow, the sort confirmed
@@ -96,12 +97,12 @@ change is a contract change with a `D-0xx` number, not a test edit.
 
 Failure paths, mostly. You cannot ask Avito for a malformed response, a `429` or
 a challenge on demand, so those live here — along with the navigation budget
-(how many requests, and which), the declared contract against a returned row,
+(how many requests, and which), the declared contract against a real answer,
 and the shapes that are legitimately strange: a card with no photos, a private
 seller with no identity but a live rating, a review with no score.
 
 What a suite cannot do is prove a value is correct. A synthetic carrier contains
-what you put into it. That is what `verify/` and comparing against the visible
-page are for.
+what you put into it. That is what `expectations/` and comparing against the
+visible page are for.
 
 Guidance: [.agents/skills/write-command/references/offline-suites.md](../.agents/skills/write-command/references/offline-suites.md).

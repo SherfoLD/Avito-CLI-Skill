@@ -8,7 +8,7 @@
  * whose decisions and observations have nowhere to live and will be rediscovered
  * from scratch.
  *
- * Membership only: flags and columns live in the descriptor, never in markdown.
+ * Membership only: flags and output fields live in the descriptor, never in markdown.
  *
  * Usage: node scripts/check-doc-coverage.mjs
  */

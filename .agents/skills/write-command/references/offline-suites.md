@@ -6,7 +6,7 @@ exercise a failure path — you cannot ask Avito for a malformed response.
 
 What they cannot do is tell you a value is correct. A synthetic carrier contains
 what you put in it, so a decoder reading the wrong field passes happily. That is
-what the verify fixtures and comparing against the page are for.
+what the live expectations and comparing against the page are for.
 
 ## The pieces
 
@@ -26,13 +26,13 @@ suite drives the whole command — both halves — over one set of routes and ca
 read back every URL that was asked for, in order.
 
 `tests/harness.mjs` loads a command with its runtime stubbed, provides the small
-check runner, and offers `assertRows` / `assertRow` — which parse what a command
-returned through the schema it declares. That is the same parse `bin/avito.mjs`
-runs before printing, so a suite cannot pass on a row a caller would never be
+check runner, and offers `assertOutput` — which parses what a command returned
+through the schema it declares. That is the same parse `bin/avito.mjs`
+runs before printing, so a suite cannot pass on an answer a caller would never be
 given. `failureOf(call)` returns the error a call threw, or null.
 
-Keep the carrier complete enough to satisfy it. A synthetic row missing a field
-the real decoder always sets describes a row no decoder produces, and the suite
+Keep the carrier complete enough to satisfy it. A synthetic card missing a field
+the real decoder always sets describes data no decoder produces, and the suite
 built on it proves nothing about the command.
 
 `tests/schema.test.mjs` and `tests/lint-rules.test.mjs` exercise the checking
@@ -59,7 +59,7 @@ in the decoder's own suite: `card.mjs` is read by four commands, and four suites
 asserting the same card is four places to edit when a card changes.
 
 **Every typed error path.** A `429`. A challenge. A missing bootstrap. A
-postcondition that does not hold. A page where every row is filtered out. These
+postcondition that does not hold. A page where every listing is filtered out. These
 are most of the value: they are cheap here and expensive or impossible live.
 
 **The shapes that are legitimately weird.** A card with no photos yields an empty
@@ -76,7 +76,7 @@ only true if nothing went out.
   you ignore is a spare failure mode. When breadcrumbs stopped being read, their
   shape checks went too — and the synthetic carrier now ships a deliberately
   malformed breadcrumb list to prove nothing looks at it.
-- **Restate a value the fixture already pins.** Duplication between layers rots.
+- **Restate a value the expectation already pins.** Duplication between layers rots.
 - **Get weakened to go green.** An assertion is right until proven otherwise. If
   one is genuinely in the way, the thing that changed is the contract, and that
   is a decision with a `D-0xx` number, not an edit.
@@ -97,9 +97,9 @@ weird shapes.
 
 `linkedom` gives a DOM outside a browser, so a decoder that walks HTML can be
 exercised here rather than only live. Where a suite needs a real page, freeze the
-HTML into a committed fixture rather than fetching it.
+HTML into a committed sample rather than fetching it.
 
-A committed HTML fixture is a review artefact, not a scratch dump, so it holds a
+A committed HTML sample is a review artefact, not a scratch dump, so it holds a
 higher bar than a raw sample: trim it to what the assertion needs, strip anything
 session-bound, and then reverse-validate — break the decoder deliberately and
 confirm the suite goes red. A regression guard nobody has seen fail is a guard

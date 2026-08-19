@@ -2,7 +2,7 @@
 
 Confirmed live: 2026-08-19
 
-What belongs to no single command: transport, carriers of state, the shared row
+What belongs to no single command: transport, carriers of state, the shared listing
 decoder, output shape, repository rules. Anything command-specific is in that
 command's domain file.
 
@@ -42,7 +42,7 @@ answers what is fixed (D-063):
 | Carrier | Answers | Read by |
 |---|---|---|
 | SSR document | the search: `searchCore`, `filtersV2`, the sidebar, the canonical URL | all four, first |
-| items API `/web/1/js/items` | the rows, all fifty complete | all four, second |
+| items API `/web/1/js/items` | the listings, all fifty complete | all four, second |
 
 The API is not addressable on its own — it is asked in the terms of a
 `searchCore` only a document has (F-090) — so this is not a carrier swap. It is
@@ -53,7 +53,7 @@ After hydration the live DOM **does not contain** the document carrier — neith
 `script[data-mfe-state]` nor `searchCore`. The schema cannot be read from a
 loaded document, only from a separate same-origin SSR fetch.
 
-## Row decoder
+## Listing decoder
 
 One decoder serves `search`, `get-page`, `apply-filters` and `move-category`, so
 its drift breaks all four at once.
@@ -71,10 +71,10 @@ carrying no step stops the call, because the flat price is a different quantity
 and the flat description is a second copy (D-070). The location is the one field
 with two live carriers and reads from whichever the card has, so drift there is
 still a wrong meaning rather than a refusal — and the only automatic defence is
-the mandatory non-empty `descriptionPreview` in the strict fixtures, which does
+the mandatory non-empty `descriptionPreview` in the strict expectations, which does
 not reach it.
 
-## Where a payload becomes a row
+## Where a payload becomes an answer
 
 A catalog page crosses the page boundary raw and is decoded in Node
 (`src/site/card.mjs`, D-065). What stays in the page is the fetch chain — the
@@ -84,18 +84,27 @@ before it and every read has to be same-origin.
 
 ## Output shape
 
-The listing row is 14 keys, one schema — `LISTING_ROW` in
-`src/site/listing.mjs`, imported by `search`, `get-page`, `apply-filters` and
-`move-category` (D-048). The keys themselves are in `--help`, printed from the
-schema (D-053).
+Every command answers with **one JSON object**, declared as `output` in its
+descriptor and parsed through it before printing (D-048). There is no `--format`:
+the output is JSON and nothing else.
 
-- 16 keys is the ceiling (D-054), checked against the schema when the module is
-  imported. What a column holds is the schema's own business — the runtime
-  refuses no shape a column declares.
-- `searchUrl` repeats in every row: the output is an array of rows with no
-  metadata envelope.
+An answer that returns several of something is an envelope plus a list. What is
+one fact about the whole answer sits on the envelope — the `searchUrl`, the
+effective `locationId` and `locationName`, the confirmed `page` — and what
+differs between the things returned sits inside them (D-073). `search`,
+`get-page`, `apply-filters` and `move-category` share the element:
+`LISTING_ITEM` in `src/site/listing.mjs`, 13 fields, one schema.
+
+- 40 declared fields is the ceiling and 3 objects is the depth ceiling (D-074),
+  both checked against the schema when the module is imported. Within them, what
+  a field holds is the schema's own business.
+- `strictObject` at **every** level: an undeclared key is a failure, not a value
+  a caller was never told about.
 - Page size belongs to Avito (50 listings, 25 reviews). No command has a count
   argument.
+
+`--help` prints the answer as TypeScript, from the descriptor's `type` — written
+by hand, and held in step with the schema by `npm run check:commands` (D-053).
 
 ## Decisions
 
@@ -106,45 +115,45 @@ schema (D-053).
 - **D-004 — evidence before implementation.** Network logic is not written until
   the command has fresh evidence with a replay.
 - **D-005 — no secrets stored.** Cookies, tokens and personal fields enter
-  neither the repository, nor the fixtures, nor the logs.
+  neither the repository, nor the expectations, nor the logs.
 - **D-016 — seller type is not derived.** A live `--seller company` response
   carried a `/user/.../profile` link, so the seller's route does not encode their
-  type, and a column that guessed it would be guessing on every row.
+  type, and a field that guessed it would be guessing on every listing.
 - **D-020 — `price` is the price with bonuses**, the number Avito prints large on
   the card. The owner's decision. The base price is not exposed as its own
-  column. `get-item` is outside this decision — the listing page has its own
+  field. `get-item` is outside this decision — the listing page has its own
   price semantics and it already agrees (F-043).
 - **D-022 — a command returns Avito's whole page.** `--limit` was removed
   everywhere: the request was paid for in full regardless, and the argument only
-  threw away rows already received. The price of the decision is that fixtures no
-  longer pin an exact row count (`1..50`, `1..25`), so a fixture alone will not
-  catch rows appearing or going missing.
+  threw away listings already received. The price of the decision is that an
+  expectation no longer pins an exact count (`1..50`, `1..25`), so it alone will
+  not catch listings appearing or going missing.
 - **D-023 — a photo size is never named in code.** Take the largest variant whose
   key parses as `<width>x<height>`; a record with no such key stops the command.
-  Hardcoding `208x208` would produce `images: []` on every row the day the key is
+  Hardcoding `208x208` would produce `images: []` on every listing the day the key is
   renamed — indistinguishable from a listing with no photos. One decoder is left
   holding this rule, `decodeItemImages` in `src/site/item.mjs`; the
-  listing row and the review feed stopped reading photo URLs at all (D-061).
+  listing item and the review feed stopped reading photo URLs at all (D-061).
 - **D-028 — `sellerName` is nullable** in all five commands that return it.
   `null` means "Avito did not send a name", not "there is no seller". The name is
   left exactly as Avito sent it, placeholder `Пользователь` included.
-- **D-029 — `imagesPreviews`, not `images`**, in the listing row while it carried
+- **D-029 — `imagesPreviews`, not `images`**, in the listing item while it carried
   photo URLs at all; `images` stayed with the full gallery. One name over both
   catalog previews (`636x636`) and originals (`1280x960`) was the mistake being
-  avoided, and D-061 removed the second name along with the column.
+  avoided, and D-061 removed the second name along with the field.
 - **D-062 — a count of zero is only ever Avito's zero.** `imageCount` is `null`
   where the card carries no `images` key at all, which is every card past the
   twentieth of a deep page (F-089), and `0` only where Avito sent an empty list.
-  Collapsing the two would have put a plausible wrong number in every row of the
+  Collapsing the two would have put a plausible wrong number in every listing of the
   tail of every deep page — the exact failure the rule about fallback values
   exists to prevent.
-- **D-061 — photos live in one command, and the listing row counts them.**
-  `imagesPreviews` was five opaque URLs on each of fifty rows — the largest single
+- **D-061 — photos live in one command, and the listing item counts them.**
+  `imagesPreviews` was five opaque URLs on each of fifty listings — the largest single
   contribution to the payload of every search, and nothing an agent could open.
-  The column became `imageCount`, `get-seller-reviews` lost its `images`
+  The field became `imageCount`, `get-seller-reviews` lost its `images`
   entirely, and the originals are files written by `get-item --images-dir`
   (D-059). Counting reads no URL, which is what reopened résumés (F-087): the
-  refusal that disabled them lived inside the row decoder's photo reader.
+  refusal that disabled them lived inside the listing decoder's photo reader.
 - **D-031 — the surface is built for a consuming agent.** Grounds: real agents
   used two commands out of nine, navigating by `description` alone. Hence the
   verb-shaped names of all ten commands, one carrier of state (the canonical
@@ -155,18 +164,18 @@ schema (D-053).
   were deleted unmeasured on the owner's instruction: the value was chosen by the
   owner rather than by Avito, and no measurement had been made in two days. Only
   the backoff before the single bootstrap-recovery retry in `search` remains.
-- **D-038 — `sellerId` removed from all five commands.** The column was pure
+- **D-038 — `sellerId` removed from all five commands.** The field was pure
   output: no command grouped by it, built a URL from it, or checked a
   postcondition with it, and the review feed travels by a third identifier
-  (F-046). Five copies of the seller-route decoder left with the column — that is,
+  (F-046). Five copies of the seller-route decoder left with the field — that is,
   a whole failure class that belonged to the seller rather than to the category
   (F-057) and that killed an entire call over one card. `sellerName` /
   `sellerRating` / `sellerReviewsCount` stayed: they come from the same payload
   but with their own checks.
-- **D-039 — publication date: `published` in the listing row, `publishedText` in
+- **D-039 — publication date: `published` in the listing item, `publishedText` in
   `get-item`.** Two names, because these are two different quantities, and one
   name over both would repeat the `images` / `imagesPreviews` mistake (D-029). In
-  the row: the exact moment from `sortTimeStamp`, ISO 8601 in UTC
+  the listing: the exact moment from `sortTimeStamp`, ISO 8601 in UTC
   (`2026-08-13T23:15:41Z`) — Avito sends no offset and prints everything in Moscow
   time, so the hour is left to the consumer rather than written into the contract.
   In `get-item`: Avito's own string as-is (`14 августа в 02:15`); parsing it into a
@@ -175,7 +184,7 @@ schema (D-053).
   after removing one was not worth it; an impossible timestamp shape still stops
   the call.
 - **D-026 — the evidence layer is versioned.** What lives there is not draft
-  reconnaissance but `verify/` — the only value-level check there is — and the
+  reconnaissance but `expectations/` — the only value-level check there is — and the
   anonymised response samples in `evidence/`, which is what makes "Avito changed"
   demonstrable rather than assumed. Excluded by `.gitignore`: `evidence/traces/`
   (416 MB, and they may carry session headers), HTML dumps, logs, `.env`, `*.har`.
@@ -223,30 +232,21 @@ schema (D-053).
   `get-location --geo districts` because it lists them — so the shared lookup
   accepts both spellings and says so.
 
-- **D-048 — the row contract is a schema, checked where a row exists.** It used
-  to be written in three places and enforced in none of them at the moment a row
-  was produced: the `columns` array named the keys, `verify/<command>.json`
-  repeated them with their types and formats, and a 563-line static audit read
-  source text through a hand-written tokenizer to guess which object literal was
-  a row. Now each descriptor carries `row: z.strictObject({...})`, `columns` is
-  derived from it, and `bin/avito.mjs` and `tests/harness.mjs` parse every row
-  through it. What that changed, beyond deleting three scripts and both
-  baselines:
-  - an undeclared key is a failure instead of a value that appears in `-f json`
-    and disappears in `-f table`;
-  - a column present with the value `undefined` is a failure, where the old
-    key-count check counted it as present — two synthetic carriers were doing
-    exactly that with `published`, and `JSON.stringify` would have dropped the
-    column;
-  - the four listing commands share one `LISTING_ROW` in `src/site/listing.mjs`,
-    along with the `api*` mapping and the reservation filter that had been
-    copy-pasted into all four;
-  - `verify/*.json` keeps only what is true of *its own request* — the address
-    `get-coords` resolved, the page number in `get-page`'s `searchUrl` — because
-    everything general is now checked on every run rather than on a live one;
-  - Avito's own payloads are read with the same schemas through `decode`, so
-    drift names the path (`point.latitude: expected number, received string`)
-    instead of saying "has an unexpected shape".
+- **D-048 — the output contract is a schema, checked where the answer exists.**
+  Each descriptor carries `output: z.strictObject({...})` and nothing else names
+  the shape: `bin/avito.mjs` and `tests/harness.mjs` parse the whole answer
+  through it, and `decode` reads Avito's own payloads with the same machinery, so
+  drift names the path (`point.latitude: expected number, received string`)
+  instead of saying "has an unexpected shape". What that buys:
+  - an undeclared key is a failure at every level, not a value a caller was never
+    told about;
+  - a field present with the value `undefined` is a failure, where a key-count
+    check counts it as present and `JSON.stringify` then drops it;
+  - the four listing commands share one `LISTING_ITEM` in `src/site/listing.mjs`,
+    along with the `api*` mapping and the reservation filter;
+  - `expectations/` keeps only what is true of *its own request* — the address
+    `get-coords` resolved, the page number `get-page` confirmed — because
+    everything general is checked on every run rather than on a live one.
   What a schema cannot say stayed code: an echo is still not an application, so
   every postcondition is still an explicit comparison against the carrier that
   proves the value took effect. And what could be neither — an argument bent into
@@ -258,7 +258,7 @@ schema (D-053).
   The card decoder used to run in the page, where a serialized function carries
   no imports and every shape check is hand-written. It now runs in Node against
   `CATALOG_ITEM`, and the page returns `catalog` as Avito sent it. Measured on a
-  50-card page: 559 KB raw against 33 KB of decoded rows, ~35 ms against ~7 ms
+  50-card page: 559 KB raw against 33 KB of decoded listings, ~35 ms against ~7 ms
   for the return trip through the broker — against two Avito fetches of seconds,
   which is what makes the raw carrier affordable at all.
   What that buys is one place where a schema can name the path that drifted
@@ -358,11 +358,11 @@ schema (D-053).
   The page names nothing: `readDocumentState` copies the top-level state keys the
   node half asked for and interprets none of them. That list is what keeps a
   document read from shipping an SSR catalog nobody reads — the four catalog
-  commands take their rows from the API, and `search` reads two documents.
+  commands take their listings from the API, and `search` reads two documents.
   It costs one extra `evaluateWithArgs` per catalog command, about 7 ms on a small
   return, against two Avito fetches of seconds.
 
-- **D-070 — where a card has one carrier, its absence is drift.** The row
+- **D-070 — where a card has one carrier, its absence is drift.** The listing
   decoder used to answer from the flat item wherever an `iva` step was missing,
   which is a fallback value in the one place this repository forbids one: the
   flat `priceDetailed` is the base price, a different number from the printed one
@@ -383,7 +383,7 @@ schema (D-053).
 
 - **D-071 — one walk over the category sidebar, and one rule for a URL Avito
   answered with.** `get-categories` and `move-category` differ in what they do
-  with a sidebar row, not in what a row is, and the traversal around
+  with a sidebar node, not in what a node is, and the traversal around
   `SIDEBAR_NODE` was written twice: the depth bound, the node count, the role and
   the route check, with a uniqueness rule only one of the two held. `sidebarWalk`
   in `src/site/rubricator.mjs` is the one walk now, and it yields a node with the
@@ -397,9 +397,9 @@ schema (D-053).
 - **D-072 — the near-miss block is not a result, and is not read.** Avito
   appends `catalog.extraBlockItems` when a search runs short: a placeholder
   naming what it relaxed, then cards from other regions or of other makes
-  (F-094). The row decoder used to concatenate that list with `catalog.items`,
+  (F-094). The listing decoder used to concatenate that list with `catalog.items`,
   so a search for one thing in one city answered with another thing in another
-  city, in the same shape and with no column between them — `--location-id` read
+  city, in the same shape and with no field between them — `--location-id` read
   as though it had not applied. The owner's decision is that they are dropped:
   the command answers the search it was given, and where Avito found nothing of
   its own the answer is `EMPTY_RESULT` and not somebody else's listings.
@@ -407,40 +407,36 @@ schema (D-053).
   declared in the schema either — failing on the shape of data you do not read
   is a spare failure mode (D-034). What that costs is the one thing the block
   did carry: its placeholder is the only carrier of "this result set was
-  widened", and no column states it. A caller sees a short page or an empty
+  widened", and no field states it. A caller sees a short page or an empty
   result, which is what the search is worth.
 
-- **D-049 — a verify fixture is a schema over the whole returned array.** The
-  fixtures were JSON in a small dialect — `rowCount`, `patterns`, `notEmpty`,
-  `mustNotContain`, `mustBeTruthy` — applied by a matcher written by hand. Every
-  rule it could express was a rule about one column of every row, which left the
-  questions a live check exists to ask unaskable: is exactly one sidebar row the
-  current category, are these 25 reviews 25 different reviews, is the count the
-  count this route has. A fixture now exports `args` and `rows`, a
-  `z.array(...)` over what the command returned:
+- **D-049 — a live expectation is a schema over the whole answer.** `expectations/<command>.mjs`
+  exports `args` and `output`, a zod schema applied to everything the command
+  printed:
 
   ```js
-  export const rows = z.array(z.looseObject({ kind: z.literal('house') }))
-    .length(1);
+  export const output = z.looseObject({
+    locationId: z.literal('637640'),
+    items: z.array(z.looseObject({ price: z.number().positive() })).min(1).max(50),
+  });
   ```
 
-  The element is a `looseObject` because the row already satisfied the command's
-  `row` schema: naming a column here adds a constraint rather than restating one,
-  and the columns left unnamed stay visible to a `.refine` over the set.
+  A schema rather than a data dialect because the questions a live check exists
+  to ask are questions about a set: is exactly one sidebar entry the current
+  category, are these 25 reviews 25 different reviews, is the count the count
+  this route has. Every object in it is a `looseObject` because the answer
+  already satisfied the command's `output` schema — naming a field adds a
+  constraint rather than restating one, and the fields left unnamed stay visible
+  to a `.refine`.
 
-  Two things this costs. A fixture is executable now, so it can be vacuous in
-  ways JSON could not — `check-verify-fixtures` answers that by refusing a
-  fixture that names no column and carries neither an exact count nor a rule over
-  the set, which is what a plausible `.min(1).max(50)` range amounts to. And
-  `verify/` is no longer readable as data; `tests/verify-fixtures.test.mjs`
-  compensates by loading every fixture offline and proving the matcher reports a
-  violation rather than passing it.
-
-  Three claims that were already vacuous went out with the dialect: `mustBeTruthy`
-  on `rank`, on `reviewId` and `notEmpty` on `authorName` restated what the row
-  schema makes impossible. `notEmpty` on `attributes` was worse than vacuous —
-  it compared `String({})`, which is never empty — and is now a real check that
-  the listing carries at least one attribute.
+  What that costs is that an expectation is executable, so it can be vacuous in
+  ways data could not. `check-expectations` answers that by refusing one that
+  names no field and carries no rule over the answer — which is what a plausible
+  `.min(1).max(50)` range amounts to — and by walking the names against the
+  command's own schema, envelope and list alike, so a rule that could never fire
+  is reported with the path it was written at. `expectations/` is not readable as
+  data either; `tests/expectations.test.mjs` compensates by loading every file
+  offline and proving the matcher reports a violation rather than passing it.
 
 - **D-050 — three names were describing something else.** Renamed, with nothing
   else changed:
@@ -452,7 +448,7 @@ schema (D-053).
     what makes it different — every file in it is inlined into every call.
   - `fixtures/` → `evidence/`. Two directories were called fixtures in prose, and
     a section of the authoring skill existed only to say they are different
-    things. `verify/` holds expectations, maintained forever; `evidence/` holds
+    things. `expectations/` is maintained forever; `evidence/` holds
     dated anonymised samples that are never edited.
   - `cdp-command-author` / `cdp-command-repair` → `write-command` / `fix-command`.
     The prefix named the transport, which is the one thing those skills are not
@@ -475,10 +471,10 @@ schema (D-053).
   four, so what a command connects to and what `avito session status` prints
   cannot disagree.
 
-- **D-054 — the key ceiling is 16.** The owner's decision. Twelve had become the
-  reason for every deferred column, and four phases were bidding for the same two
-  slots. Nothing about a wider row makes a column free: each one still has to
-  answer what it means when the value is missing.
+- **D-054 — a ceiling on the answer, not on a shape.** The owner's decision.
+  There is a ceiling because headroom is not permission: nothing about a wider
+  answer makes a field free, and each one still has to say what it means when the
+  value is missing. Where the ceiling sits is D-074.
 
 - **D-056 — `price` is a price or it is `null`; anything advertised is
   `minPrice`.** The
@@ -495,28 +491,25 @@ schema (D-053).
   A phrase leaves both null, except «Бесплатно», which is the real `0` it says
   (F-076). Telling a price from a floor needs no vocabulary: digits and spaces
   alone are a price, digits with anything beside them are a floor (F-078). What
-  the row still does not carry is the unit of a rate — `postfix` holds it and no
-  column takes it (F-077), so «150 ₽ за м²» and a flat 150 ₽ are one number to
+  the listing still does not carry is the unit of a rate — `postfix` holds it and
+  no field takes it (F-077), so «150 ₽ за м²» and a flat 150 ₽ are one number to
   anything that sorts.
 
-- **D-053 — the row contract is printed, not paraphrased.** `--help` renders the
-  `row` schema as a TypeScript declaration above the arguments' answer — a
-  notation a consuming agent reads without being taught it — in place of the
-  comma-separated column names it used to print. What that reaches which a list
-  could not: a nullable column (`price: number | null`), a list (`string[]`), the
-  filter grammar as a literal union (`valueSyntax: "<from>..<to>" | …`), and the
-  array around the whole answer, which was the contract of every command and was
-  written down nowhere (`jq '.title'` on `get-item` answers `Cannot index array
-  with string`).
-  `| null`, `[]`, `Record<>` and numeric bounds come out of the schema; a string
-  format does not, because a regex check exposes only its pattern object. So a
-  format states itself in `.meta({ note })` where the vocabulary is declared —
-  four helpers in `schema.mjs` plus `published` in `LISTING_ROW`, and every
-  command that will ever be written inherits them. A per-column `.describe()` was
-  the alternative and would have been ten edits to paraphrase column names.
-  Prose keeps only what a type cannot hold, which is meaning: what `price` counts
-  (D-020), that a row is a card rather than a listing, that a `null`
-  `sellerName` is Avito withholding identity (D-028).
+- **D-053 — the contract is printed as TypeScript, and written by hand.**
+  `--help` prints the answer as a TypeScript declaration — a notation a consuming
+  agent reads without being taught it — instead of a list of names. What that
+  reaches which a list cannot: a nullable field (`price: number | null`), a list
+  (`Item[]`), the filter grammar as a literal union, and the shape of the answer
+  as a whole.
+
+  The declaration is `type` in the descriptor, written by hand rather than
+  rendered from the schema. A renderer produced one line per field and had no
+  notation for the thing a caller most needs — what a field *means*, what its
+  `null` says, which unit it is in — while every format that is not expressible
+  as a zod check had to be carried in a `.meta({ note })` beside it anyway. Hand
+  writing is a second copy, so it is gated rather than trusted:
+  `npm run check:commands` refuses a name that is in the schema and not in the
+  type, or the reverse.
 
 - **D-052 — `avito browser` finds the candidates instead of describing where to
   look.** Debugging leaves `DevToolsActivePort` in the profile root, so the
@@ -526,6 +519,41 @@ schema (D-053).
   instead of a path to guess at, and the empty result is itself the answer
   "nothing here has debugging on". The README used to name a Chrome path that
   was wrong on the machine it was written on.
+
+- **D-073 — one fact about the answer is stated once.** A command answers with
+  one object: an envelope carrying what is true of the whole answer, and lists
+  carrying what differs between the things in them. The rule for deciding is
+  mechanical — **identical across every element → envelope; different between
+  them → element** — which is why `get-categories` keeps `targetUrl` on each
+  category (every node has its own route) while the four listing commands keep
+  `searchUrl` on the envelope (there is one).
+
+  Two things this is for, and the second is the bigger one. `searchUrl` on fifty
+  cards was ~2000 tokens of the same 120-character string per call, paid on every
+  page an agent read. And the effective region was not reachable at all: `search`
+  computed `locationName`, compared it against the request, and threw it away —
+  so a caller who passed no `--location-id` had fifty listings and no way to ask
+  which region answered. It is on the envelope now, beside `locationId`, for all
+  four.
+
+  The envelope is what removed `rank` as well. Position in a JSON array is
+  position; a field restating it was a field.
+
+- **D-074 — the ceilings are 40 declared fields and 3 objects deep.** Counted
+  once per declaration wherever it sits, so burying thirty fields inside a list
+  is still thirty fields the caller has to read.
+
+  Depth counts object nesting, so every command today is 2 — an envelope and the
+  things in it, `get-item.priceList` included, because a list does not add a
+  level. The ceiling is 3 to leave exactly one: a table inside one of those
+  things. Nothing reaches it, and a design that wants to is worth arguing for
+  rather than assuming.
+
+  Both are checked when the module is imported, against the schema, together with
+  `strictObject` and camelCase at every level. They replace a 16-key ceiling on a
+  flat row, which nesting made meaningless: the point was never the top-level key
+  count, it was that an answer stays readable and that a field has to justify
+  itself (D-054).
 
 ## Facts
 
@@ -540,13 +568,13 @@ schema (D-053).
   carriers, every shared card matched the previous DOM output on every field —
   4 requests against 371 network events when rendering the catalog.
 - **F-041 — the divergence between commands was real.** Before unification,
-  `get-page` returned `descriptionPreview: null` on every row, and
+  `get-page` returned `descriptionPreview: null` on every listing, and
   `get-page` / `apply-filters` disagreed with `search` about the price and the
-  location of the same listing. The fixtures did not catch it, because
+  location of the same listing. The live checks did not catch it, because
   `descriptionPreview` was not in `notEmpty`.
-- **F-042 — pages past the first carry the same `iva` steps.** All 50 rows of
+- **F-042 — pages past the first carry the same `iva` steps.** All 50 listings of
   page 2 carry `PriceStep` / `DescriptionStep` / `GeoStep`, the flat
-  `item.description` is empty on all 50, and 35 rows have a bonus price differing
+  `item.description` is empty on all 50, and 35 listings have a bonus price differing
   from the base one. No separate branch for non-first pages is needed. Incidentally:
   Avito reshuffles part of a page between requests, so comparison against the
   visible listing is only valid by `itemId`, never by position.
@@ -555,9 +583,9 @@ schema (D-053).
   challenge — the detector would match every time. A challenge is looked for
   where it is visible: in the response to a data request and in the rendered page.
 - **F-047 — page size belongs to Avito.** There is no count parameter in the
-  listing (50 rows; the UI changes only `p`) and none in the review feed
+  listing (50 listings; the UI changes only `p`) and none in the review feed
   (`limit=2` returned 25 records). Checked against the source in passing: a photo
-  count of 0 on 9 of 50 rows is `images: []` in the SSR response itself for one
+  count of 0 on 9 of 50 listings is `images: []` in the SSR response itself for one
   seller, not a decoder loss.
 - **F-089 — the SSR catalog ships twenty complete cards and thirty stubs; the
   items API ships fifty complete ones.** In `loaderData.data.catalog.items` the
@@ -565,7 +593,7 @@ schema (D-053).
   everything flat survives — id, title, `priceDetailed`, `sortTimeStamp`, the
   seller's rating. What `iva` carries goes with it: `descriptionPreview`,
   `location` and `sellerName` come back `null`, and `imageCount` is `null` rather
-  than `0` (D-062). `extraBlockItems` is empty, so the stubs are catalog rows and
+  than `0` (D-062). `extraBlockItems` is empty, so the stubs are catalog cards and
   not recommendations.
 
   The split is at exactly twenty, the complete cards are contiguous from the
@@ -589,7 +617,7 @@ schema (D-053).
   is asked in the terms of a whole `searchCore` — `categoryId`, `locationId`,
   `name`, every `params[...]` — and none of that is derivable from a URL. The
   document that carries it therefore always comes first, and the API answers
-  about the state that document was in. That is why moving the rows onto the API
+  about the state that document was in. That is why moving the listings onto the API
   costs one extra request rather than replacing one.
 - **F-091 — the items API takes a page number, and answers cleanly past the
   last page.** `p=<n>` and `page=<n>` are both honoured and both come back
@@ -627,7 +655,7 @@ schema (D-053).
   `GeoStep` is the counter-example that keeps its fallback: `/moskva/kvartiry`
   and `/moskva/garazhi_i_mashinomesta` ship no such step on any of their 50
   cards, and the flat `geo` carries the same `geoReferences` — checked
-  end-to-end, all 50 rows of the flats route return a metro reference with its
+  end-to-end, all 50 listings of the flats route return a metro reference with its
   walking time. Replayed 2026-08-19; the census is in
   `evidence/card-step-carriers-202608191445.json`.
   The census covers `catalog.extraBlockItems` too, on the two routes that
@@ -652,7 +680,7 @@ schema (D-053).
   block instead — 0 against 50 — so the two are not two witnesses to one number.
   Until D-072 the decoder concatenated both lists and dropped only the
   placeholder, and `avito search "щенок бельгийского гриффона" --location-id
-  637640` answered 50 rows of which 28 were outside the region asked for.
+  637640` answered 50 listings of which 28 were outside the region asked for.
   The rendered page cannot be read for this: it draws 41 cards above the
   divider «Дальше встречаются объявления из других городов», and only 10 of the
   41 are бельгийские гриффоны — the rest are йорки, чихуахуа and шпицы of the
@@ -663,7 +691,7 @@ schema (D-053).
   field.
 - **F-087 — the résumé refusal was the photo reader's, and it is gone.** A résumé
   card carries a placeholder served from `www.avito.st`, outside the photo CDN,
-  and the row decoder threw on it — one card killed the page, which disabled
+  and the listing decoder threw on it — one card killed the page, which disabled
   résumés entirely. Replayed both ways on 2026-08-18 against
   `/moskva/rezume?q=продавец`: before D-061 `get-page` ends with `item image URL
   is outside Avito image hosting`, after it the page decodes and the placeholder
@@ -671,7 +699,7 @@ schema (D-053).
   category refuses elsewhere (F-088).
 - **F-049 — Avito withholds private-seller identity from an anonymous session.**
   In the catalog, `iva.UserInfoStep` arrives as an empty array (14 of 50 and 22
-  of 50 rows on two pages); in the item API every profile link is empty and the
+  of 50 listings on two pages); in the item API every profile link is empty and the
   name is replaced with `Пользователь`. The rating survives, which means identity
   and rating come from different carriers and neither can be derived from the
   other. Companies are unaffected and the profile route still answers `200`.
@@ -685,9 +713,9 @@ schema (D-053).
   SSR → items API pair as `search` and always worked without a gap, and the pause
   in `get-page` sat before its single request and separated nothing. The first
   live run after the removal is the measurement.
-- **F-059 — the date lives in the listing row, not on the listing page.** The
-  expectation was the opposite. Both row carriers — the SSR catalog and the items
-  API — carry `sortTimeStamp` (epoch milliseconds) on 50 rows of 50. The listing
+- **F-059 — the date lives in the listing item, not on the listing page.** What
+  was expected was the opposite. Both catalog carriers — the SSR catalog and the
+  items API — carry `sortTimeStamp` (epoch milliseconds) on 50 of 50. The listing
   page carries no machine-readable date at all: not in the item API, not in
   JSON-LD, not in microdata; the epoch `1786662941` does not appear in its
   document even once, and all that exists is the rendered string —
@@ -723,7 +751,7 @@ schema (D-053).
   code against a browser the user had been using all along — debugging turned on
   at `chrome://inspect/#remote-debugging`, socket read from `DevToolsActivePort`
   — got `200` and a 354 950-byte catalog document on the same hop, and
-  `verify/search.json` passed on 50 rows. So the refusal page names the wrong
+  the live check passed on 50 listings. So the refusal page names the wrong
   cause: what Avito refused was a profile with no history, and its own title
   would have sent anyone debugging this at the network. Hence D-044.
 - **F-069 — a `403` challenge is reported as an HTTP failure.** Found while
@@ -755,7 +783,7 @@ schema (D-053).
   documents the flag as unsupported on macOS. `hidden: true`: no application
   switch, no tab in the strip, absent even from `Target.getTargets`, and the
   page still reports `visible`, keeps the profile's cookies (the geo directory
-  answered with the profile's own search history) and renders — all ten fixtures
+  answered with the profile's own search history) and renders — all ten expectations
   pass on hidden tabs, `get-item` and its rendered-page fallback included. What
   remains is the approval prompt of F-071, once per connection rather than once
   per command.
@@ -786,12 +814,12 @@ schema (D-053).
   flat zero when the step said `null` answered a number where Avito printed a
   phrase; the step decides now, and the flat field is read only where Avito sent
   no step at all. Live after the fix: `«ремонт стиральных машин»` returns
-  `price: null` on all 7 of its «Цена договорная» rows, `«щенок»` returns
+  `price: null` on all 7 of its «Цена договорная» listings, `«щенок»` returns
   `price: 0` on all 20 of its «Бесплатно» ones.
 
 - **F-077 — the price can carry a unit, and the unit is structural.**
   `priceDetailed.postfix` holds it — `за м²`, `за час`, `за м³` — beside the
-  number rather than inside it, so it never disturbs the number and no column
+  number rather than inside it, so it never disturbs the number and no field
   carries it (D-056). On `predlozheniya_uslug?q=уборка+квартиры` 19 cards of 50
   carry one, so a `price: 150` there is what the page prints as
   «от 150 ₽ за м²». Outside
@@ -818,12 +846,12 @@ schema (D-053).
   is gone (D-035). The first candidate measurement turned out to be a refusal on
   the page past the last one rather than a rate limit (F-061): only a `429` that
   does not reproduce in silence counts as a number here.
-- Drift in the shared row decoder breaks four commands at once. The price and
+- Drift in the shared listing decoder breaks four commands at once. The price and
   the description now refuse where their carrier goes missing (D-070); the
   location has two live carriers and would still answer from the other one.
 - **`price` still does not say what it counts.** The phrases, the floor and the
   table are handled (D-056), but «150 ₽ за м²» is `price: 150` like any other
-  150: the unit is in the payload and in no column. No fixture catches a wrong
+  150: the unit is in the payload and in no field. No expectation catches a wrong
   number, only a wrong shape.
 - Every command depends on the internal shape of the SSR bootstrap. Any drift
   must end fail-closed, not in a fallback value.
@@ -831,10 +859,10 @@ schema (D-053).
   categories and taken for the shape of Avito. F-055 is the lower bound of the
   list, not the list.
 - `sellerName` is defended by no live check any more: `notEmpty` was removed for
-  it (D-028) and cannot come back — `notEmpty` applies to every row at once, and
-  even a page filtered to companies contained 2 rows of 50 without a name. Only
+  it (D-028) and cannot come back — a required field applies to every listing at
+  once, and even a page filtered to companies had 2 of 50 without a name. Only
   the offline checks and human eyes remain.
-- `notEmpty` / `mustBeTruthy` in verify apply to every row, so no field that is
-  nullable by contract can be in either on a full page. Weakening them further
+- A required field in an expectation applies to every element at once, so nothing
+  nullable by contract can be required on a full page. Weakening one further
   without checking against the source is not allowed: that distinction is exactly
   what separates a listing with no photos from a field the decoder lost.

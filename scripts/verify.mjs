@@ -1,22 +1,22 @@
 #!/usr/bin/env node
 /**
- * verify.mjs — the live check: run a command for real and apply its fixture.
+ * verify.mjs — the live check: run a command for real and apply its expectation.
  *
  * This is the only check in the repository that sees real values coming back
  * from Avito. The offline suites run against a synthetic carrier, so they
  * cannot tell a correct decoder from one that confidently reads the wrong
- * field; that is what these fixtures are for.
+ * field; that is what `expectations/` is for.
  *
  * It runs the CLI as a subprocess rather than importing the command, because
- * what needs verifying is what a caller actually gets: argv parsing, the row
- * shape on stdout and the exit code, not an in-process return value.
+ * what needs verifying is what a caller actually gets: argv parsing, the JSON
+ * on stdout and the exit code, not an in-process return value.
  *
  * Nothing here retries. A refusal is the result — a `429`, a challenge or a
  * drifted shape is reported with its typed error and the run fails. Re-running
  * a rejected request is exactly what this repository does not do.
  *
  * Usage:
- *   node scripts/verify.mjs            # every fixture, one after another
+ *   node scripts/verify.mjs            # every expectation, one after another
  *   node scripts/verify.mjs search     # one command
  */
 
@@ -26,18 +26,18 @@ import * as path from 'node:path';
 
 import { PROJECT_ROOT } from './lib/paths.mjs';
 import {
-  expandFixtureArgs,
-  listFixtures,
-  loadFixture,
-  validateFixture,
-  validateRows,
-} from './lib/verify-fixture.mjs';
+  expandArgs,
+  listExpectations,
+  loadExpectation,
+  validateExpectation,
+  validateOutput,
+} from './lib/expectation.mjs';
 
 const CLI = path.join(PROJECT_ROOT, 'bin', 'avito.mjs');
 
 function runCommand(command, argv) {
   return new Promise((resolve) => {
-    const child = spawn(process.execPath, [CLI, command, ...argv, '-f', 'json'], {
+    const child = spawn(process.execPath, [CLI, command, ...argv], {
       cwd: PROJECT_ROOT,
       stdio: ['ignore', 'pipe', 'pipe'],
     });
@@ -51,16 +51,18 @@ function runCommand(command, argv) {
 }
 
 async function verifyOne(command) {
-  const fixture = await loadFixture(command);
-  if (!fixture) return { command, failures: [{ rule: 'fixture', detail: `verify/${command}.mjs is missing` }] };
-
-  // A malformed fixture applies fewer rules than its author wrote.
-  const malformed = validateFixture(fixture);
-  if (malformed.length > 0) {
-    return { command, failures: malformed.map((detail) => ({ rule: 'fixture', detail })) };
+  const expectation = await loadExpectation(command);
+  if (!expectation) {
+    return { command, failures: [{ rule: 'expectation', detail: `expectations/${command}.mjs is missing` }] };
   }
 
-  const argv = expandFixtureArgs(fixture.args);
+  // A malformed expectation applies fewer rules than its author wrote.
+  const malformed = validateExpectation(expectation);
+  if (malformed.length > 0) {
+    return { command, failures: malformed.map((detail) => ({ rule: 'expectation', detail })) };
+  }
+
+  const argv = expandArgs(expectation.args);
   console.log(`\navito ${command} ${argv.join(' ')}`);
 
   const result = await runCommand(command, argv);
@@ -74,37 +76,37 @@ async function verifyOne(command) {
     };
   }
 
-  let rows;
+  let answer;
   try {
-    rows = JSON.parse(result.stdout);
+    answer = JSON.parse(result.stdout);
   } catch (error) {
     return {
       command,
       failures: [{ rule: 'output', detail: `stdout is not JSON: ${error instanceof Error ? error.message : String(error)}` }],
     };
   }
-  if (!Array.isArray(rows)) {
-    return { command, failures: [{ rule: 'output', detail: 'the command printed something other than an array of rows' }] };
+  if (answer === null || typeof answer !== 'object' || Array.isArray(answer)) {
+    return { command, failures: [{ rule: 'output', detail: 'the command printed something other than one JSON object' }] };
   }
 
-  // The shape is the CLI's own gate: a row that breaks its schema never reaches
-  // stdout, so a run that got this far has already passed it. What is left is
-  // whether these are the rows this request had to answer with.
-  const failures = validateRows(rows, fixture);
-  if (failures.length === 0) console.log(`  OK — ${rows.length} row(s) satisfy verify/${command}.mjs`);
-  return { command, failures, rowCount: rows.length };
+  // The shape is the CLI's own gate: an answer that breaks its schema never
+  // reaches stdout, so a run that got this far has already passed it. What is
+  // left is whether this is the answer this request had to come back with.
+  const failures = validateOutput(answer, expectation);
+  if (failures.length === 0) console.log(`  OK — the answer satisfies expectations/${command}.mjs`);
+  return { command, failures };
 }
 
 const target = process.argv[2];
-const known = listFixtures().map((fixture) => fixture.command);
+const known = listExpectations().map((expectation) => expectation.command);
 
 if (target && !known.includes(target)) {
-  console.error(`"${target}" has no fixture in verify/. Known: ${known.join(', ')}`);
+  console.error(`"${target}" has nothing in expectations/. Known: ${known.join(', ')}`);
   process.exit(1);
 }
 
-// A fixture whose command has not been converted yet is not a failure, and it
-// is not a silent skip either: reporting it is what keeps "all live checks
+// An expectation whose command has not been converted yet is not a failure, and
+// it is not a silent skip either: reporting it is what keeps "all live checks
 // passed" from quietly meaning "two of the ten ran".
 const COMMANDS_DIR = path.join(PROJECT_ROOT, 'src', 'commands');
 const built = new Set(
@@ -125,7 +127,7 @@ if (pending.length > 0) {
   console.log(`\nNot yet converted (${pending.length} of ${known.length}): ${pending.join(', ')}`);
 }
 if (wanted.length === 0) {
-  console.log('\nNo converted command has a fixture to run.');
+  console.log('\nNo converted command has an expectation to run.');
   process.exit(0);
 }
 

@@ -1,10 +1,10 @@
 // Offline end-to-end for `avito search`: the real command over a synthetic Avito
-// SSR carrier for both document hops plus the items API response the rows come
+// SSR carrier for both document hops plus the items API response the listings come
 // from. What a card means is `card.test.mjs`; what this suite watches is the
 // argument guards, the directory calls that run before any search request, the
 // request the two hops build, and every postcondition on the answer.
 import {
-  assertRow, assertRows, failureOf, loadCommand, runner,
+  assertOutput, failureOf, loadCommand, runner,
 } from './harness.mjs';
 import {
   FILTERS, ITEMS_API_PATH, ORIGIN, bootstrapHtml, browserPage, item, itemsApiResponse, searchCore,
@@ -57,7 +57,7 @@ const routes = (api = apiRoute(), document = hop2(), entry = hop1()) => [entry, 
 
 const search = (routeList, args = {}, options = {}) => {
   const page = browserPage(routeList, options);
-  return { page, rows: COMMAND.run(page, { query: 'ddr5 32gb', ...args }) };
+  return { page, answer: COMMAND.run(page, { query: 'ddr5 32gb', ...args }) };
 };
 
 // ── the guards that never reach the network ──────────────────────────────────
@@ -85,7 +85,7 @@ check('the catalog filter flags are gone and never reach a request', async () =>
   const driven = search(routes(), {
     sort: 'date', 'price-max': 30000, seller: 'company', 'delivery-only': true,
   });
-  await driven.rows;
+  await driven.answer;
   const requested = new URL(driven.page.calls[2]);
   assert(requested.get === undefined && requested.searchParams.get('s') === null,
     `a filter flag reached the request: ${driven.page.calls[2]}`);
@@ -104,7 +104,7 @@ check('radius arguments are rejected unless they form one applicable geo mode', 
   ];
   for (const testCase of cases) {
     const driven = search(routes(), testCase.args);
-    const failure = await failureOf(() => driven.rows);
+    const failure = await failureOf(() => driven.answer);
     assert(failure?.code === 'ARGUMENT', `accepted ${JSON.stringify(testCase.args)}`);
     assert(testCase.expect.test(failure.message), `unexpected message: ${failure.message}`);
     assert(driven.page.calls.length === 0, 'a request was made despite an invalid radius argument');
@@ -133,7 +133,7 @@ const directory = (url) => (url.includes('/web/1/search/locations')
 
 check('geo IDs are validated before any search request', async () => {
   const driven = search(routes(), { 'location-id': 650400, metro: '999999' }, { directory });
-  const failure = await failureOf(() => driven.rows);
+  const failure = await failureOf(() => driven.answer);
   assert(failure?.code === 'ARGUMENT', `unknown metro accepted: ${failure && failure.message}`);
   assert(driven.page.calls.length === 2, `expected two directory calls, got ${JSON.stringify(driven.page.calls)}`);
   assert(driven.page.navigations.length === 1 && driven.page.navigations[0] === ROBOTS,
@@ -144,7 +144,7 @@ check('the radius is checked against the visible list before any search request'
   const rejecting = search(
     routes(), { 'location-id': 650400, coords: '55.760256,37.611446', radius: 7 }, { directory },
   );
-  const failure = await failureOf(() => rejecting.rows);
+  const failure = await failureOf(() => rejecting.answer);
   assert(failure?.code === 'ARGUMENT', `unoffered radius accepted: ${failure && failure.message}`);
   assert(/Visible values: 1, 5/.test(failure.message), `visible list not reported: ${failure.message}`);
   assert(rejecting.page.calls.length === 1 && rejecting.page.calls[0].includes('locationId=650400'),
@@ -155,7 +155,7 @@ check('the radius is checked against the visible list before any search request'
     core: { locationId: 650400, locationName: 'Казань', geoCoords: [55.760256, 37.611446], searchRadius: 5 },
     url: `${ORIGIN}${CANONICAL}&radius=5`,
   })), { 'location-id': 650400, coords: '55.760256,37.611446', radius: 5 }, { directory });
-  await accepting.rows;
+  await accepting.answer;
   const requested = new URL(accepting.page.calls[3]);
   assert(requested.searchParams.get('radius') === '5', `radius not sent: ${accepting.page.calls[3]}`);
   assert(requested.searchParams.get('geoCoords') === '55.760256,37.611446',
@@ -164,14 +164,20 @@ check('the radius is checked against the visible list before any search request'
 
 // ── the two hops and the request they build ──────────────────────────────────
 
-check('two document hops name the search and the items API answers it with the rows', async () => {
+check('two document hops name the search and the items API answers it with the listings', async () => {
   const driven = search(routes());
-  const rows = await driven.rows;
+  const answer = await driven.answer;
   assert(driven.page.calls.length === 3, `expected two documents and one API call, got ${JSON.stringify(driven.page.calls)}`);
   assert(driven.page.calls[1] === ORIGIN + CANONICAL, `second hop used ${driven.page.calls[1]}`);
-  assert(driven.page.calls[2].startsWith(API), `the rows must come from the items API, got ${driven.page.calls[2]}`);
-  assert(rows[0].searchUrl === ORIGIN + CANONICAL, `unexpected searchUrl ${rows[0].searchUrl}`);
-  assertRows(COMMAND, rows);
+  assert(driven.page.calls[2].startsWith(API), `the listings must come from the items API, got ${driven.page.calls[2]}`);
+  assert(answer.searchUrl === ORIGIN + CANONICAL, `unexpected searchUrl ${answer.searchUrl}`);
+  // The URL, the region and the query are one each for the whole answer, and the
+  // envelope is the only place they are stated (D-073).
+  assert(answer.locationId === '637640' && answer.locationName === 'Москва',
+    `unexpected effective location ${answer.locationId}/${answer.locationName}`);
+  assert(answer.query === 'ddr5 32gb', `unexpected query ${answer.query}`);
+  assert(answer.items.every((entry) => !('searchUrl' in entry)), 'the search URL must not repeat on every listing');
+  assertOutput(COMMAND, answer);
   assert(driven.page.navigations.length === 1 && driven.page.navigations[0] === ROBOTS,
     `expected one robots.txt priming, got ${JSON.stringify(driven.page.navigations)}`);
 });
@@ -180,7 +186,7 @@ check('two document hops name the search and the items API answers it with the r
 // request must say: the landed searchCore carried over unchanged, no geo key added.
 check('a search with no geo argument still asks the API, carrying the landed context', async () => {
   const driven = search(routes());
-  await driven.rows;
+  await driven.answer;
   const requested = new URL(driven.page.calls[2]);
   assert(requested.searchParams.get('context') === 'opaque-context', `context not carried: ${driven.page.calls[2]}`);
   assert(requested.searchParams.get('categoryId') === '101', `searchCore not carried: ${driven.page.calls[2]}`);
@@ -196,18 +202,19 @@ check('an absorbed query is accepted and a foreign q is rejected', async () => {
     hop2({ state: catalogState({ query: '' }), path: '/moskva/telefony', responseUrl: ORIGIN + ABSORBED }),
     apiRoute({ core: { query: '' }, url: ORIGIN + ABSORBED }),
   ], { query: 'iphone' });
-  const rows = await absorbed.rows;
-  assert(rows.length === 1, 'absorbed query rejected');
+  const answer = await absorbed.answer;
+  assert(answer.items.length === 1, 'absorbed query rejected');
+  assert(answer.query === null, `an absorbed query must read as null, got ${JSON.stringify(answer.query)}`);
 
   const foreign = search([hop1('/moskva/telefony?q=android')], { query: 'iphone' });
-  const failure = await failureOf(() => foreign.rows);
+  const failure = await failureOf(() => foreign.answer);
   assert(failure != null && /different query/.test(failure.message), `foreign q accepted: ${failure && failure.message}`);
   assert(foreign.page.calls.length === 1, 'second hop ran despite a failed guard');
 });
 
 check('a homepage target never passes as a search result', async () => {
   const driven = search([hop1('/')]);
-  const failure = await failureOf(() => driven.rows);
+  const failure = await failureOf(() => driven.answer);
   assert(failure != null && /did not canonicalize/.test(failure.message), `homepage accepted: ${failure && failure.message}`);
   assert(driven.page.calls.length === 1, 'second hop ran for a homepage target');
 });
@@ -215,7 +222,7 @@ check('a homepage target never passes as a search result', async () => {
 check('HTTP 429 and access challenges stop on the first hop', async () => {
   const rate = await failureOf(() => search([
     { match: `${ORIGIN}/?q=`, status: 429, body: '<html><title>Доступ ограничен</title></html>' },
-  ]).rows);
+  ]).answer);
   assert(rate?.code === 'ACCESS', `429 not reported as access: ${rate && rate.code}`);
 
   // A verification page is 200 HTML with no state script, which is exactly what a
@@ -224,12 +231,12 @@ check('HTTP 429 and access challenges stop on the first hop', async () => {
   const challenge = await failureOf(() => search([{
     match: `${ORIGIN}/?q=`,
     body: '<html><head><title>Доступ ограничен: проблема с IP</title></head><body>проверим, что вы человек</body></html>',
-  }]).rows);
+  }]).answer);
   assert(challenge?.code === 'ACCESS', `challenge not reported as access: ${challenge && challenge.code}`);
 });
 
 check('an empty catalog with a zero count is a typed empty result', async () => {
-  const failure = await failureOf(() => search(routes(apiRoute({ items: [], count: 0 }))).rows);
+  const failure = await failureOf(() => search(routes(apiRoute({ items: [], count: 0 }))).answer);
   assert(failure?.code === 'EMPTY_RESULT', `expected EMPTY_RESULT, got ${failure && failure.code}`);
 });
 
@@ -244,23 +251,25 @@ check('a location refinement is carried on the request and confirmed on the answ
     core: { locationId: 654918, locationName: 'Казань' },
     url: `${ORIGIN}${CANONICAL}&locationId=654918`,
   })), { 'location-id': 654918 }, { directory: () => CAPABILITIES });
-  const rows = await driven.rows;
-  assert(rows[0].itemId === '8299623583', 'API rows not used');
-  assert(rows.length === 1 && driven.page.calls.filter((c) => c.startsWith(API)).length === 1, 'more than one API request');
+  const answer = await driven.answer;
+  assert(answer.items[0].itemId === '8299623583', 'API listings not used');
+  assert(answer.items.length === 1 && driven.page.calls.filter((c) => c.startsWith(API)).length === 1, 'more than one API request');
   const requested = new URL(driven.page.calls[2]);
   assert(requested.searchParams.get('locationId') === '654918', `requested location not sent: ${driven.page.calls[2]}`);
   assert(requested.searchParams.get('spaFlow') === 'true' && requested.searchParams.get('context') === 'opaque-context',
     `unexpected API URL: ${driven.page.calls[2]}`);
-  assert(rows[0].searchUrl === `${ORIGIN}${CANONICAL}&locationId=654918`, 'server URL not returned');
-  assertRow(COMMAND, rows[0]);
+  assert(answer.searchUrl === `${ORIGIN}${CANONICAL}&locationId=654918`, 'server URL not returned');
+  assert(answer.locationId === '654918' && answer.locationName === 'Казань',
+    `the applied location must be reported: ${answer.locationId}/${answer.locationName}`);
+  assertOutput(COMMAND, answer);
 });
 
 // A location that came back as the landed one means Avito ignored the request, and
 // that answers 200 with a full plausible page.
-check('a location the API did not apply is drift, not rows', async () => {
+check('a location the API did not apply is drift, not listings', async () => {
   const failure = await failureOf(() => search(
     routes(apiRoute({ url: `${ORIGIN}${CANONICAL}` })), { 'location-id': 654918 },
-  ).rows);
+  ).answer);
   assert(failure != null && /did not apply the requested location/.test(failure.message),
     `an ignored location was accepted: ${failure && failure.message}`);
 });
@@ -271,7 +280,7 @@ check('a catalog filter changed by Avito during a location refinement is drift',
   const failure = await failureOf(() => search(routes(apiRoute({
     core: { locationId: 654918, locationName: 'Казань', sort: '104' },
     url: `${ORIGIN}${CANONICAL}&locationId=654918`,
-  })), { 'location-id': 654918 }).rows);
+  })), { 'location-id': 654918 }).answer);
   assert(failure != null && /preserved search field sort/.test(failure.message),
     `a changed sort must be drift: ${failure && failure.message}`);
 });
@@ -285,7 +294,7 @@ check('a requested geo selection replaces the one the route landed with', async 
     { 'location-id': 650400, metro: '9' },
     { directory: (url) => (url.includes('/search/locations') ? CAPABILITIES : { stations: [{ id: 9, name: 'Кремлёвская' }] }) },
   );
-  await driven.rows;
+  await driven.answer;
   const apiCall = driven.page.calls.find((call) => call.startsWith(API));
   const sent = [...new URL(apiCall).searchParams.entries()].filter(([key]) => key.startsWith('metro['));
   assert(sent.length === 1 && sent[0][0] === 'metro[0]' && sent[0][1] === '9',
@@ -300,7 +309,7 @@ check('a requested city discards the geo of the route the query landed on', asyn
     apiRoute({ core: { locationId: 654918, locationName: 'Казань' }, url: `${ORIGIN}${CANONICAL}&locationId=654918` }),
     hop2({ state: landed }),
   ), { 'location-id': 654918 });
-  await driven.rows;
+  await driven.answer;
   const sent = new URL(driven.page.calls[2]).searchParams;
   assert(![...sent.keys()].some((key) => key.startsWith('metro[') || key.startsWith('district[')),
     `the old geo IDs must not travel to a new city: ${driven.page.calls[2]}`);
@@ -312,48 +321,48 @@ check('a requested city discards the geo of the route the query landed on', asyn
 check('geo the caller did not touch must come back unchanged', async () => {
   const landed = catalogState({ core: { metroId: ['1', '2'] } });
   const kept = search(routes(apiRoute({ core: { metroId: ['1', '2'] } }), hop2({ state: landed })));
-  await kept.rows;
+  await kept.answer;
   const sent = [...new URL(kept.page.calls[2]).searchParams.entries()].filter(([key]) => key.startsWith('metro['));
   assert(sent.length === 2, `the landed selection must be carried: ${JSON.stringify(sent)}`);
 
   const dropped = await failureOf(() => search(
     routes(apiRoute({ core: { metroId: [] } }), hop2({ state: landed })),
-  ).rows);
+  ).answer);
   assert(dropped != null && /preserved geo selection/.test(dropped.message),
     `a dropped selection was accepted: ${dropped && dropped.message}`);
 
   const moved = await failureOf(() => search(routes(
     apiRoute({ core: { geoCoords: [55.75, 37.61], searchRadius: 5 } }), hop2({ state: catalogState() }),
-  )).rows);
+  )).answer);
   assert(moved != null && /preserved search point/.test(moved.message),
     `an invented point was accepted: ${moved && moved.message}`);
 });
 
 // ── the page, whole ──────────────────────────────────────────────────────────
 
-// Avito fixes the page at 50 rows and offers no page-size parameter, so a full page must
-// come back whole. Until 2026-08-14 a --limit default of 10 silently dropped 40 of them.
+// Avito fixes the page at 50 listings and offers no page-size parameter, so a full page
+// must come back whole. Until 2026-08-14 a --limit default of 10 silently dropped 40.
 check('every listing Avito put on the page is returned, never a local slice', async () => {
   const items = Array.from({ length: 50 }, (unused, index) => item({ id: String(7881841669 + index) }));
-  const rows = await search(routes(apiRoute({ items }))).rows;
-  assert(rows.length === 50, `expected the whole page, got ${rows.length}`);
-  assert(rows.every((row) => row.descriptionPreview && row.location && row.imageCount === 2),
-    'the API page must be complete on every row, not only its first twenty');
+  const answer = await search(routes(apiRoute({ items }))).answer;
+  assert(answer.items.length === 50, `expected the whole page, got ${answer.items.length}`);
+  assert(answer.items.every((entry) => entry.descriptionPreview && entry.location && entry.imageCount === 2),
+    'the API page must be complete on every listing, not only its first twenty');
 });
 
 // Avito offers no server-side reservation filter, so --remove-reserved is an explicit local
-// predicate over the page it returned: it drops the reserved rows, refuses to guess when the
-// flag is gone and never silently turns a filtered-out page into a successful empty answer.
-check('remove-reserved drops reserved rows without asking Avito to refine anything', async () => {
+// predicate over the page it returned: it drops the reserved listings, refuses to guess when
+// the flag is gone and never silently turns a filtered-out page into a successful empty answer.
+check('remove-reserved drops reserved listings without asking Avito to refine anything', async () => {
   const items = [
     item({ id: '8329291056', isReserved: true }),
     item({ id: '8288791269', isReserved: false }),
     item({ id: '8220283533', isReserved: true }),
   ];
   const driven = search(routes(apiRoute({ items })), { 'remove-reserved': true });
-  const rows = await driven.rows;
-  assert(rows.length === 1 && rows[0].itemId === '8288791269', `unexpected rows: ${JSON.stringify(rows.map((r) => r.itemId))}`);
-  assert(!('isReserved' in rows[0]) && !('reserved' in rows[0]), 'the flag must stay out of the row contract');
+  const { items: kept } = await driven.answer;
+  assert(kept.length === 1 && kept[0].itemId === '8288791269', `unexpected listings: ${JSON.stringify(kept.map((entry) => entry.itemId))}`);
+  assert(!('isReserved' in kept[0]) && !('reserved' in kept[0]), 'the flag must stay out of the contract');
   const requested = new URL(driven.page.calls[2]);
   assert(![...requested.searchParams.keys()].some((key) => /reserv/i.test(key)),
     `remove-reserved must never become a request key: ${driven.page.calls[2]}`);
@@ -364,22 +373,22 @@ check('a page whose listings are all reserved is a typed empty result', async ()
     item({ id: '8329291056', isReserved: true }),
     item({ id: '8220283533', isReserved: true }),
   ];
-  const failure = await failureOf(() => search(routes(apiRoute({ items })), { 'remove-reserved': true }).rows);
+  const failure = await failureOf(() => search(routes(apiRoute({ items })), { 'remove-reserved': true }).answer);
   assert(failure?.code === 'EMPTY_RESULT', `expected EMPTY_RESULT, got ${failure && failure.code}`);
   assert(/\(2\) is reserved/.test(failure.message), `page size not reported: ${failure.message}`);
 });
 
-check('a missing reservation flag refuses the filter instead of keeping the row', async () => {
+check('a missing reservation flag refuses the filter instead of keeping the listing', async () => {
   const items = [
     item({ id: '8288791269', isReserved: false }),
     item({ id: '8234297329', isReserved: null }),
   ];
-  const failure = await failureOf(() => search(routes(apiRoute({ items })), { 'remove-reserved': true }).rows);
+  const failure = await failureOf(() => search(routes(apiRoute({ items })), { 'remove-reserved': true }).answer);
   assert(failure?.code === 'COMMAND_EXEC', `drifted flag accepted: ${failure && failure.code}`);
   assert(/reservation flag/.test(failure.message), `unexpected message: ${failure.message}`);
 
-  const kept = await search(routes(apiRoute({ items }))).rows;
-  assert(kept.length === 2, 'without the flag the page must come back whole, drift or not');
+  const kept = await search(routes(apiRoute({ items }))).answer;
+  assert(kept.items.length === 2, 'without the flag the page must come back whole, drift or not');
 });
 
 export default await run('search');
