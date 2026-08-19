@@ -7,7 +7,7 @@ How each command is built is in its domain file, [docs/areas/](areas/).
 
 ## Commands
 
-Ten commands, all read-only. `npm run check` is green; the offline suite is 211
+Ten commands, all read-only. `npm run check` is green; the offline suite is 215
 checks across sixteen suites. All ten fixtures pass live against the descriptor
 schemas (D-048, D-049).
 
@@ -26,6 +26,11 @@ page fetches and nothing more: `src/browser/` is four entry points and three
 prelude files, two of the entry points being the reads six commands share, and
 every request, postcondition and decode is Node (D-069). A command's offline
 suite therefore drives both halves over one set of stubbed routes.
+
+Where two commands read one carrier, they read it once: the category sidebar is
+one walk in `src/site/rubricator.mjs` that `get-categories` describes rows from
+and `move-category` follows (D-071), and a URL Avito answered with is checked by
+one rule, the one that refuses what `requestedSearchUrl` would refuse to take.
 
 A refusal is one of five typed classes, and exit code 77 (`ACCESS`) is the one
 that is not about the command: Avito answered without data — a rate limit, a
@@ -63,6 +68,12 @@ fifty complete rows on all four, and the same fifty whichever command asked.
 The page fetches those carriers and hands the catalog over as Avito sent it;
 the request, the postconditions and what a card means are all Node
 (`src/site/items.mjs`, `src/site/card.mjs`, D-065, D-069).
+
+What a card *prints* is read from its `iva` steps and from nowhere else: the
+price and the description come from their step or the call stops, because the
+flat fields beside them carry the base price and a second copy (D-070, F-093).
+The location is the one field with two live carriers — two real-estate routes
+ship no `GeoStep` at all — and it reads from whichever the card has.
 
 The consumer flow is one chain around one carrier of state, the canonical `searchUrl`:
 
@@ -185,9 +196,11 @@ Cross-cutting. Risks specific to one command are in its domain file.
   only arrives on the call — see the register above.
 - Every command depends on the undocumented internal shape of the SSR bootstrap
   and on seven undocumented endpoints. Any drift must end fail-closed.
-- The shared row decoder serves four listing commands; its drift shows up as
-  different semantics, not as a refusal. The shared `LISTING_ROW` schema catches
-  a wrong *shape* on all four at once, and says nothing about a wrong *meaning*.
+- The shared row decoder serves four listing commands, so one drift moves four.
+  Since D-070 the price and the description refuse rather than answer from
+  another carrier; what is left silent is the location, which has two live
+  carriers, and the unit of a rate. The shared `LISTING_ROW` schema catches a
+  wrong *shape* on all four at once and says nothing about a wrong *meaning*.
 - `sellerName` is defended by no live check at all (D-028) — only the offline
   suite and human eyes.
 - This repository has no remote: the history exists, a copy does not.

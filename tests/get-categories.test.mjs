@@ -200,7 +200,11 @@ check('a sidebar this command cannot decode stops it', async () => {
     [[node({ id: 0, name: 'Телефоны' })], /id: Too small/],
     [[node({ id: 1, name: 'A' }), node({ id: 1, name: 'B' })], /repeats node ID 1/],
     [[node({ id: 1, name: '   ' })], /name: must not be empty/],
-    [[node({ id: 1, name: 'Телефоны', url: 'https://example.com/moskva' })], /points outside/],
+    [[node({ id: 1, name: 'Телефоны', url: 'https://example.com/moskva' })], /route of node 1 outside/],
+    // A port and credentials make the route a different origin, and the route is
+    // handed out as the next command's argument, which refuses both.
+    [[node({ id: 1, name: 'Телефоны', url: 'https://www.avito.ru:8443/moskva' })], /route of node 1 outside/],
+    [[node({ id: 1, name: 'Телефоны', url: 'https://user@www.avito.ru/moskva' })], /route of node 1 outside/],
     [['not a node at all'], /expected object, received string/],
   ];
   for (const [sideNodes, pattern] of cases) {

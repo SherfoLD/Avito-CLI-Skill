@@ -1,9 +1,9 @@
 // Synthetic Avito carriers shared by the browser-side suites.
 //
 // The shapes mirror what was confirmed live: the visible card text lives in
-// `iva.DescriptionStep` (the flat `description` is empty in the SSR catalog and populated in
-// the items API response), the shown price in `iva.PriceStep` while `item.priceDetailed`
-// keeps the base price, and the visible location line is built from `geo.geoReferences`.
+// `iva.DescriptionStep`, the shown price in `iva.PriceStep` while `item.priceDetailed` keeps
+// the base price, and the visible location line is built from `geo.geoReferences` — carried
+// by the `GeoStep` on most routes and by the flat `geo` on a real-estate one (F-093).
 // Keep them in sync with the findings in the project memory when Avito drifts.
 import { parseHTML } from 'linkedom';
 
@@ -45,6 +45,9 @@ export function item({
   sellerInfo = true,
   rating = { score: 5, summary: '2 015 отзывов', showChevronEnd: false },
   images = [cardPhoto('one'), cardPhoto('two')],
+  // Two real-estate routes ship no GeoStep key at all and answer from the flat `geo`
+  // instead, which is why the step is a carrier of the location and not a gate on it (F-093).
+  geoStep = true,
   // Avito ships a flat boolean on every catalog card; `null` here means the key is absent,
   // which is the drift case the reservation filter must refuse instead of guessing.
   isReserved = false,
@@ -98,7 +101,7 @@ export function item({
         payload: { priceDetailed: stepPrice },
       }],
       DescriptionStep: description == null ? [] : [{ componentData: { component: 'description' }, payload: { description } }],
-      GeoStep: [{ componentData: { component: 'geo' }, payload: { geoForItems: { geoReferences: geoReference ? [geoReference] : [], addressLocality: locationName || '' } } }],
+      ...(geoStep ? { GeoStep: [{ componentData: { component: 'geo' }, payload: { geoForItems: { geoReferences: geoReference ? [geoReference] : [], addressLocality: locationName || '' } } }] } : {}),
       UserInfoStep: sellerInfo ? [{
         componentData: { component: 'seller-info' },
         payload: {

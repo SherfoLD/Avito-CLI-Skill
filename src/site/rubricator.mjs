@@ -1,15 +1,29 @@
 /**
- * Avito's vocabulary for a node of the category sidebar
- * (`rubricators.side.nodes`), which no command may hold a second opinion about:
+ * The category sidebar, `rubricators.side.nodes`: what a node is, what its type
+ * means, and the one walk over the tree both commands that read it share
+ * (D-046). `get-categories` and `move-category` differ in what they do with a
+ * row, not in what a row is.
+ *
+ * Avito's vocabulary for `type`, which no command may hold a second opinion
+ * about:
  *
  *   0  a branch — a group head, drawn with an expander arrow and never as a
  *      link, whose own route Avito still hands over (F-083)
  *   1  an option — the rows the page draws as anchors
  *   2  the current category — where this search already is
  *
- * An unknown type is `null` rather than a guess, so each caller refuses a
- * fourth kind of node in the terms its own caller can act on.
+ * An unknown type stops the walk, because a fourth kind of node is a sidebar
+ * neither command can describe.
  */
+
+import { CommandExecutionError } from '../runtime/errors.mjs';
+import { decode } from '../runtime/schema.mjs';
+import { SIDEBAR_NODE } from '../schemas/rubricator.mjs';
+import { answeredUrl } from './url.mjs';
+
+/** The deepest nesting a sidebar may claim, and the most nodes it may carry. */
+export const MAX_DEPTH = 20;
+const MAX_SIDE_NODES = 200;
 
 export function sidebarRole(type) {
   if (type === 0) return 'branch';
@@ -19,15 +33,63 @@ export function sidebarRole(type) {
 }
 
 /**
+ * Every node of the tree in the order Avito drew it, each with the three things
+ * a caller needs that the node itself does not carry: how deep it sits, the
+ * visible name it hangs under, and its route as a `URL` — `null` where Avito
+ * hung none, which is a row that cannot be followed rather than a sidebar this
+ * CLI fails to understand.
+ */
+export function sidebarWalk(rawNodes, baseUrl) {
+  if (!Array.isArray(rawNodes)) {
+    throw new CommandExecutionError('Avito category sidebar has an unexpected shape');
+  }
+
+  const entries = [];
+  const seenIds = new Set();
+  const visit = (nodes, depth, parent) => {
+    if (depth > MAX_DEPTH) {
+      throw new CommandExecutionError('Avito category sidebar exceeds its supported nesting depth');
+    }
+    for (const rawNode of nodes) {
+      if (entries.length >= MAX_SIDE_NODES) {
+        throw new CommandExecutionError('Avito category sidebar contains implausibly many nodes');
+      }
+      const node = decode(
+        SIDEBAR_NODE,
+        rawNode,
+        `Avito category sidebar node at position ${entries.length + 1}`,
+      );
+      const role = sidebarRole(node.type);
+      if (role === null) {
+        throw new CommandExecutionError(`Avito category sidebar node "${node.name}" has an unsupported type`);
+      }
+      if (seenIds.has(node.id)) {
+        throw new CommandExecutionError(`Avito category sidebar repeats node ID ${node.id}`);
+      }
+      seenIds.add(node.id);
+
+      const route = String(node.url ?? '').trim() === ''
+        ? null
+        : answeredUrl(node.url, `category sidebar route of node ${node.id}`, baseUrl.href);
+      entries.push({ node, depth, parent, role, route });
+      visit(node.children, depth + 1, node.name);
+    }
+  };
+  visit(rawNodes, 0, null);
+
+  return entries;
+}
+
+/**
  * Whether a node's route is one this search can be moved to — the URL decides,
  * not what the page draws (D-057). Two rows are not a move: the node Avito
  * itself marks as the current category, and any node whose route is the one
  * already requested. The second comparison is by pathname alone, because the
  * sidebar's copy of a route carries a `cd=1` the request did not — and it is
  * the one already requested, not the one Avito would canonicalise it to, so the
- * type is still asked as well.
+ * role is still asked as well.
  */
-export function isFollowableNode(type, targetUrl, currentPathname) {
-  if (sidebarRole(type) === 'current') return false;
-  return targetUrl != null && targetUrl.pathname !== currentPathname;
+export function isFollowableNode(role, route, currentPathname) {
+  if (role === 'current') return false;
+  return route != null && route.pathname !== currentPathname;
 }

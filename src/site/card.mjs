@@ -2,16 +2,20 @@
  * The catalog-card decoder: one Avito item as it arrives on the items API, and
  * the row the four listing commands hand over.
  *
- * What the card *shows* is not what the flat item says:
+ * What the card *shows* lives in `iva`, Avito's own list of rendered steps, and
+ * two of those steps are the whole answer rather than the better half of one:
  *
- *   visible price     iva.PriceStep[].payload.priceDetailed   (flat: base price)
- *   visible text      iva.DescriptionStep[].payload           (flat: empty in SSR)
- *   visible location  geo.geoReferences[0] + walking time     (flat: null on most)
+ *   visible price   iva.PriceStep[].payload.priceDetailed
+ *   visible text    iva.DescriptionStep[].payload.description
  *
- * The flat fields stay as fallbacks, so drift there does not fail — it answers
- * four commands with the other meaning. `CATALOG_ITEM` marks every such carrier
- * `z.unknown()`: what the schema declares is the shape that already stops the
- * call, and what it leaves open is where a fallback still decides.
+ * The flat `priceDetailed` beside the first is a different quantity — the base
+ * price, which disagrees with the printed one on 45 cards of 50 on a walked
+ * route (D-020, F-076) — so a card with no price step is drift and stops the
+ * call rather than answering from it (D-070).
+ *
+ * `iva.GeoStep` is not of that kind: two real-estate routes ship no such step at
+ * all and the flat `geo` carries the same references, so the location is read
+ * from whichever of the two the card has (F-093).
  */
 
 import { CommandExecutionError } from '../runtime/errors.mjs';
@@ -20,9 +24,9 @@ import { AVITO_BASE_URL } from './geo.mjs';
 import { parseFragment } from './html.mjs';
 
 /**
- * The keys this decoder reads. `z.unknown().optional()` is not laziness: those
- * are the carriers a fallback chain reaches past, and declaring a shape for one
- * would fail the call where the decoder answers from the other carrier instead.
+ * The keys this decoder reads. What stays `z.unknown().optional()` is what a
+ * fallback chain still reaches past: the flat geo carriers, and the flat rating
+ * that outlives a withheld seller-info step (F-049).
  */
 const CATALOG_ITEM = z.looseObject({
   type: z.unknown().optional(),
@@ -30,14 +34,18 @@ const CATALOG_ITEM = z.looseObject({
   title: z.unknown().optional(),
   urlPath: z.unknown().optional(),
   url: z.unknown().optional(),
-  description: z.unknown().optional(),
-  priceDetailed: z.unknown().optional(),
   location: z.unknown().optional(),
   addressDetailed: z.unknown().optional(),
   geo: z.unknown().optional(),
   rating: z.unknown().optional(),
-  iva: z.unknown().optional(),
-  isReserved: z.unknown().optional(),
+  // Which steps a card carries is Avito's to decide — `BadgeStickerStep` is on
+  // 7 cards of a 50-card page — but every one of them is a list of rendered
+  // components. A step that is not a list is drift wearing the shape of an
+  // absent one (F-093).
+  iva: z.record(z.string(), z.array(z.unknown())),
+  // Avito ships the flag on every catalog card. Absent, it is a column with no
+  // answer; carrying anything but a boolean, it is drift (F-048, F-093).
+  isReserved: z.boolean().nullish(),
   // An empty list is a listing with no photos (F-047); the key missing
   // altogether is Avito not sending the block, which is every card past the
   // twentieth of the SSR catalog (F-089). Anything else is drift.
@@ -65,8 +73,16 @@ function cleanText(value) {
 }
 
 function stepPayload(item, step, component) {
-  const steps = Array.isArray(item?.iva?.[step]) ? item.iva[step] : [];
-  return steps.find((entry) => entry?.componentData?.component === component)?.payload;
+  return item.iva[step]?.find((entry) => entry?.componentData?.component === component)?.payload;
+}
+
+/** The same, where the step is the only carrier of the answer (D-070). */
+function requiredStepPayload(item, step, component) {
+  const payload = stepPayload(item, step, component);
+  if (payload == null || typeof payload !== 'object') {
+    throw new CommandExecutionError(`Avito catalog card ${item.id} carries no ${step}`);
+  }
+  return payload;
 }
 
 /**
@@ -77,21 +93,21 @@ function stepPayload(item, step, component) {
  *
  * A card with no number to show says so twice over and differently: the step
  * value is `null` under «Цена договорная» and `0` under «Бесплатно», while the
- * flat value is `0` under both (F-076). So the step is the whole answer wherever
- * Avito sent one — its own string included — and the flat field, which carries a
- * different quantity, is read only where there is no step at all.
+ * flat value is `0` under both (F-076). So the step answers for both, its own
+ * string included.
  */
 export function itemPrice(item) {
-  const visible = stepPayload(item, 'PriceStep', 'price')?.priceDetailed;
-  if (visible) return firstNumber([visible.value, visible.string]);
-  if (item?.priceDetailed?.hasValue === false) return null;
-  return firstNumber([
-    item?.priceDetailed?.value,
-    item?.priceDetailed?.price,
-    item?.priceDetailed?.string,
-    item?.priceDetailed?.fullString,
-    item?.price,
-  ]);
+  const printed = priceStep(item);
+  return firstNumber([printed.value, printed.string]);
+}
+
+/** The price as the card prints it. Its absence is drift, not a missing value. */
+function priceStep(item) {
+  const printed = requiredStepPayload(item, 'PriceStep', 'price').priceDetailed;
+  if (printed == null || typeof printed !== 'object') {
+    throw new CommandExecutionError(`Avito catalog card ${item.id} carries a price step with no price`);
+  }
+  return printed;
 }
 
 /** The first candidate that is a number, or that spells one. */
@@ -118,8 +134,7 @@ export function firstNumber(candidates) {
  * договорная») that `itemPrice` has already answered for.
  */
 export function itemPriceIsFloor(item) {
-  const visible = stepPayload(item, 'PriceStep', 'price')?.priceDetailed;
-  const printed = cleanText((visible ?? item?.priceDetailed)?.string);
+  const printed = cleanText(priceStep(item).string);
   return /\d/.test(printed) && /[^\d\s]/.test(printed);
 }
 
@@ -135,10 +150,13 @@ export function itemHasPriceList(item) {
 
 /**
  * The card prints the nearest geo reference with its walking time when Avito
- * has one ("Китай-город, до 5 мин.") and falls back to the plain city otherwise.
+ * has one ("Китай-город, до 5 мин.") and the plain city otherwise. Both carriers
+ * are primary: a computer-parts page ships the step with no references on 46
+ * cards of 50, and a flats page ships the references with no step at all, on all
+ * 50 (F-093).
  */
 export function itemLocation(item) {
-  const geo = stepPayload(item, 'GeoStep', 'geo')?.geoForItems ?? item?.geo;
+  const geo = stepPayload(item, 'GeoStep', 'geo')?.geoForItems ?? item.geo;
   const reference = Array.isArray(geo?.geoReferences) ? geo.geoReferences[0] : null;
   const referenceName = cleanText(reference?.content);
   if (referenceName) {
@@ -157,9 +175,14 @@ export function itemLocation(item) {
   return candidates.map(cleanText).find(Boolean) || null;
 }
 
+/**
+ * The card text, which arrives with Avito's own markup in it. The flat
+ * `description` beside the step is the same string on the items API and empty in
+ * the SSR catalog, so it is a second copy rather than a second carrier and the
+ * step answers alone (F-093).
+ */
 export function itemDescription(item) {
-  const raw = cleanText(stepPayload(item, 'DescriptionStep', 'description')?.description
-    ?? item?.description);
+  const raw = cleanText(requiredStepPayload(item, 'DescriptionStep', 'description').description);
   if (!raw) return null;
   if (!/[<>]/.test(raw)) return raw;
   return cleanText(parseFragment(raw)?.textContent) || null;
@@ -202,9 +225,8 @@ export function itemPublished(item) {
  * no seller" (D-028).
  */
 export function itemSeller(item) {
-  const steps = Array.isArray(item?.iva?.UserInfoStep) ? item.iva.UserInfoStep : [];
-  const payload = steps.find((step) => step?.componentData?.component === 'seller-info')?.payload;
-  const rawRating = payload?.rating?.score ?? item?.rating?.score;
+  const payload = stepPayload(item, 'UserInfoStep', 'seller-info');
+  const rawRating = payload?.rating?.score ?? item.rating?.score;
   const rating = rawRating == null ? null : Number(rawRating);
   if (rating != null && (!Number.isFinite(rating) || rating < 0 || rating > 5)) {
     throw new CommandExecutionError('Avito catalog: seller rating is malformed');
@@ -212,19 +234,19 @@ export function itemSeller(item) {
   return {
     name: cleanText(payload?.profile?.title) || null,
     rating,
-    reviewsCount: reviewCount(payload?.rating?.summary ?? item?.rating?.summary),
+    reviewsCount: reviewCount(payload?.rating?.summary ?? item.rating?.summary),
   };
 }
 
 /**
  * Avito prints "Забронировано" on a reserved card. The machine-readable carrier
  * is the flat boolean the catalog ships with every item; nothing here infers
- * reservation from badges or card text. A card that stops carrying the boolean
+ * reservation from badges or card text. A card that stops carrying the key
  * decodes to null, and only `--remove-reserved` turns that into a stop, so the
  * default output never depends on this field (F-048).
  */
 export function itemReserved(item) {
-  return typeof item?.isReserved === 'boolean' ? item.isReserved : null;
+  return item.isReserved ?? null;
 }
 
 /**

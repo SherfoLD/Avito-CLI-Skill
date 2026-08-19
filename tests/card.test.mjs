@@ -76,10 +76,9 @@ check('the publication stamp is the instant Avito prints, and drift stops the ca
   }
 });
 
-// The step is the whole answer wherever Avito sent one, and the flat field —
-// which carries the base price — is read only where there is no step (F-076).
+// The step is the whole answer: the flat field beside it carries the base price,
+// which is a different number on 45 cards of 50 on a live route (F-076, F-093).
 check('the price is the number the card prints, and a floor is not a price', () => {
-  assert(one({ visiblePrice: null }).price === 43800, 'no step means the flat base price');
   const floor = one({ priceForm: 'floor' });
   assert(floor.price === null && floor.minPrice === 43691, `«от» is a floor, got ${JSON.stringify(floor)}`);
   assert(one({ priceForm: 'negotiable' }).price === null, '«Цена договорная» is no number at all');
@@ -113,10 +112,50 @@ check('the reservation flag is read from the card and an absent key stays null',
   assert(one({ isReserved: true }).reserved === true, 'a reserved card must decode to true');
   assert(one({ isReserved: false }).reserved === false, 'an available card must decode to false');
   assert(one({ isReserved: null }).reserved === null, 'a missing flag must stay null, not become false');
+  // An absent key is a column with no answer; a key carrying something else is drift,
+  // and answering `null` there would hand `--remove-reserved` the same refusal (F-048).
+  for (const drift of ['true', 1, {}]) {
+    const message = refusal([{ ...item(), isReserved: drift }]);
+    assert(/\bisReserved\b/.test(message ?? ''),
+      `isReserved: ${JSON.stringify(drift)} must stop the call naming the path, got ${message}`);
+  }
+});
+
+// The two steps the card is read from are the only carrier of what it prints, so a
+// card without one is drift rather than a row answered from the flat field (D-070).
+check('a card that carries neither price step nor description step stops the call', () => {
+  assert(/carries no PriceStep/.test(refusal([item({ visiblePrice: null })]) ?? ''),
+    'a card with an empty PriceStep must stop the call');
+  assert(/carries no DescriptionStep/.test(refusal([item({ description: null })]) ?? ''),
+    'a card with an empty DescriptionStep must stop the call');
+  const noPrice = { ...item() };
+  delete noPrice.iva.PriceStep;
+  assert(/carries no PriceStep/.test(refusal([noPrice]) ?? ''),
+    'a card with no PriceStep key at all must stop the call');
+});
+
+// Which steps a card carries is Avito's to decide — the GeoStep is absent on every
+// card of two real-estate routes, where the flat geo carries the same references.
+check('a card with no geo step answers its location from the flat carrier', () => {
+  const flats = one({ geoStep: false });
+  assert(flats.location === 'Китай-город, до 5 мин.', `location: ${flats.location}`);
+  assert(one({ geoStep: false, geoReference: null }).location === 'Москва',
+    'with neither step nor reference the plain city is the answer');
+});
+
+// A step is a list of rendered components. One that is not a list is drift wearing
+// the shape of an absent step, and reading it as empty would hide the difference.
+check('a step Avito sends in another shape is drift, and the message names the path', () => {
+  const bent = { ...item(), iva: { ...item().iva, PriceStep: { componentData: {} } } };
+  assert(/\biva\b/.test(refusal([bent]) ?? ''), 'a step that is not a list must stop the call');
+  assert(/\biva\b/.test(refusal([{ ...item(), iva: [] }]) ?? ''), 'an iva that is not a record must stop the call');
+  const noIva = { ...item() };
+  delete noIva.iva;
+  assert(/\biva\b/.test(refusal([noIva]) ?? ''), 'a card with no steps at all must stop the call');
 });
 
 check('an item this decoder cannot name stops the call instead of becoming a row', () => {
-  assert(/malformed item/.test(refusal([{ type: 'item', id: 'x', title: 'y' }]) ?? ''),
+  assert(/malformed item/.test(refusal([item({ id: 'x' })]) ?? ''),
     'an id that is not an Avito id must stop the call');
   assert(/invalid item URL/.test(refusal([item({ id: '8288791269' })].map((entry) => ({ ...entry, urlPath: '/moskva/telefony/iphone' }))) ?? ''),
     'a route that does not end in the item id must stop the call');

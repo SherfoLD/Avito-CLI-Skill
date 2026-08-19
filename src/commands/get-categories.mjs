@@ -31,15 +31,12 @@ import {
   z,
 } from '../runtime/schema.mjs';
 import { SIDEBAR_DOCUMENT } from '../schemas/document.mjs';
-import { MAX_NAME_LENGTH, SIDEBAR_NODE } from '../schemas/rubricator.mjs';
-import { isFollowableNode, sidebarRole } from '../site/rubricator.mjs';
+import { MAX_NAME_LENGTH } from '../schemas/rubricator.mjs';
+import { MAX_DEPTH, isFollowableNode, sidebarWalk } from '../site/rubricator.mjs';
 import { primeOrigin, readDocument } from '../site/carriers.mjs';
-import { requestedSearchUrl } from '../site/url.mjs';
+import { answeredUrl, requestedSearchUrl } from '../site/url.mjs';
 
 const COMMAND = 'avito get-categories';
-const AVITO_HOSTS = new Set(['avito.ru', 'www.avito.ru']);
-const MAX_SIDE_NODES = 200;
-const MAX_DEPTH = 20;
 
 // Avito's three node kinds (`src/site/rubricator.mjs`) plus the one this command
 // adds: `back`, the row that leads up out of the current category.
@@ -50,34 +47,6 @@ const CATEGORY_CONTEXT = z.object({
   query: z.string(),
   locationId: z.number().int().positive(),
 });
-
-function normalizeResultUrl(value, baseUrl, label) {
-  const raw = String(value ?? '').trim();
-  if (!raw) {
-    throw new CommandExecutionError(`Avito ${label} contains a missing URL`);
-  }
-
-  let parsed;
-  try {
-    parsed = new URL(raw, baseUrl);
-  } catch {
-    throw new CommandExecutionError(`Avito ${label} contains a malformed URL`);
-  }
-
-  if (
-    parsed.protocol !== 'https:'
-    || !AVITO_HOSTS.has(parsed.hostname)
-    || parsed.port
-    || parsed.username
-    || parsed.password
-  ) {
-    throw new CommandExecutionError(`Avito ${label} points outside https://www.avito.ru`);
-  }
-
-  parsed.hostname = 'www.avito.ru';
-  parsed.hash = '';
-  return parsed;
-}
 
 function normalizeQuery(value) {
   return String(value ?? '').replace(/\s+/g, ' ').trim().toLocaleLowerCase('ru-RU');
@@ -130,16 +99,8 @@ export default defineCommand({
       command: COMMAND,
     });
 
-    const responseUrl = normalizeResultUrl(
-      observed.responseUrl,
-      requestedUrl,
-      'category navigation response',
-    );
-    const payloadUrl = normalizeResultUrl(
-      observed.state.url,
-      responseUrl.href,
-      'category navigation state',
-    );
+    const responseUrl = answeredUrl(observed.responseUrl, 'category navigation response', requestedUrl);
+    const payloadUrl = answeredUrl(observed.state.url, 'category navigation state', responseUrl.href);
     if (payloadUrl.pathname !== responseUrl.pathname) {
       throw new CommandExecutionError('Avito category navigation state changed the search pathname');
     }
@@ -150,60 +111,25 @@ export default defineCommand({
       'Avito category navigation state',
     );
 
-    const rawSideNodes = observed.state.rubricators?.side?.nodes;
-    if (!Array.isArray(rawSideNodes)) {
-      throw new CommandExecutionError('Avito category sidebar has an unexpected shape');
-    }
-
     const rows = [];
-    const seenSideIds = new Set();
-    const decodeSideNodes = (nodes, depth, parent) => {
-      if (!Array.isArray(nodes) || depth > MAX_DEPTH) {
-        throw new CommandExecutionError('Avito category sidebar exceeds its supported nesting depth');
-      }
-
-      for (const rawNode of nodes) {
-        if (rows.length >= MAX_SIDE_NODES) {
-          throw new CommandExecutionError('Avito category sidebar contains implausibly many nodes');
-        }
-        const node = decode(
-          SIDEBAR_NODE,
-          rawNode,
-          `Avito category sidebar node at position ${rows.length}`,
-        );
-        if (seenSideIds.has(node.id)) {
-          throw new CommandExecutionError(`Avito category sidebar repeats node ID ${node.id}`);
-        }
-        const role = sidebarRole(node.type);
-        if (role === null) {
-          throw new CommandExecutionError(`Avito category sidebar node ${node.id} has unsupported type`);
-        }
-        seenSideIds.add(node.id);
-
-        // A node Avito hangs no URL on is a row that cannot be followed, not a
-        // sidebar this command fails to understand. One that carries a URL
-        // pointing off the site is the second thing, and it stops the call.
-        const target = String(node.url ?? '').trim() === ''
-          ? null
-          : normalizeResultUrl(node.url, responseUrl.href, `category sidebar node ${node.id}`);
-        const navigable = isFollowableNode(node.type, target, responseUrl.pathname);
-
-        rows.push({
-          rank: rows.length + 1,
-          role: node.hasBack ? 'back' : role,
-          name: node.name,
-          depth,
-          parent,
-          current: node.isCurrent,
-          hasChildren: node.children.length > 0,
-          navigable,
-          preservesQuery: navigable ? targetPreservesQuery(target, searchCore.query) : null,
-          searchUrl: navigable ? target.href : null,
-        });
-        decodeSideNodes(node.children, depth + 1, node.name);
-      }
-    };
-    decodeSideNodes(rawSideNodes, 0, null);
+    for (const { node, depth, parent, role, route } of sidebarWalk(
+      observed.state.rubricators?.side?.nodes,
+      responseUrl,
+    )) {
+      const navigable = isFollowableNode(role, route, responseUrl.pathname);
+      rows.push({
+        rank: rows.length + 1,
+        role: node.hasBack ? 'back' : role,
+        name: node.name,
+        depth,
+        parent,
+        current: node.isCurrent,
+        hasChildren: node.children.length > 0,
+        navigable,
+        preservesQuery: navigable ? targetPreservesQuery(route, searchCore.query) : null,
+        searchUrl: navigable ? route.href : null,
+      });
+    }
 
     if (rows.length === 0) {
       throw new EmptyResultError('avito get-categories', 'This Avito search has no category navigation');

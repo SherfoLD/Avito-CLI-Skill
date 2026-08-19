@@ -1,6 +1,6 @@
 # Platform — shared by all ten commands
 
-Confirmed live: 2026-08-18
+Confirmed live: 2026-08-19
 
 What belongs to no single command: transport, carriers of state, the shared row
 decoder, output shape, repository rules. Anything command-specific is in that
@@ -60,17 +60,19 @@ its drift breaks all four at once.
 
 The visible fields are **not** in the flat item object:
 
-| What the card shows | Where it is read from | The flat field that would mislead |
+| What the card shows | Where it is read from | The flat field beside it |
 |---|---|---|
-| the large price | `iva.PriceStep[].payload.priceDetailed` | `item.priceDetailed` — the base price |
-| the description text | `iva.DescriptionStep[].payload.description` | `item.description` — always empty |
-| the location line | `geo.geoReferences[0]` + walking time | `item.location.name` — null on most rows |
+| the large price | `iva.PriceStep[].payload.priceDetailed` | `item.priceDetailed` — the base price, a different number on 45 cards of 50 (F-093) |
+| the description text | `iva.DescriptionStep[].payload.description` | `item.description` — the same string on the items API, empty in the SSR catalog |
+| the location line | `geoReferences[0]` + walking time, or the plain city | the same references, in `item.geo` where the card has no `GeoStep` |
 
-The flat fields remain as a fallback, and that is exactly why carrier drift is
-dangerous: the command will not fail, it will quietly return different
-semantics. Nothing about the *shape* catches it — a fallback value is the right
-type — so the only automatic defence is the mandatory non-empty
-`descriptionPreview` in the strict fixtures, and that one does not catch price.
+Neither the price nor the description is read from the flat field: a card
+carrying no step stops the call, because the flat price is a different quantity
+and the flat description is a second copy (D-070). The location is the one field
+with two live carriers and reads from whichever the card has, so drift there is
+still a wrong meaning rather than a refusal — and the only automatic defence is
+the mandatory non-empty `descriptionPreview` in the strict fixtures, which does
+not reach it.
 
 ## Where a payload becomes a row
 
@@ -360,6 +362,38 @@ schema (D-053).
   It costs one extra `evaluateWithArgs` per catalog command, about 7 ms on a small
   return, against two Avito fetches of seconds.
 
+- **D-070 — where a card has one carrier, its absence is drift.** The row
+  decoder used to answer from the flat item wherever an `iva` step was missing,
+  which is a fallback value in the one place this repository forbids one: the
+  flat `priceDetailed` is the base price, a different number from the printed one
+  on 45 cards of 50 (D-020, F-076). It now reads the price and the description
+  from their steps alone, and a card carrying neither stops the call. What made
+  that affordable is a census rather than an argument — 400 cards over 8 routes of
+  6 top-level categories carry both steps (F-093) — and what makes it necessary
+  is that the wrong answer is a plausible number nobody would go looking at.
+  Two shape rules came with it, and both are in the schema so the message names
+  the path: every `iva` value is a list of rendered components, and `isReserved`
+  is a boolean or absent. Reading a step Avito sent in another shape as an empty
+  one is drift wearing the shape of an absent step; decoding a non-boolean
+  `isReserved` to `null` handed `--remove-reserved` the answer meant for a key
+  that is not there (F-048).
+  `iva.GeoStep` is deliberately not of this kind: two real-estate routes ship no
+  such step at all and the flat `geo` carries the same references, so the
+  location has two live carriers and reads from whichever the card has.
+
+- **D-071 — one walk over the category sidebar, and one rule for a URL Avito
+  answered with.** `get-categories` and `move-category` differ in what they do
+  with a sidebar row, not in what a row is, and the traversal around
+  `SIDEBAR_NODE` was written twice: the depth bound, the node count, the role and
+  the route check, with a uniqueness rule only one of the two held. `sidebarWalk`
+  in `src/site/rubricator.mjs` is the one walk now, and it yields a node with the
+  three things a node does not carry — its depth, the visible name it hangs
+  under, and its route as a `URL` or `null`.
+  The private URL normaliser that went with the second copy is gone into
+  `answeredUrl`. The two differed on nothing about the host and on one rule worth
+  keeping: a port or credentials make a different origin, and an answered URL
+  becomes the next command's argument, where `requestedSearchUrl` refuses both.
+
 - **D-049 — a verify fixture is a schema over the whole returned array.** The
   fixtures were JSON in a small dialect — `rowCount`, `patterns`, `notEmpty`,
   `mustNotContain`, `mustBeTruthy` — applied by a matcher written by hand. Every
@@ -558,6 +592,32 @@ schema (D-053).
   the same page with the same first ID, so `get-page` carries the context when
   its document has one and simply does not when it has not. Replayed 2026-08-18
   on `…/operativnaya_pamyat-…?q=ddr5+32gb`.
+- **F-093 — the card's steps are not optional, and one of them is not a step.**
+  Counted over the items API of 8 routes in 6 top-level categories — services
+  twice, animals, transport, personal items, real estate twice, computer parts —
+  400 cards of 400 carry `iva.PriceStep` with a `priceDetailed` and
+  `iva.DescriptionStep` with text, every `iva` value is a list, and `isReserved`
+  is a boolean. So the fallbacks past those carriers were unreachable rather than
+  useful (D-070). What is genuinely optional is which *other* steps a card has:
+  `BadgeStickerStep` is on 7 cards of one 50-card page and 50 of another.
+  Two more measurements decided the two fallbacks separately. The flat
+  `description` is the step's own text on the API, identical on 200 cards
+  compared, so it was a second copy and not a second meaning — the "empty flat
+  description" belongs to the SSR catalog, which no longer feeds this decoder
+  (D-063). The flat `priceDetailed` is a different number on 45 cards of 50 of
+  `/moskva/tovary_dlya_kompyutera?q=ddr5+32gb`, and its string agrees with the
+  step's about «от» on all 50 of the cleaning route, so the fallback would have
+  been wrong about the amount and right about nothing.
+  `GeoStep` is the counter-example that keeps its fallback: `/moskva/kvartiry`
+  and `/moskva/garazhi_i_mashinomesta` ship no such step on any of their 50
+  cards, and the flat `geo` carries the same `geoReferences` — checked
+  end-to-end, all 50 rows of the flats route return a metro reference with its
+  walking time. Replayed 2026-08-19; the census is in
+  `evidence/card-step-carriers-202608191445.json`.
+  What the census does not cover: `catalog.extraBlockItems` was empty on every
+  route read, including two deliberately narrow queries, so every card counted
+  came out of `catalog.items`. The decoder reads both lists, and a card that
+  appears only in the second one has never been seen.
 - **F-087 — the résumé refusal was the photo reader's, and it is gone.** A résumé
   card carries a placeholder served from `www.avito.st`, outside the photo CDN,
   and the row decoder threw on it — one card killed the page, which disabled
@@ -715,8 +775,9 @@ schema (D-053).
   is gone (D-035). The first candidate measurement turned out to be a refusal on
   the page past the last one rather than a rate limit (F-061): only a `429` that
   does not reproduce in silence counts as a number here.
-- Drift in the shared row decoder breaks four commands at once and shows up as
-  different semantics, not as a refusal.
+- Drift in the shared row decoder breaks four commands at once. The price and
+  the description now refuse where their carrier goes missing (D-070); the
+  location has two live carriers and would still answer from the other one.
 - **`price` still does not say what it counts.** The phrases, the floor and the
   table are handled (D-056), but «150 ₽ за м²» is `price: 150` like any other
   150: the unit is in the payload and in no column. No fixture catches a wrong

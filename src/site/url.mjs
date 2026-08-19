@@ -43,6 +43,10 @@ export function requestedSearchUrl(value, label = 'searchUrl') {
  * A URL Avito answered with, as a `URL`. `base` is the response it was found
  * in, because the category sidebar hangs relative routes off it and writes some
  * of them without the `www`.
+ *
+ * A port or credentials make it a different origin, and the answer becomes the
+ * next call's argument: what `requestedSearchUrl` refuses to take, this refuses
+ * to hand over.
  */
 export function answeredUrl(value, subject, base = AVITO_ORIGIN) {
   let parsed;
@@ -51,7 +55,13 @@ export function answeredUrl(value, subject, base = AVITO_ORIGIN) {
   } catch {
     throw new CommandExecutionError(`Avito returned an invalid ${subject}`);
   }
-  if (parsed.protocol !== 'https:' || !AVITO_HOSTS.has(parsed.hostname)) {
+  if (
+    parsed.protocol !== 'https:'
+    || !AVITO_HOSTS.has(parsed.hostname)
+    || parsed.port
+    || parsed.username
+    || parsed.password
+  ) {
     throw new CommandExecutionError(`Avito returned a ${subject} outside ${AVITO_ORIGIN}`);
   }
   parsed.hostname = 'www.avito.ru';

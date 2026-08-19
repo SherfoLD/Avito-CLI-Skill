@@ -1,0 +1,56 @@
+{
+  "what": "Which iva steps a live catalog card actually carries, and whether the flat carrier beside each one answers the same thing. Replayed for phase 30: the fallback chains of src/site/card.mjs.",
+  "replayed": "2026-08-19",
+  "carrier": "/web/1/js/items, addressed by the page-1 SSR searchCore of each route (D-063)",
+  "census": {
+    "routes": 8,
+    "cards": 400,
+    "withIva": 400,
+    "ivaNotAnObject": 0,
+    "stepValuesThatAreNotArrays": 0,
+    "PriceStep.price.priceDetailed": 400,
+    "DescriptionStep.description.payload.description nonEmpty": 400,
+    "isReserved typeof boolean": 400,
+    "flat description empty": 0,
+    "note": "BadgeStickerStep and BadgeBarStep are present on 7-50 cards of a route, so a step key is legitimately absent per card; only the four steps this decoder reads were counted for presence."
+  },
+  "routes": [
+    { "route": "/moskva/predlozheniya_uslug", "query": "ремонт стиральных машин", "cards": 50, "priceStep": 50, "descriptionStep": 50, "geoStep": 50 },
+    { "route": "/moskva/predlozheniya_uslug", "query": "уборка квартиры", "cards": 50, "priceStep": 50, "descriptionStep": 50, "geoStep": 50 },
+    { "route": "/moskva/sobaki", "query": "щенок", "cards": 50, "priceStep": 50, "descriptionStep": 50, "geoStep": 50 },
+    { "route": "/moskva/avtomobili", "query": "bmw", "cards": 50, "priceStep": 50, "descriptionStep": 50, "geoStep": 50 },
+    { "route": "/moskva/odezhda_obuv_aksessuary", "query": "куртка", "cards": 50, "priceStep": 50, "descriptionStep": 50, "geoStep": 50 },
+    { "route": "/moskva/tovary_dlya_kompyutera", "query": "ddr5 32gb", "cards": 50, "priceStep": 50, "descriptionStep": 50, "geoStep": 50 },
+    { "route": "/moskva/kvartiry", "query": "", "cards": 50, "priceStep": 50, "descriptionStep": 50, "geoStep": 0 },
+    { "route": "/moskva/garazhi_i_mashinomesta", "query": "", "cards": 50, "priceStep": 50, "descriptionStep": 50, "geoStep": 0 },
+    { "route": "/moskva/predlozheniya_uslug", "query": "", "cards": 0, "note": "the services root without a query carries no catalog at all; not counted in the census" }
+  ],
+  "priceStepAgainstFlatPriceDetailed": {
+    "what": "The step is a different number from the flat field on nearly every card of a walked route, so reading the flat one where the step is missing answers the base price for the printed one (D-020, F-076).",
+    "/moskva/tovary_dlya_kompyutera?q=ddr5 32gb": { "cards": 50, "sameValue": 5, "differentValue": 45,
+      "samples": [
+        { "step": 43890, "flat": 44000 },
+        { "step": 64240, "flat": 64662 },
+        { "step": 31578, "flat": 32000 }
+      ] },
+    "/moskva/kvartiry": { "cards": 50, "sameValue": 50, "differentValue": 0 },
+    "/moskva/sobaki?q=щенок": { "cards": 50, "sameValue": 50, "differentValue": 0 },
+    "/moskva/predlozheniya_uslug?q=ремонт стиральных машин": { "cards": 50, "sameValue": 44, "differentValue": 6,
+      "note": "all six are «Цена договорная», where the step says null and the flat field says 0 (F-076)" },
+    "floorTest": { "route": "/moskva/predlozheniya_uslug?q=уборка квартиры", "cards": 50,
+      "stepStringReadsAsFloor": 44, "flatStringReadsAsFloor": 44, "disagreements": 0 }
+  },
+  "descriptionStepAgainstFlatDescription": {
+    "what": "On the items API the flat description is the step's own text, cleaned identically. The «flat description is empty» fact belongs to the SSR catalog, which no longer feeds the row decoder (D-063).",
+    "comparedCards": 200,
+    "identicalAfterWhitespaceCleaning": 200,
+    "routes": ["/moskva/kvartiry", "/moskva/sobaki?q=щенок", "/moskva/tovary_dlya_kompyutera?q=ddr5 32gb", "/moskva/predlozheniya_uslug?q=ремонт стиральных машин"]
+  },
+  "geoStepIsNotOneOfThese": {
+    "what": "Two whole real-estate routes ship no GeoStep key at all, and the flat geo carries the same geoReferences the step would have.",
+    "/moskva/kvartiry": { "cards": 50, "geoStep": 0, "locationFromFlatGeoReference": 50 },
+    "/moskva/garazhi_i_mashinomesta": { "cards": 50, "geoStep": 0 },
+    "/moskva/tovary_dlya_kompyutera?q=ddr5 32gb": { "cards": 50, "geoStep": 50, "geoReferenceEmpty": 46,
+      "note": "the step is present and its geoReferences are empty; the plain city is what the card prints" }
+  }
+}

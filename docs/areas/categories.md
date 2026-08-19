@@ -1,6 +1,6 @@
 # Categories — `get-categories`, `move-category`
 
-Confirmed live: 2026-08-18
+Confirmed live: 2026-08-19
 
 The shared row decoder, the row shape and the transport are in
 [_platform.md](_platform.md).
@@ -70,18 +70,15 @@ without losing the query.
   `ancestor` values. D-033 remains the guard: tree rows always carry the query, so
   the rule does not fire in normal operation, but drift at Avito will become a
   visible refusal instead of a quietly widened listing.
-- **D-046 — the two sidebar readers share what a node *is* and what it *means*,
-  not how it is walked.** Both commands read `rubricators.side.nodes`. What they
-  hold in common is a shape and a vocabulary: `SIDEBAR_NODE` in
-  `src/schemas/rubricator.mjs` says what a node has to carry, and
-  `src/site/rubricator.mjs` says that `type` 0 is a branch, 1 an option, 2 the
-  current category, and that a node can be followed when it carries a route other
-  than this one — with an unknown type answering `null` so each caller refuses it
-  in its own terms. Neither may exist in two copies with two opinions.
-  The traversal around them is still written twice, and that is the one thing
-  here still open: it was two different validations in two different halves of
-  the system when it was written, and both are in Node now (D-069). Merging them
-  is phase 32.
+- **D-046 — the two sidebar readers share the node, its meaning and the walk
+  around it.** Both commands read `rubricators.side.nodes`, and none of it exists
+  twice: `SIDEBAR_NODE` in `src/schemas/rubricator.mjs` says what a node has to
+  carry, and `src/site/rubricator.mjs` says that `type` 0 is a branch, 1 an
+  option, 2 the current category, that a fourth kind stops the call, and that a
+  node can be followed when it carries a route other than this one. `sidebarWalk`
+  in the same file is the traversal (D-071), so what the two commands still hold
+  separately is only what they do with a row: `get-categories` describes it,
+  `move-category` follows it.
 - **D-057 — a row is navigable when it has a route, not when Avito draws it as a
   link.** The page renders only `type=1` as an anchor, and the old reading
   followed that: a branch was a control and its URL was withheld. But the URL is
@@ -101,8 +98,8 @@ without losing the query.
   `isCurrent` nodes, as contradictions. Both are shapes Avito draws (F-084), and
   the second one refused the command on the one route where it is the only way
   out. The invariants are gone; the state travels as `current` and `hasChildren`
-  and the caller reads it. What still stops the call is a node this command
-  cannot describe at all: an unknown `type`, a repeated ID, a missing name, a URL
+  and the caller reads it. What still stops the call is a node neither command
+  can describe at all: an unknown `type`, a repeated ID, a missing name, a URL
   off the site.
 
 ## Facts

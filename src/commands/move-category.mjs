@@ -15,10 +15,9 @@
  */
 
 import { ArgumentError, CommandExecutionError, EmptyResultError } from '../runtime/errors.mjs';
-import { decode } from '../runtime/schema.mjs';
 import { defineCommand } from '../runtime/command.mjs';
 import { CATALOG_DOCUMENT, SIDEBAR_DOCUMENT } from '../schemas/document.mjs';
-import { MAX_NAME_LENGTH, SIDEBAR_NODE } from '../schemas/rubricator.mjs';
+import { MAX_NAME_LENGTH } from '../schemas/rubricator.mjs';
 import { LISTING_ROW, applyReservedFilter, listingRows } from '../site/listing.mjs';
 import { catalogRows } from '../site/card.mjs';
 import {
@@ -37,13 +36,11 @@ import {
   preservedParamsDrift,
   sealItemsApiUrl,
 } from '../site/items.mjs';
-import { isFollowableNode, sidebarRole } from '../site/rubricator.mjs';
+import { isFollowableNode, sidebarWalk } from '../site/rubricator.mjs';
 import { cleanText, comparableText } from '../site/text.mjs';
 import { answeredUrl, requestedSearchUrl } from '../site/url.mjs';
 
 const COMMAND = 'avito move-category';
-const MAX_SIDE_NODES = 200;
-const MAX_DEPTH = 20;
 const VISIBLE_NAMES = 40;
 
 // Whitespace is normalized because the name is matched against what Avito rendered, and a
@@ -76,40 +73,21 @@ function normalizeBoolean(value, label) {
 function collectSidebar(nodes, sourceUrl, sourceQuery) {
   const candidates = [];
   const blocked = [];
-  let nodeCount = 0;
 
-  const visit = (rawNodes, depth) => {
-    if (!Array.isArray(rawNodes) || depth > MAX_DEPTH) {
-      throw new CommandExecutionError('Avito category sidebar exceeds its supported nesting depth');
+  for (const { node, role, route } of sidebarWalk(nodes, sourceUrl)) {
+    if (!isFollowableNode(role, route, sourceUrl.pathname)) {
+      blocked.push({
+        categoryName: node.name,
+        reason: route === null ? 'routeless' : 'current',
+        hasChildren: node.children.length > 0,
+      });
+    } else if (sourceQuery !== '' && cleanText(route.searchParams.get('q')) !== sourceQuery) {
+      blocked.push({ categoryName: node.name, reason: 'dropsQuery' });
+    } else {
+      candidates.push({ categoryName: node.name, categoryUrl: route.href });
     }
-    for (const rawNode of rawNodes) {
-      if (++nodeCount > MAX_SIDE_NODES) {
-        throw new CommandExecutionError('Avito category sidebar contains implausibly many nodes');
-      }
-      const node = decode(SIDEBAR_NODE, rawNode, 'Avito category sidebar node');
-      if (sidebarRole(node.type) === null) {
-        throw new CommandExecutionError(`Avito category sidebar node "${node.name}" has an unsupported type`);
-      }
-      // What a node's route is worth is decided the same way in both commands
-      // that read this sidebar; see src/site/rubricator.mjs.
-      const route = String(node.url ?? '').trim();
-      const target = route === '' ? null : answeredUrl(route, 'category URL', sourceUrl.href);
-      if (!isFollowableNode(node.type, target, sourceUrl.pathname)) {
-        blocked.push({
-          categoryName: node.name,
-          role: target === null ? 'routeless' : 'current',
-          hasChildren: node.children.length > 0,
-        });
-      } else if (sourceQuery !== '' && cleanText(target.searchParams.get('q')) !== sourceQuery) {
-        blocked.push({ categoryName: node.name, role: 'dropsQuery' });
-      } else {
-        candidates.push({ categoryName: node.name, categoryUrl: target.href });
-      }
-      visit(node.children, depth + 1);
-    }
-  };
+  }
 
-  visit(nodes, 0);
   return { candidates, blocked };
 }
 
@@ -122,9 +100,9 @@ function resolveTarget({ candidates, blocked }, target, sourceQuery) {
   if (matches.length === 0) {
     const blockedMatch = blocked.find((entry) => comparableText(entry.categoryName) === comparableText(target));
     if (blockedMatch) {
-      const reason = blockedMatch.role === 'current'
+      const reason = blockedMatch.reason === 'current'
         ? 'is the route this search is already on; moving there is not a move'
-        : blockedMatch.role === 'routeless'
+        : blockedMatch.reason === 'routeless'
           ? `is a sidebar row Avito hangs no route on${blockedMatch.hasChildren ? '; move to one of its children instead' : ''}`
           : `is reachable only through a route that drops the search query "${sourceQuery}",`
             + ' which would return an unrelated category listing instead of this search.'
@@ -195,14 +173,10 @@ export default defineCommand({
     if (Number(sourceCore.page) !== 1) {
       throw new ArgumentError('avito move-category accepts page-1 search URLs');
     }
-    const sideNodes = source.state.rubricators?.side?.nodes;
-    if (!Array.isArray(sideNodes)) {
-      throw new CommandExecutionError('Avito category sidebar has an unexpected shape');
-    }
     const sourceUrl = answeredUrl(source.responseUrl, 'category URL');
     const sourceQuery = cleanText(sourceCore.query);
     const targetUrl = resolveTarget(
-      collectSidebar(sideNodes, sourceUrl, sourceQuery),
+      collectSidebar(source.state.rubricators?.side?.nodes, sourceUrl, sourceQuery),
       requestedName,
       sourceQuery,
     );
