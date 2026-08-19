@@ -4,20 +4,9 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 
-import { parseHTML } from 'linkedom';
 import { assertRow, loadCommand, readCommandSource, readPageSource, runner } from './harness.mjs';
-import { decodeBuyerItemInBrowser } from '../src/browser/prelude/item.mjs';
+import { decodeBuyerItem } from '../src/site/item.mjs';
 import { assertPhotoDirectory, savePhotos } from '../src/site/photos.mjs';
-
-// The decoder parses description markup with the browser's DOMParser. A browser puts a bare
-// fragment into <body>; linkedom returns a document without one, so the shim adds the
-// wrapper a browser would have added and leaves the parsing itself to linkedom.
-const { DOMParser: LinkedomParser } = parseHTML('<html></html>');
-const env = { DOMParser: class {
-  parseFromString(markup, type) {
-    return new LinkedomParser().parseFromString(`<!doctype html><html><body>${markup}</body></html>`, type);
-  }
-} };
 
 const { COMMAND, normalizeItemUrl } = await loadCommand('get-item', ['normalizeItemUrl']);
 
@@ -75,7 +64,7 @@ function buyerItem({
   };
 }
 
-const decode = (overrides) => decodeBuyerItemInBrowser(buyerItem(overrides), ITEM_ID, env);
+const decode = (overrides) => decodeBuyerItem(buyerItem(overrides), ITEM_ID);
 
 const { check, assert, run } = runner();
 
@@ -202,9 +191,9 @@ check('images take the largest variant, survive a renamed key and reject foreign
 });
 
 check('a payload for another item never decodes', () => {
-  assert(decodeBuyerItemInBrowser(buyerItem({ id: '8030214066' }), ITEM_ID, env) === null, 'a mismatched item ID must fail closed');
-  assert(decodeBuyerItemInBrowser(null, ITEM_ID, env) === null, 'a missing payload must fail closed');
-  assert(decodeBuyerItemInBrowser({ item: null }, ITEM_ID, env) === null, 'a missing item must fail closed');
+  assert(decodeBuyerItem(buyerItem({ id: '8030214066' }), ITEM_ID) === null, 'a mismatched item ID must fail closed');
+  assert(decodeBuyerItem(null, ITEM_ID) === null, 'a missing payload must fail closed');
+  assert(decodeBuyerItem({ item: null }, ITEM_ID) === null, 'a missing item must fail closed');
 });
 
 check('the input URL must be a full Avito item URL', () => {
@@ -228,7 +217,8 @@ check('the fallback primes robots.txt and reads the hydration state, never the D
   assert(source.includes("const ORIGIN_BOOTSTRAP_URL = 'https://www.avito.ru/robots.txt'"), 'priming must use the lightweight origin');
   assert(source.includes('page.goto(ORIGIN_BOOTSTRAP_URL'), 'the API context must be primed through robots.txt, not the homepage');
   assert(browserSource.includes('__staticRouterHydrationData'), 'the fallback must read the hydration state of the rendered page');
-  assert(source.includes('fallbackObserved.decodedHydrationItem'), 'the fallback row must come from the shared decoder');
+  assert(source.includes('decodeBuyerItem(fallbackObserved?.buyerItem'), 'the fallback row must come from the shared decoder');
+  assert(!/decodeBuyerItem/.test(browserSource), 'the page half hands the carrier over, it does not decode it');
   // Both carriers are the same object, so both rows have one meaning per column (D-064).
   assert(!/querySelector|data-marker=/.test(browserSource), 'the rendered page must not be read through DOM anchors');
   assert(!/domObserved/.test(source), 'no column may be assembled from the visible page');
@@ -256,18 +246,18 @@ function answer(contentType, body = 'jpeg bytes', status = 200) {
 const temporaryDirectory = () => fs.mkdtempSync(path.join(os.tmpdir(), 'avito-photos-'));
 
 /** The item API answered, and nothing else in the command has to run. */
-const apiPage = (decodedBuyerItem) => ({
+const apiPage = (rawBuyerItem) => ({
   goto: async () => {},
   wait: async () => {},
   evaluateWithArgs: async () => ({
     responseOk: true,
     responseStatus: 200,
     responseContentType: 'application/json',
-    decodedBuyerItem,
+    buyerItem: rawBuyerItem,
   }),
 });
 
-const twoPhotos = () => decode({
+const twoPhotos = () => buyerItem({
   imageUrls: [{ '1280x960': PHOTO_A }, { '1280x960': PHOTO_B }],
 });
 
@@ -391,4 +381,4 @@ check('get-item writes the gallery only when it was asked to, and the row says w
   }
 });
 
-export default await run('item decoder (browser-side function)');
+export default await run('get-item');

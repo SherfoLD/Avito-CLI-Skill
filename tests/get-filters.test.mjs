@@ -83,10 +83,14 @@ const SEARCH_CORE = {
 // refusal from a second shape, and the two would drift apart silently.
 const observedState = (overrides = {}) => ({
   success: true,
-  url: REQUESTED,
-  searchCore: SEARCH_CORE,
-  filtersV2: { Sections: [{ Code: 'Main', Filters: FILTERS }] },
-  ...overrides,
+  responseUrl: REQUESTED,
+  redirect: null,
+  state: {
+    url: REQUESTED,
+    searchCore: SEARCH_CORE,
+    filtersV2: { Sections: [{ Code: 'Main', Filters: FILTERS }] },
+    ...overrides,
+  },
 });
 
 const refusal = (code, message, details = {}) => ({
@@ -441,8 +445,10 @@ check('a drifted schema of a returned filter still fails closed', async () => {
       expect: /implausible currentValue/,
     },
     {
+      // A third side is a bound this reader does not apply, and `RANGE_VALUE`
+      // is the one strict object in the tree for exactly that reason.
       filters: [{ id: 'params[164669]', type: 'numericRange', attrId: 164669, defaultTitle: 'Год выпуска', currentValue: { from: '2015', to: '2018', step: '1' } }],
-      expect: /implausible currentValue/,
+      expect: /currentValue: must be \{from, to\}/,
     },
     {
       filters: [{
@@ -472,7 +478,7 @@ check('a drifted schema of a returned filter still fails closed', async () => {
     },
     {
       filters: [{ id: 'params[112691]', type: 'multiselect', attrId: 112691, defaultTitle: 'Память', currentValue: [{ nested: true }], values: [{ value: '1', name: '128 ГБ' }] }],
-      expect: /non-scalar value/,
+      expect: /currentValue: must be/,
     },
     {
       filters: [{
@@ -505,12 +511,13 @@ check('a drifted schema of a returned filter still fails closed', async () => {
 
 check('a challenge, a bad status and an empty schema fail closed', async () => {
   const cases = [
-    { observed: refusal('access', 'Доступ ограничен', { status: 200 }), code: 'COMMAND_EXEC', expect: /human verification/ },
-    { observed: refusal('access', 'Доступ ограничен', { status: 429 }), code: 'COMMAND_EXEC', expect: /human verification/ },
+    { observed: refusal('access', 'Доступ ограничен', { status: 429 }), code: 'ACCESS', expect: /not answering this session/ },
+    { observed: refusal('no_state', 'Доступ ограничен', { status: 200 }), code: 'ACCESS', expect: /not answering this session/ },
     { observed: refusal('http', 'Avito SSR request failed', { status: 500 }), code: 'COMMAND_EXEC', expect: /HTTP 500/ },
     { observed: refusal('content_type', 'Avito SSR response is not HTML', { contentType: 'application/json' }), code: 'COMMAND_EXEC', expect: /application\/json/ },
-    { observed: refusal('missing', 'Avito SSR bootstrap carries no page state'), code: 'EMPTY_RESULT', expect: /no SSR filter schema/ },
-    { observed: refusal('parse', 'Avito SSR bootstrap carries no page state'), code: 'COMMAND_EXEC', expect: /malformed/ },
+    // A document with no state is not "this route has no filters": a route
+    // without filters still ships a bootstrap, with an empty Sections list.
+    { observed: refusal('no_state', 'Avito answered a page with no state'), code: 'ACCESS', expect: /not answering this session/ },
   ];
   for (const testCase of cases) {
     let failure = null;

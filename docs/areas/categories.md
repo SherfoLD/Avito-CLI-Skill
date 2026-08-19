@@ -70,20 +70,18 @@ without losing the query.
   `ancestor` values. D-033 remains the guard: tree rows always carry the query, so
   the rule does not fire in normal operation, but drift at Avito will become a
   visible refusal instead of a quietly widened listing.
-- **D-046 — the two sidebar readers share what a node *means*, not how it is
-  walked.** Both commands read `rubricators.side.nodes`, and the temptation is
-  to lift the whole traversal into `src/browser/`. What is
-  actually common is two things: `type` 0 is a branch, 1 an option, 2 the current
-  category, and a node can be followed when it carries a route other than this
-  one. That is Avito's vocabulary plus the rule that reads it, it must not exist
-  in two copies with two opinions, and it lives in
-  `src/browser/prelude/rubricator.mjs` — where an unknown type returns `null` so each
-  caller refuses it in its own terms. The walk stayed in both files: they
-  validate different things (`get-categories` checks node IDs and names the ID in
-  every message; `move-category` needs a usable name) and a shared
-  traversal would have to be parameterised until it was a `for` loop with extra
-  steps, paid for in diagnostics. The rule this follows is the one in
-  `src/browser/README.md`: shared code earns its place by being shared.
+- **D-046 — the two sidebar readers share what a node *is* and what it *means*,
+  not how it is walked.** Both commands read `rubricators.side.nodes`. What they
+  hold in common is a shape and a vocabulary: `SIDEBAR_NODE` in
+  `src/schemas/rubricator.mjs` says what a node has to carry, and
+  `src/site/rubricator.mjs` says that `type` 0 is a branch, 1 an option, 2 the
+  current category, and that a node can be followed when it carries a route other
+  than this one — with an unknown type answering `null` so each caller refuses it
+  in its own terms. Neither may exist in two copies with two opinions.
+  The traversal around them is still written twice, and that is the one thing
+  here still open: it was two different validations in two different halves of
+  the system when it was written, and both are in Node now (D-069). Merging them
+  is phase 32.
 - **D-057 — a row is navigable when it has a route, not when Avito draws it as a
   link.** The page renders only `type=1` as an anchor, and the old reading
   followed that: a branch was a control and its URL was withheld. But the URL is

@@ -1,83 +1,74 @@
 // The prelude is the one place where the same code exists twice at runtime:
 // imported in Node, inlined in the page. These checks exist so the two copies
-// cannot drift apart silently — a shared decoder that works here and throws a
+// cannot drift apart silently — shared code that works here and throws a
 // ReferenceError in the browser would leave every offline suite green.
 import { runner } from './harness.mjs';
 import { browserPreludeSource } from '../src/runtime/browser-prelude.mjs';
-import { decodeCatalogRows } from '../src/browser/prelude/card.mjs';
-import { DOMParser, ORIGIN, cardPhoto, item } from './carrier.mjs';
+import { readDocument } from '../src/browser/prelude/document.mjs';
+import { readJsonResponse } from '../src/browser/prelude/json.mjs';
+import {
+  DOMParser, FILTERS, ORIGIN, bootstrapHtml, makeFetch, searchCore,
+} from './carrier.mjs';
 
 const { check, assert, run } = runner();
 
 const PRELUDE = await browserPreludeSource();
-const env = { DOMParser, location: { origin: ORIGIN, href: `${ORIGIN}/` } };
 
 /** Evaluate an expression in a scope that has only the prelude, as the page does. */
 function inPreludeScope(expression) {
-  return new Function('env', `${PRELUDE}\nreturn (${expression});`)(env);
+  return new Function(`${PRELUDE}\nreturn (${expression});`)();
 }
+
+const state = { loaderData: { data: { searchCore: searchCore(), filtersV2: FILTERS } } };
+const env = (routes) => {
+  const { fetch, calls } = makeFetch(routes);
+  return { env: { DOMParser, fetch, location: { origin: ORIGIN, href: `${ORIGIN}/` } }, calls };
+};
 
 check('the prelude assembles and every shared name resolves in one scope', () => {
   const names = inPreludeScope(`[
-    typeof cleanText, typeof sameParamValue, typeof addParamValues,
-    typeof fail, typeof readDocument, typeof looksLikeChallenge,
-    typeof decodeCatalogRows, typeof itemPrice, typeof itemSeller
+    typeof fail, typeof readDocument, typeof looksLikeChallenge, typeof readJsonResponse
   ]`);
   assert(names.every((kind) => kind === 'function'), `missing from the prelude: ${JSON.stringify(names)}`);
 });
 
-// Cross-module calls are the reason the whole prelude ships at once: decoding a
-// catalog reaches into three other files, and picking dependencies by hand is
-// exactly the mistake that would only show up in the browser.
-check('a decoder inlined into the prelude behaves like the imported one', () => {
-  const catalog = {
-    items: [
-      item(),
-      item({ id: '8290916337', visiblePrice: null, geoReference: null, locationName: 'Казань' }),
-      item({ id: '8226762910', sellerInfo: false, rating: { score: 4.8, summary: '19 отзывов' } }),
-    ],
-  };
-  const inlined = inPreludeScope('decodeCatalogRows')(catalog, env);
-  const imported = decodeCatalogRows(catalog, env);
-  assert(inlined.failure === undefined, `inlined decoder refused: ${JSON.stringify(inlined.failure)}`);
-  assert(
-    JSON.stringify(inlined.rows) === JSON.stringify(imported.rows),
-    'the inlined decoder and the imported one returned different rows',
-  );
-  assert(inlined.rows[0].apiPrice === 43691, 'the visible price did not survive inlining');
-  assert(inlined.rows[2].apiSeller.name === null && inlined.rows[2].apiSeller.rating === 4.8,
-    'the anonymous-seller path did not survive inlining');
+// Cross-module calls are the reason the whole prelude ships at once: reading a
+// document reaches into the refusal envelope, and picking dependencies by hand
+// is exactly the mistake that would only show up in the browser.
+check('a document read inlined into the prelude behaves like the imported one', async () => {
+  const routes = [{ match: ORIGIN, body: bootstrapHtml(state) }];
+  const url = `${ORIGIN}/moskva?q=ddr5`;
+  const inlined = await inPreludeScope('readDocument')(url, 'schema', env(routes).env);
+  const imported = await readDocument(url, 'schema', env(routes).env);
+  assert(inlined.state?.searchCore?.categoryId === 101, `the state did not survive: ${JSON.stringify(inlined)}`);
+  assert(JSON.stringify(inlined) === JSON.stringify(imported), 'the two copies read the document differently');
 });
 
 // A refusal has to keep travelling as a value across the inlined boundary, not
 // become a thrown error: the node half dispatches on stage and code.
-check('a refusal from an inlined decoder is still a value', () => {
-  const broken = { items: [{ ...item(), images: 'one photo' }] };
-  let thrown = null;
-  try {
-    inPreludeScope('decodeCatalogRows')(broken, env);
-  } catch (error) {
-    thrown = error;
-  }
-  assert(thrown != null && /images are malformed/.test(thrown.message),
-    'a card whose photo list is not a list must fail closed inside the prelude too');
+check('a refusal from an inlined reader is still a value', async () => {
+  const routes = [{ match: ORIGIN, status: 429, body: '<html><title>Доступ ограничен</title></html>' }];
+  const inlined = await inPreludeScope('readDocument')(`${ORIGIN}/moskva`, 'schema', env(routes).env);
+  const imported = await readDocument(`${ORIGIN}/moskva`, 'schema', env(routes).env);
+  assert(inlined.failure?.stage === 'schema' && inlined.failure?.code === 'access',
+    `a 429 must return a refusal, got ${JSON.stringify(inlined)}`);
+  assert(JSON.stringify(inlined) === JSON.stringify(imported),
+    'the inlined reader and the imported one refused differently');
+});
 
-  const malformed = inPreludeScope('decodeCatalogRows')({ items: [{ type: 'item', id: 'x', title: 'y' }] }, env);
-  assert(malformed.failure?.stage === 'catalog' && malformed.failure?.code === 'shape',
-    `a malformed item must return a refusal, got ${JSON.stringify(malformed)}`);
+// json.mjs reaches into document.mjs for the challenge detector, which is the
+// second cross-module edge left in the page.
+check('a JSON read inlined into the prelude sees the same challenge', async () => {
+  const routes = [{ match: ORIGIN, contentType: 'text/html', body: '<html><body>Доступ ограничен</body></html>' }];
+  const input = { requestUrl: `${ORIGIN}/web/1/x` };
+  const inlined = await inPreludeScope('readJsonResponse')(input, env(routes).env);
+  const imported = await readJsonResponse(input, env(routes).env);
+  assert(inlined.accessChallenge === true, `the challenge was not seen: ${JSON.stringify(inlined)}`);
+  assert(JSON.stringify(inlined) === JSON.stringify(imported), 'the two copies classified it differently');
 });
 
 check('a value export survives as a constant', () => {
   assert(inPreludeScope('DOCUMENT_TIMEOUT_MS') === 20000, 'the document timeout did not survive inlining');
-});
-
-// The SSR catalog sends its cards past the twentieth without a photo block at
-// all, and that is not a listing without photos (F-089).
-check('the photo count separates an empty list from a card that carries no list', () => {
-  const count = inPreludeScope('itemImageCount');
-  assert(count({ images: [cardPhoto('one'), cardPhoto('two')] }) === 2, 'two photos must count as two');
-  assert(count({ images: [] }) === 0, 'a listing Avito says has no photos counts zero');
-  assert(count({ title: 'no photo block' }) === null, 'a card without the key must not count as zero');
 });
 
 export default await run('browser prelude');

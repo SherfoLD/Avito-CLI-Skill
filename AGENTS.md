@@ -42,8 +42,14 @@ that fails, because nobody goes looking.
   saved search. Photo sizes and sort labels are not named in code either — that
   vocabulary belongs to Avito.
 - Response-shape drift ends the call with a typed error, never with a fallback
-  value. On the Node side that is `decode(schema, payload, subject)`; inside the
-  page it is hand-written, because a serialized function carries no imports.
+  value. That is `decode(schema, payload, subject)` against a schema in
+  `src/schemas/`, one file per Avito response.
+- The page fetches; Node decides. A carrier crosses the CDP boundary as Avito
+  sent it, and nothing in `src/browser/` decodes, checks or chooses — a
+  serialized function carries no imports, so every guard written there is a
+  schema nobody can read and no offline suite reaches. What stays in the page is
+  what only a browser has: a same-origin `fetch` with the user's cookies, and a
+  real DOM.
 - The row contract is the `row` schema in the descriptor and nowhere else.
   `columns` is derived from it, the CLI parses every row through it, and a
   verify fixture says only what is true of its own request.

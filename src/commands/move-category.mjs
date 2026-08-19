@@ -1,62 +1,56 @@
 /**
- * `avito move-category` — the node half.
+ * `avito move-category` — widen or narrow the category Avito auto-detected.
  *
  * It takes a visible category name and nothing else: no ID, no slug, no route.
- * The names come from `get-categories`, which reads the same sidebar, so the two
- * agree by construction — and a name Avito did not print on this route cannot be
- * turned into a URL by anybody here.
+ * The target URL is always one Avito printed in its own navigation state, so a
+ * name that is not in that sidebar is refused with the names that are, never
+ * turned into a slug and tried. The names come from `get-categories`, which
+ * reads the same sidebar, so the two agree by construction.
+ *
+ * What the postconditions defend: the city and the text query belong to the
+ * search and must survive the move; the filters belong to the category and may
+ * not. A route that drops the query does not widen the search, it replaces it
+ * with a plain category browse — which looks exactly like a legitimately wider
+ * page (D-033).
  */
 
-import {
-  ArgumentError,
-  CommandExecutionError,
-  EmptyResultError,
-  TimeoutError,
-} from '../runtime/errors.mjs';
+import { ArgumentError, CommandExecutionError, EmptyResultError } from '../runtime/errors.mjs';
+import { decode } from '../runtime/schema.mjs';
 import { defineCommand } from '../runtime/command.mjs';
-import { moveCategory } from '../browser/commands/move-category.mjs';
+import { CATALOG_DOCUMENT, SIDEBAR_DOCUMENT } from '../schemas/document.mjs';
+import { MAX_NAME_LENGTH, SIDEBAR_NODE } from '../schemas/rubricator.mjs';
 import { LISTING_ROW, applyReservedFilter, listingRows } from '../site/listing.mjs';
+import { catalogRows } from '../site/card.mjs';
+import {
+  CATALOG_KEYS,
+  SIDEBAR_KEYS,
+  primeOrigin,
+  readCatalogPage,
+  readDocument,
+} from '../site/carriers.mjs';
+import {
+  PRESERVED_CORE_FIELDS,
+  carrySearchCore,
+  coreParamEntries,
+  itemsApiUrl,
+  preservedCoreDrift,
+  preservedParamsDrift,
+  sealItemsApiUrl,
+} from '../site/items.mjs';
+import { isFollowableNode, sidebarRole } from '../site/rubricator.mjs';
+import { cleanText, comparableText } from '../site/text.mjs';
+import { answeredUrl, requestedSearchUrl } from '../site/url.mjs';
 
-// Origin priming only: the body is never read. Rendering the catalog would pull its
-// scripts, images and telemetry for the sake of one JSON blob in the markup.
-const ORIGIN_BOOTSTRAP_URL = 'https://www.avito.ru/robots.txt';
-const AVITO_HOSTS = new Set(['avito.ru', 'www.avito.ru']);
+const COMMAND = 'avito move-category';
 const MAX_SIDE_NODES = 200;
 const MAX_DEPTH = 20;
-const MAX_NAME_LENGTH = 300;
-const MAX_PARAMS = 400;
-const MAX_PARAM_VALUES = 2000;
-
-function normalizeCatalogUrl(value) {
-  const raw = String(value ?? '').trim();
-  if (!raw) throw new ArgumentError('searchUrl must be a non-empty Avito catalog or search URL');
-
-  let parsed;
-  try {
-    parsed = new URL(raw);
-  } catch {
-    throw new ArgumentError('searchUrl must be a valid absolute URL');
-  }
-  if (
-    parsed.protocol !== 'https:'
-    || !AVITO_HOSTS.has(parsed.hostname)
-    || parsed.port
-    || parsed.username
-    || parsed.password
-  ) {
-    throw new ArgumentError('searchUrl must use https://www.avito.ru');
-  }
-
-  parsed.hostname = 'www.avito.ru';
-  parsed.hash = '';
-  return parsed.href;
-}
+const VISIBLE_NAMES = 40;
 
 // Whitespace is normalized because the name is matched against what Avito rendered, and a
 // name copied out of a terminal carries whatever spacing the terminal gave it. Nothing else
 // about the name is touched: a partial name must not resolve.
 function normalizeTargetName(value) {
-  const name = String(value ?? '').replace(/\s+/g, ' ').trim();
+  const name = cleanText(value);
   if (!name) {
     throw new ArgumentError('to must be a visible category name from `avito get-categories`');
   }
@@ -72,26 +66,84 @@ function normalizeBoolean(value, label) {
   throw new ArgumentError(`${label} must be a boolean flag`);
 }
 
-function normalizeResultUrl(value) {
-  let parsed;
-  try {
-    parsed = new URL(String(value ?? ''));
-  } catch {
-    throw new CommandExecutionError('Avito returned an invalid category URL');
-  }
-  if (parsed.protocol !== 'https:' || parsed.hostname !== 'www.avito.ru') {
-    throw new CommandExecutionError('Avito returned a category URL outside www.avito.ru');
-  }
-  parsed.hash = '';
-  return parsed.href;
+/**
+ * Every sidebar row of the source document, split into the ones this search can
+ * be moved to and the ones it cannot, with the reason.
+ *
+ * The sidebar has never been observed dropping the query; `dropsQuery` stays
+ * because the day it does, the answer would look like a legitimately wider page.
+ */
+function collectSidebar(nodes, sourceUrl, sourceQuery) {
+  const candidates = [];
+  const blocked = [];
+  let nodeCount = 0;
+
+  const visit = (rawNodes, depth) => {
+    if (!Array.isArray(rawNodes) || depth > MAX_DEPTH) {
+      throw new CommandExecutionError('Avito category sidebar exceeds its supported nesting depth');
+    }
+    for (const rawNode of rawNodes) {
+      if (++nodeCount > MAX_SIDE_NODES) {
+        throw new CommandExecutionError('Avito category sidebar contains implausibly many nodes');
+      }
+      const node = decode(SIDEBAR_NODE, rawNode, 'Avito category sidebar node');
+      if (sidebarRole(node.type) === null) {
+        throw new CommandExecutionError(`Avito category sidebar node "${node.name}" has an unsupported type`);
+      }
+      // What a node's route is worth is decided the same way in both commands
+      // that read this sidebar; see src/site/rubricator.mjs.
+      const route = String(node.url ?? '').trim();
+      const target = route === '' ? null : answeredUrl(route, 'category URL', sourceUrl.href);
+      if (!isFollowableNode(node.type, target, sourceUrl.pathname)) {
+        blocked.push({
+          categoryName: node.name,
+          role: target === null ? 'routeless' : 'current',
+          hasChildren: node.children.length > 0,
+        });
+      } else if (sourceQuery !== '' && cleanText(target.searchParams.get('q')) !== sourceQuery) {
+        blocked.push({ categoryName: node.name, role: 'dropsQuery' });
+      } else {
+        candidates.push({ categoryName: node.name, categoryUrl: target.href });
+      }
+      visit(node.children, depth + 1);
+    }
+  };
+
+  visit(nodes, 0);
+  return { candidates, blocked };
 }
 
-function asExecutionError(error, action) {
-  const message = error instanceof Error ? error.message : String(error);
-  if (/timed?\s*out|timeout|aborted/i.test(message)) {
-    throw new TimeoutError(action, 20);
+/** The one route the requested name resolves to, or an argument error naming what is there. */
+function resolveTarget({ candidates, blocked }, target, sourceQuery) {
+  const visibleNames = [...new Set(candidates.map((entry) => entry.categoryName))];
+  const printable = visibleNames.slice(0, VISIBLE_NAMES).join(', ') || 'none';
+  const matches = candidates.filter((entry) => comparableText(entry.categoryName) === comparableText(target));
+
+  if (matches.length === 0) {
+    const blockedMatch = blocked.find((entry) => comparableText(entry.categoryName) === comparableText(target));
+    if (blockedMatch) {
+      const reason = blockedMatch.role === 'current'
+        ? 'is the route this search is already on; moving there is not a move'
+        : blockedMatch.role === 'routeless'
+          ? `is a sidebar row Avito hangs no route on${blockedMatch.hasChildren ? '; move to one of its children instead' : ''}`
+          : `is reachable only through a route that drops the search query "${sourceQuery}",`
+            + ' which would return an unrelated category listing instead of this search.'
+            + ` Categories that keep the query: ${printable}`;
+      throw new ArgumentError(`category "${blockedMatch.categoryName}" ${reason}`);
+    }
+    throw new ArgumentError(
+      `category "${target}" is not reachable from this search URL. Visible categories: ${printable}`
+      + (visibleNames.length > VISIBLE_NAMES ? ', …' : ''),
+    );
   }
-  throw new CommandExecutionError(`${action} failed: ${message}`);
+
+  const targets = [...new Set(matches.map((entry) => entry.categoryUrl))];
+  if (targets.length !== 1) {
+    throw new ArgumentError(
+      `category "${target}" matches ${targets.length} different Avito routes on this page; no route is chosen for you`,
+    );
+  }
+  return new URL(targets[0]);
 }
 
 export default defineCommand({
@@ -123,63 +175,110 @@ export default defineCommand({
   ],
   row: LISTING_ROW,
   run: async (page, args) => {
-    const requestedUrl = normalizeCatalogUrl(args.searchUrl);
+    const requestedUrl = requestedSearchUrl(args.searchUrl);
     const requestedName = normalizeTargetName(args.to);
     const removeReserved = normalizeBoolean(args['remove-reserved'], 'remove-reserved');
 
-    try {
-      await page.goto(ORIGIN_BOOTSTRAP_URL, { waitUntil: 'load', settleMs: 0 });
-    } catch (error) {
-      asExecutionError(error, 'opening the Avito same-origin context');
+    await primeOrigin(page, COMMAND);
+
+    // Hop one: the category navigation of the URL the caller passed. The target is
+    // resolved from the state Avito itself rendered, so no category route is built.
+    const source = await readDocument(page, {
+      requestUrl: requestedUrl,
+      stage: 'source',
+      keep: SIDEBAR_KEYS,
+      schema: SIDEBAR_DOCUMENT,
+      subject: 'Avito SSR category state',
+      command: COMMAND,
+    });
+    const sourceCore = source.state.searchCore;
+    if (Number(sourceCore.page) !== 1) {
+      throw new ArgumentError('avito move-category accepts page-1 search URLs');
+    }
+    const sideNodes = source.state.rubricators?.side?.nodes;
+    if (!Array.isArray(sideNodes)) {
+      throw new CommandExecutionError('Avito category sidebar has an unexpected shape');
+    }
+    const sourceUrl = answeredUrl(source.responseUrl, 'category URL');
+    const sourceQuery = cleanText(sourceCore.query);
+    const targetUrl = resolveTarget(
+      collectSidebar(sideNodes, sourceUrl, sourceQuery),
+      requestedName,
+      sourceQuery,
+    );
+
+    // Hop two: the category Avito named. Its own SSR state carries the postconditions,
+    // so nothing about the move is assumed.
+    const moved = await readDocument(page, {
+      requestUrl: targetUrl.href,
+      stage: 'target',
+      keep: CATALOG_KEYS,
+      schema: CATALOG_DOCUMENT,
+      subject: 'Avito SSR state of the target category',
+      command: COMMAND,
+    });
+    const resultCore = moved.state.searchCore;
+    if (!Array.isArray(moved.state.filtersV2?.Sections)) {
+      throw new CommandExecutionError('Avito SSR state of the target category carries no filter schema');
     }
 
-    let observed;
-    try {
-      observed = await page.evaluateWithArgs(moveCategory, {
-        requestedUrl,
-        target: requestedName,
-        MAX_SIDE_NODES,
-        MAX_DEPTH,
-        MAX_NAME_LENGTH,
-        MAX_PARAMS,
-        MAX_PARAM_VALUES,
-      });
-    } catch (error) {
-      asExecutionError(error, 'moving the Avito category');
+    const resultUrl = answeredUrl(moved.responseUrl, 'category URL');
+    if (resultUrl.pathname !== targetUrl.pathname) {
+      throw new CommandExecutionError('Avito answered the category move with a different route');
+    }
+    if (Number(resultCore.page) !== 1) {
+      throw new CommandExecutionError('Avito returned an unexpected page for the target category');
+    }
+    const locationId = Number(resultCore.locationId);
+    const searchLocation = cleanText(resultCore.locationName);
+    if (!Number.isInteger(locationId) || locationId <= 0 || !searchLocation) {
+      throw new CommandExecutionError('Avito searchCore has an invalid location after the move');
+    }
+    // The city and the text query belong to the search, not to the category, so both must
+    // survive a move; the filters deliberately may not, they are owned by the category.
+    if (cleanText(resultCore.query) !== sourceQuery) {
+      throw new CommandExecutionError(
+        'Avito dropped the search query while moving the category, which would return an unrelated listing',
+      );
+    }
+    if (Number(sourceCore.locationId) !== locationId) {
+      throw new CommandExecutionError('Avito changed the location while moving the category');
+    }
+    const resultParamEntries = coreParamEntries(resultCore, 'Avito searchCore after the move');
+
+    // The move is proved; the rows are asked for separately, because the SSR
+    // catalog of the target route ships only its first twenty cards in full (F-089).
+    const apiUrl = itemsApiUrl();
+    carrySearchCore(apiUrl, resultCore);
+    sealItemsApiUrl(apiUrl, moved.state, true);
+
+    const api = await readCatalogPage(page, apiUrl, moved.responseUrl, COMMAND);
+
+    const driftedField = preservedCoreDrift(resultCore, api.searchCore, [
+      ...PRESERVED_CORE_FIELDS, 'locationId', 'metroId', 'districtId',
+    ]);
+    if (driftedField) {
+      throw new CommandExecutionError(`Avito changed preserved search field ${driftedField}`);
+    }
+    if (Number(api.searchCore.page) !== 1) {
+      throw new CommandExecutionError('Avito items API returned an unexpected page');
+    }
+    const driftedParam = preservedParamsDrift(resultParamEntries, api.searchCore.params);
+    if (driftedParam) {
+      throw new CommandExecutionError(`Avito changed preserved params[${driftedParam}]`);
+    }
+    if (answeredUrl(api.url, 'items API URL').pathname !== targetUrl.pathname) {
+      throw new CommandExecutionError('Avito items API answered on a different route');
     }
 
-    if (!observed || typeof observed !== 'object') {
-      throw new CommandExecutionError('Avito category move returned an invalid result');
-    }
-    if (observed.success !== true) {
-      const message = String(observed.message || 'Avito category move failed');
-      if (observed.code === 'argument') {
-        throw new ArgumentError(message);
-      }
-      if (observed.code === 'empty') {
-        throw new EmptyResultError('avito move-category', message);
-      }
-      if (observed.code === 'transport' && /timed?\s*out|timeout|aborted/i.test(message)) {
-        throw new TimeoutError(`Avito move-category ${observed.stage || 'request'}`, 20);
-      }
-      if (observed.code === 'access') {
-        throw new CommandExecutionError(`Avito requires human verification or a rate-limit cooldown (${message})`);
-      }
-      throw new CommandExecutionError(`${observed.stage || 'Avito move-category'} failed: ${message}`);
-    }
-
-    if (!Array.isArray(observed.resultRows) || observed.resultRows.length === 0) {
-      throw new CommandExecutionError('Avito category move returned no decoded rows');
-    }
-    const searchLocation = String(observed.resultSearchLocation || '').trim();
-    const searchUrl = normalizeResultUrl(observed.resultSearchUrl);
-    if (!searchLocation) {
-      throw new CommandExecutionError('Avito category move returned invalid search metadata');
+    const decodedRows = catalogRows(api.catalog);
+    if (decodedRows.length === 0) {
+      throw new EmptyResultError(COMMAND, 'The target Avito category has no listings');
     }
 
     return listingRows(
-      applyReservedFilter(observed.resultRows, removeReserved, 'avito move-category'),
-      searchUrl,
+      applyReservedFilter(decodedRows, removeReserved, COMMAND),
+      resultUrl.href,
     );
   },
 });

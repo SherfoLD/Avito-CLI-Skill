@@ -1,14 +1,15 @@
-// Offline end-to-end for move-category: runs the real browser half against a synthetic
-// Avito SSR carrier for the source route and for the target category.
+// Offline end-to-end for `avito move-category`: the real command over a synthetic
+// Avito SSR carrier for the source route, for the target category, and for the
+// items API the rows come from.
 //
 // The target is resolved from the navigation state Avito itself rendered, never built from a
 // slug, so the checks below are about refusing every ambiguous or non-navigable answer.
-import { assertRow, loadCommand, runner } from './harness.mjs';
 import {
-  FILTERS, ITEMS_API_PATH, ORIGIN, bootstrapHtml, evaluateRunner, item, itemsApiResponse,
-  makeFetch, searchCore,
+  assertRow, failureOf, loadCommand, runner,
+} from './harness.mjs';
+import {
+  FILTERS, ITEMS_API_PATH, ORIGIN, bootstrapHtml, browserPage, item, itemsApiResponse, searchCore,
 } from './carrier.mjs';
-import { moveCategory } from '../src/browser/commands/move-category.mjs';
 
 const { COMMAND } = await loadCommand('move-category');
 
@@ -16,6 +17,7 @@ const SOURCE_PATH = '/moskva/telefony/mobilnye_telefony/xiaomi-ASgB';
 const TARGET_PATH = '/moskva/telefony/mobilnye_telefony-ASgB';
 const SOURCE = `${ORIGIN}${SOURCE_PATH}?q=xiaomi`;
 const TARGET = `${ORIGIN}${TARGET_PATH}?cd=1&q=xiaomi`;
+const API = `${ORIGIN}${ITEMS_API_PATH}`;
 
 // Avito hangs the text query on every navigable sidebar URL, so the carrier below spells it
 // out the same way the live bootstrap does.
@@ -59,13 +61,13 @@ const targetState = ({ core = {} } = {}) => ({
 });
 
 // The rows of the moved-to category, on the carrier that ships all fifty complete (F-089).
-const targetApi = ({ items = [item()], core = {} } = {}) => ({
-  match: `${ORIGIN}${ITEMS_API_PATH}`,
+const targetApi = ({ items = [item()], core = {}, url = TARGET } = {}) => ({
+  match: API,
   contentType: 'application/json',
   body: itemsApiResponse({
     items,
     core: { query: 'xiaomi', categoryId: 100, ...core },
-    url: TARGET,
+    url,
   }),
 });
 
@@ -76,57 +78,25 @@ const targetRoute = (state = targetState(), overrides = {}) => ({
   ...overrides,
 });
 
-const runEvaluate = evaluateRunner(moveCategory);
+const routes = (...entries) => entries;
 
-const baseArgs = (target = 'Мобильные телефоны', overrides = {}) => ({
-  requestedUrl: SOURCE,
-  target,
-  MAX_SIDE_NODES: 200,
-  MAX_DEPTH: 20,
-  MAX_NAME_LENGTH: 300,
-  MAX_PARAMS: 400,
-  MAX_PARAM_VALUES: 2000,
-  ...overrides,
-});
+const move = (routeList, args = {}) => {
+  const page = browserPage(routeList);
+  return { page, rows: COMMAND.run(page, { searchUrl: SOURCE, to: 'Мобильные телефоны', ...args }) };
+};
 
 const { check, assert, run } = runner();
 
 check('a visible sidebar option resolves to its Avito route and returns its listings', async () => {
-  const { fetch, calls } = makeFetch([sourceRoute(), targetRoute(), targetApi()]);
-  const result = await runEvaluate(baseArgs(), fetch);
-  assert(result.success === true, `failed: ${result.message}`);
-  assert(calls.length === 3 && calls[0] === SOURCE && calls[1] === TARGET
-    && calls[2].startsWith(`${ORIGIN}${ITEMS_API_PATH}`),
-  `expected the source, the target and its rows, got ${JSON.stringify(calls)}`);
-  assert(result.resultSearchUrl === TARGET, `unexpected searchUrl: ${result.resultSearchUrl}`);
-  const row = result.resultRows[0];
-  assert(row.apiPrice === 43691, `the shared card decoder must be used, got ${row.apiPrice}`);
-  assert(row.apiLocation === 'Китай-город, до 5 мин.', `location not decoded: ${row.apiLocation}`);
-  assert(row.apiDescriptionPreview?.startsWith('Авитодоставка открыта'), 'description not decoded');
-});
-
-// Avito ships the moment it sorts by on every card and prints that same moment on the
-// listing page; get-item sees only the rendered string, so the exact instant belongs to the
-// row (F-059). A card without the stamp keeps its row and reports null, while a stamp in a
-// shape no clock produces is drift and stops the call.
-check('the publication stamp decodes to the instant Avito prints, and drift stops the call', async () => {
-  const routes = (rows) => [sourceRoute(), targetRoute(), targetApi({ items: rows })];
-  const result = await runEvaluate(baseArgs(), makeFetch(routes([item()])).fetch);
-  assert(result.success === true, `failed: ${result.message}`);
-  assert(result.resultRows[0].apiPublished === '2026-08-13T23:15:41Z', `expected the UTC instant, got ${result.resultRows[0].apiPublished}`);
-
-  const absent = await runEvaluate(baseArgs(), makeFetch(routes([item({ sortTimeStamp: null })])).fetch);
-  assert(absent.success === true && absent.resultRows[0].apiPublished === null, 'a card without the stamp must keep its row');
-
-  for (const drift of [1786662941, 'вчера', -1, 1.5]) {
-    let stopped = false;
-    try {
-      await runEvaluate(baseArgs(), makeFetch(routes([item({ sortTimeStamp: drift })])).fetch);
-    } catch (error) {
-      stopped = /publication stamp/.test(String(error?.message ?? error));
-    }
-    assert(stopped, `a stamp of ${JSON.stringify(drift)} must stop the call`);
-  }
+  const { page, rows } = move(routes(sourceRoute(), targetRoute(), targetApi()));
+  const returned = await rows;
+  assert(page.calls.length === 3 && page.calls[0] === SOURCE && page.calls[1] === TARGET
+    && page.calls[2].startsWith(API),
+  `expected the source, the target and its rows, got ${JSON.stringify(page.calls)}`);
+  assert(returned[0].searchUrl === TARGET, `unexpected searchUrl: ${returned[0].searchUrl}`);
+  assertRow(COMMAND, returned[0]);
+  assert(page.navigations.length === 1 && page.navigations[0] === 'https://www.avito.ru/robots.txt',
+    `expected one robots.txt priming, got ${JSON.stringify(page.navigations)}`);
 });
 
 // Moving a search has to keep being that search. The sidebar has never been observed dropping
@@ -138,12 +108,12 @@ check('a route that drops the text query is refused, not followed', async () => 
       sideNode({ id: 3, name: 'Аксессуары', url: '/moskva/telefony/aksessuary-ASgB' }),
     ] }),
   ];
-  const { fetch, calls } = makeFetch([sourceRoute(sourceState({ nodes: leaky }))]);
-  const result = await runEvaluate(baseArgs('Аксессуары'), fetch);
-  assert(result.success === false && result.code === 'argument', `a query-dropping route was taken: ${JSON.stringify(result)}`);
-  assert(/drops the search query "xiaomi"/.test(result.message), `unexpected message: ${result.message}`);
-  assert(/Мобильные телефоны/.test(result.message), `the usable names must be offered: ${result.message}`);
-  assert(calls.length === 1, 'the target was fetched despite a query-dropping route');
+  const driven = move(routes(sourceRoute(sourceState({ nodes: leaky }))), { to: 'Аксессуары' });
+  const failure = await failureOf(() => driven.rows);
+  assert(failure?.code === 'ARGUMENT', `a query-dropping route was taken: ${failure && failure.code}`);
+  assert(/drops the search query "xiaomi"/.test(failure.message), `unexpected message: ${failure.message}`);
+  assert(/Мобильные телефоны/.test(failure.message), `the usable names must be offered: ${failure.message}`);
+  assert(driven.page.calls.length === 1, 'the target was fetched despite a query-dropping route');
 });
 
 // On a query-less route Avito renders the whole ancestor chain as navigable back rows, so the
@@ -154,47 +124,40 @@ check('a query-less search widens through the sidebar back rows', async () => {
     sideNode({ id: 1, name: 'Телефоны', url: '/moskva/telefony?cd=1', hasBack: true }),
     sideNode({ id: 2, name: 'Xiaomi', type: 2, isCurrent: true, url: SOURCE_PATH }),
   ] });
-  const { fetch, calls } = makeFetch([
-    { match: `${ORIGIN}${SOURCE_PATH}`, body: bootstrapHtml(browse) },
+  const driven = move([
+    { ...targetApi({ core: { query: '' }, url: backTarget }) },
     { match: backTarget, body: bootstrapHtml(targetState({ core: { query: '' } })) },
-    { ...targetApi({ core: { query: '' } }), body: itemsApiResponse({
-      core: { query: '', categoryId: 100 },
-      url: backTarget,
-    }) },
-  ]);
-  const result = await runEvaluate(
-    baseArgs('Телефоны', { requestedUrl: `${ORIGIN}${SOURCE_PATH}` }),
-    fetch,
-  );
-  assert(result.success === true, `failed: ${result.message}`);
-  assert(calls[1] === backTarget, `the back row must be followed, got ${calls[1]}`);
+    { match: `${ORIGIN}${SOURCE_PATH}`, body: bootstrapHtml(browse) },
+  ], { searchUrl: `${ORIGIN}${SOURCE_PATH}`, to: 'Телефоны' });
+  await driven.rows;
+  assert(driven.page.calls[1] === backTarget, `the back row must be followed, got ${driven.page.calls[1]}`);
 });
 
 // A row with no route of its own, and the route we are already on. No other
 // carrier is consulted for a URL either of them lacks.
 check('a routeless row and the current route are refused with their reason', async () => {
-  const noCrumbs = makeFetch([sourceRoute()]);
-  const result = await runEvaluate(baseArgs('Телефоны'), noCrumbs.fetch);
-  assert(result.success === false && result.code === 'argument', `routeless row followed: ${JSON.stringify(result)}`);
-  assert(/hangs no route/.test(result.message), `unexpected message: ${result.message}`);
-  assert(noCrumbs.calls.length === 1, 'the target was fetched despite an unusable row');
+  const routeless = move(routes(sourceRoute()), { to: 'Телефоны' });
+  const routelessFailure = await failureOf(() => routeless.rows);
+  assert(routelessFailure?.code === 'ARGUMENT', `routeless row followed: ${routelessFailure && routelessFailure.code}`);
+  assert(/hangs no route/.test(routelessFailure.message), `unexpected message: ${routelessFailure.message}`);
+  assert(routeless.page.calls.length === 1, 'the target was fetched despite an unusable row');
 
-  const current = makeFetch([sourceRoute()]);
-  const currentResult = await runEvaluate(baseArgs('Xiaomi'), current.fetch);
-  assert(currentResult.success === false && currentResult.code === 'argument', `current row followed: ${JSON.stringify(currentResult)}`);
-  assert(/already on/.test(currentResult.message), `unexpected message: ${currentResult.message}`);
-  assert(current.calls.length === 1, 'the target was fetched for the current category');
+  const current = move(routes(sourceRoute()), { to: 'Xiaomi' });
+  const currentFailure = await failureOf(() => current.rows);
+  assert(currentFailure?.code === 'ARGUMENT', `current row followed: ${currentFailure && currentFailure.code}`);
+  assert(/already on/.test(currentFailure.message), `unexpected message: ${currentFailure.message}`);
+  assert(current.page.calls.length === 1, 'the target was fetched for the current category');
 
   // The category Avito marks as current is refused by that mark, not only by its
   // pathname: a canonical route spelled differently from the requested one would
   // otherwise return the same category as a successful move (F-052).
-  const canonical = makeFetch([sourceRoute(sourceState({
+  const canonical = move(routes(sourceRoute(sourceState({
     nodes: [sideNode({ id: 1, name: 'Xiaomi', type: 2, isCurrent: true, url: withQuery('/moskva/telefony/xiaomi-ASgB') })],
-  }))]);
-  const canonicalResult = await runEvaluate(baseArgs('Xiaomi'), canonical.fetch);
-  assert(canonicalResult.success === false && /already on/.test(canonicalResult.message),
-    `a canonical copy of the current route was followed: ${JSON.stringify(canonicalResult)}`);
-  assert(canonical.calls.length === 1, 'the target was fetched for the current category');
+  }))), { to: 'Xiaomi' });
+  const canonicalFailure = await failureOf(() => canonical.rows);
+  assert(canonicalFailure != null && /already on/.test(canonicalFailure.message),
+    `a canonical copy of the current route was followed: ${canonicalFailure && canonicalFailure.message}`);
+  assert(canonical.page.calls.length === 1, 'the target was fetched for the current category');
 });
 
 // The route Avito could not place in a category: no `type=2` node anywhere, two
@@ -211,34 +174,27 @@ check('a group head that carries a route is followed like any other row', async 
   ];
   // The city root is a prefix of every route below it, so the stub matches the
   // head first; live, the two are separate documents.
-  const { fetch, calls } = makeFetch([
-    { ...targetApi({ core: { categoryId: 114 } }), body: itemsApiResponse({
-      core: { query: 'xiaomi', categoryId: 114 },
-      url: `${ORIGIN}${withQuery(headPath)}`,
-    }) },
+  const driven = move([
+    targetApi({ core: { categoryId: 114 }, url: `${ORIGIN}${withQuery(headPath)}` }),
     { match: `${ORIGIN}${headPath}`, body: bootstrapHtml(targetState({ core: { categoryId: 114 } })) },
     {
       match: `${ORIGIN}${rootPath}`,
       body: bootstrapHtml(sourceState({ core: { categoryId: null }, nodes: heads })),
     },
-  ]);
-  const result = await runEvaluate(
-    baseArgs('Услуги', { requestedUrl: `${ORIGIN}${rootPath}?q=xiaomi` }),
-    fetch,
-  );
-  assert(result.success === true, `the head was not followed: ${JSON.stringify(result)}`);
-  assert(calls[1] === `${ORIGIN}${withQuery(headPath)}`, `the head route must be followed, got ${calls[1]}`);
-  assert(calls[2].startsWith(`${ORIGIN}${ITEMS_API_PATH}`), `the rows must come from the API, got ${calls[2]}`);
-  assert(result.resultSearchUrl === `${ORIGIN}${withQuery(headPath)}`, `unexpected searchUrl: ${result.resultSearchUrl}`);
+  ], { searchUrl: `${ORIGIN}${rootPath}?q=xiaomi`, to: 'Услуги' });
+  const returned = await driven.rows;
+  assert(driven.page.calls[1] === `${ORIGIN}${withQuery(headPath)}`, `the head route must be followed, got ${driven.page.calls[1]}`);
+  assert(driven.page.calls[2].startsWith(API), `the rows must come from the API, got ${driven.page.calls[2]}`);
+  assert(returned[0].searchUrl === `${ORIGIN}${withQuery(headPath)}`, `unexpected searchUrl: ${returned[0].searchUrl}`);
 });
 
 check('an unknown name lists the visible categories instead of guessing', async () => {
-  const { fetch, calls } = makeFetch([sourceRoute()]);
-  const result = await runEvaluate(baseArgs('Ноутбуки'), fetch);
-  assert(result.success === false && result.code === 'argument', `unknown name accepted: ${JSON.stringify(result)}`);
-  assert(/Мобильные телефоны/.test(result.message) && /Аксессуары/.test(result.message),
-    `the visible names must be listed: ${result.message}`);
-  assert(calls.length === 1, 'the target was fetched despite an unknown name');
+  const driven = move(routes(sourceRoute()), { to: 'Ноутбуки' });
+  const failure = await failureOf(() => driven.rows);
+  assert(failure?.code === 'ARGUMENT', `unknown name accepted: ${failure && failure.code}`);
+  assert(/Мобильные телефоны/.test(failure.message) && /Аксессуары/.test(failure.message),
+    `the visible names must be listed: ${failure.message}`);
+  assert(driven.page.calls.length === 1, 'the target was fetched despite an unknown name');
 });
 
 check('one name pointing at two routes is refused, not resolved to the first', async () => {
@@ -248,11 +204,11 @@ check('one name pointing at two routes is refused, not resolved to the first', a
       sideNode({ id: 3, name: 'Аксессуары', url: withQuery('/moskva/audio_i_video/aksessuary-ASgB') }),
     ] }),
   ];
-  const { fetch, calls } = makeFetch([sourceRoute(sourceState({ nodes: twins, breadcrumbs: [] }))]);
-  const result = await runEvaluate(baseArgs('Аксессуары'), fetch);
-  assert(result.success === false && result.code === 'argument', `ambiguity resolved silently: ${JSON.stringify(result)}`);
-  assert(/matches 2 different Avito routes/.test(result.message), `unexpected message: ${result.message}`);
-  assert(calls.length === 1, 'the target was fetched despite an ambiguous name');
+  const driven = move(routes(sourceRoute(sourceState({ nodes: twins, breadcrumbs: [] }))), { to: 'Аксессуары' });
+  const failure = await failureOf(() => driven.rows);
+  assert(failure?.code === 'ARGUMENT', `ambiguity resolved silently: ${failure && failure.code}`);
+  assert(/matches 2 different Avito routes/.test(failure.message), `unexpected message: ${failure.message}`);
+  assert(driven.page.calls.length === 1, 'the target was fetched despite an ambiguous name');
 });
 
 // The same name reached through two rows that lead to one route is not ambiguous: the
@@ -264,111 +220,65 @@ check('the same route reached twice is not treated as ambiguous', async () => {
       sideNode({ id: 3, name: 'Мобильные телефоны', url: withQuery(TARGET_PATH) }),
     ] }),
   ];
-  const { fetch } = makeFetch([sourceRoute(sourceState({ nodes: duplicated, breadcrumbs: [] })), targetRoute(), targetApi()]);
-  const result = await runEvaluate(baseArgs(), fetch);
-  assert(result.success === true, `one destination must resolve: ${result.message}`);
+  const rows = await move(routes(
+    sourceRoute(sourceState({ nodes: duplicated, breadcrumbs: [] })), targetRoute(), targetApi(),
+  )).rows;
+  assert(rows.length === 1, 'one destination must resolve');
 });
 
 check('the name match ignores case and surrounding spaces only', async () => {
-  const { fetch } = makeFetch([sourceRoute(), targetRoute(), targetApi()]);
-  const result = await runEvaluate(baseArgs('  мобильные ТЕЛЕФОНЫ  '), fetch);
-  assert(result.success === true, `a case-different name must resolve: ${result.message}`);
+  const rows = await move(routes(sourceRoute(), targetRoute(), targetApi()), { to: '  мобильные ТЕЛЕФОНЫ  ' }).rows;
+  assert(rows.length === 1, 'a case-different name must resolve');
 
-  const partial = makeFetch([sourceRoute()]);
-  const partialResult = await runEvaluate(baseArgs('Мобильные'), partial.fetch);
-  assert(partialResult.success === false, 'a partial name must not resolve');
+  const partial = await failureOf(() => move(routes(sourceRoute()), { to: 'Мобильные' }).rows);
+  assert(partial != null, 'a partial name must not resolve');
 });
 
 // The city belongs to the session and to the URL, not to the category, so it must survive
 // the move even though the filters and the query deliberately may not.
 check('a location changed by the move is drift, not rows', async () => {
-  const { fetch } = makeFetch([
+  const failure = await failureOf(() => move(routes(
     sourceRoute(),
     targetRoute(targetState({ core: { locationId: 654918, locationName: 'Казань' } })),
-  ]);
-  const result = await runEvaluate(baseArgs(), fetch);
-  assert(result.success === false && result.stage === 'postcondition', `location change accepted: ${JSON.stringify(result)}`);
-  assert(/changed the location/.test(result.message), `unexpected message: ${result.message}`);
+  )).rows);
+  assert(failure?.code === 'COMMAND_EXEC', `location change accepted: ${failure && failure.code}`);
+  assert(/changed the location/.test(failure.message), `unexpected message: ${failure.message}`);
 });
 
 // The URL Avito printed said the query survives; the state of the page it answered with is
 // what proves it. A query lost between the two is drift, not a narrower result set.
 check('a query lost on the way to the target is drift, not rows', async () => {
-  const { fetch } = makeFetch([sourceRoute(), targetRoute(targetState({ core: { query: '' } }))]);
-  const result = await runEvaluate(baseArgs(), fetch);
-  assert(result.success === false && result.stage === 'postcondition', `a lost query was accepted: ${JSON.stringify(result)}`);
-  assert(/dropped the search query/.test(result.message), `unexpected message: ${result.message}`);
+  const failure = await failureOf(() => move(routes(
+    sourceRoute(), targetRoute(targetState({ core: { query: '' } })),
+  )).rows);
+  assert(failure?.code === 'COMMAND_EXEC', `a lost query was accepted: ${failure && failure.code}`);
+  assert(/dropped the search query/.test(failure.message), `unexpected message: ${failure.message}`);
 });
 
 check('a redirect away from the named route is drift, not rows', async () => {
-  const { fetch } = makeFetch([
+  const failure = await failureOf(() => move(routes(
     sourceRoute(),
     targetRoute(undefined, { responseUrl: `${ORIGIN}/moskva/telefony/drugoe-ASgB` }),
-  ]);
-  const result = await runEvaluate(baseArgs(), fetch);
-  assert(result.success === false && result.stage === 'postcondition', `a redirect was accepted: ${JSON.stringify(result)}`);
-  assert(/different route/.test(result.message), `unexpected message: ${result.message}`);
+  )).rows);
+  assert(failure?.code === 'COMMAND_EXEC', `a redirect was accepted: ${failure && failure.code}`);
+  assert(/different route/.test(failure.message), `unexpected message: ${failure.message}`);
 });
 
 check('a deep page and a challenge stop before the move', async () => {
-  const deep = makeFetch([sourceRoute(sourceState({ core: { page: 2 } }))]);
-  const deepResult = await runEvaluate(baseArgs(), deep.fetch);
-  assert(deepResult.success === false && deepResult.code === 'argument', `a page-2 URL was moved: ${JSON.stringify(deepResult)}`);
-  assert(deep.calls.length === 1, 'the target was fetched from a page-2 source');
+  const deep = move(routes(sourceRoute(sourceState({ core: { page: 2 } }))));
+  const deepFailure = await failureOf(() => deep.rows);
+  assert(deepFailure?.code === 'ARGUMENT', `a page-2 URL was moved: ${deepFailure && deepFailure.code}`);
+  assert(deep.page.calls.length === 1, 'the target was fetched from a page-2 source');
 
-  const blocked = makeFetch([{ match: SOURCE, status: 429, body: '<html><title>Доступ ограничен</title></html>' }]);
-  const blockedResult = await runEvaluate(baseArgs(), blocked.fetch);
-  assert(blockedResult.success === false && blockedResult.code === 'access', `429 not reported as access: ${JSON.stringify(blockedResult)}`);
+  const blocked = await failureOf(() => move([
+    { match: SOURCE, status: 429, body: '<html><title>Доступ ограничен</title></html>' },
+  ]).rows);
+  assert(blocked?.code === 'ACCESS', `429 not reported as access: ${blocked && blocked.code}`);
 });
 
 check('a target category with no listings is a typed empty result', async () => {
-  const { fetch } = makeFetch([sourceRoute(), targetRoute(), targetApi({ items: [] })]);
-  const result = await runEvaluate(baseArgs(), fetch);
-  assert(result.success === false && result.code === 'empty', `unexpected: ${JSON.stringify(result)}`);
-});
-
-// Node side: argument guards and the shared reservation predicate.
-const observedMove = (rows) => ({
-  success: true,
-  resultSearchLocation: 'Москва',
-  resultSearchUrl: TARGET,
-  resultRows: rows,
-});
-
-const ROW = {
-  apiItemId: '8288791269',
-  apiTitle: 'Xiaomi Redmi Note 13',
-  apiPrice: 15990,
-  apiMinPrice: null,
-  apiHasPriceList: false,
-  apiLocation: 'Москва',
-  apiDescriptionPreview: 'Новый, запечатан',
-  apiPublished: null,
-  apiSeller: { name: 'AMD INTEL', rating: 5, reviewsCount: 2015 },
-  apiImageCount: 0,
-  apiReserved: false,
-  apiUrl: `${ORIGIN}/moskva/telefony/redmi_8288791269`,
-};
-
-const movePage = (observed) => {
-  const calls = { goto: [], evaluateWithArgs: [] };
-  return {
-    calls,
-    async goto(url) { calls.goto.push(url); },
-    async wait() {},
-    async evaluateWithArgs(source, args) { calls.evaluateWithArgs.push(args); return observed; },
-  };
-};
-
-check('the command primes robots.txt once and hands the trimmed name to the browser', async () => {
-  const page = movePage(observedMove([ROW]));
-  const rows = await COMMAND.run(page, { searchUrl: SOURCE, to: '  Мобильные   телефоны ' });
-  assert(rows.length === 1 && rows[0].searchUrl === TARGET, 'the new searchUrl must reach every row');
-  assertRow(COMMAND, rows[0]);
-  assert(page.calls.goto.length === 1 && page.calls.goto[0] === 'https://www.avito.ru/robots.txt',
-    `expected one robots.txt priming, got ${JSON.stringify(page.calls.goto)}`);
-  assert(page.calls.evaluateWithArgs[0].target === 'Мобильные телефоны',
-    `the name must be whitespace-normalized, got ${JSON.stringify(page.calls.evaluateWithArgs[0].target)}`);
+  const failure = await failureOf(() => move(routes(sourceRoute(), targetRoute(), targetApi({ items: [] }))).rows);
+  assert(failure?.code === 'EMPTY_RESULT', `expected EMPTY_RESULT, got ${failure && failure.code}`);
 });
 
 check('an empty target and a foreign search URL never reach the network', async () => {
@@ -378,25 +288,21 @@ check('an empty target and a foreign search URL never reach the network', async 
     { searchUrl: 'https://example.com/moskva', to: 'Телефоны' },
     { searchUrl: '', to: 'Телефоны' },
   ]) {
-    const page = movePage(observedMove([ROW]));
-    let failure = null;
-    try {
-      await COMMAND.run(page, args);
-    } catch (error) { failure = error; }
-    assert(failure != null && failure.code === 'ARGUMENT', `${JSON.stringify(args)} accepted: ${failure && failure.code}`);
-    assert(page.calls.goto.length === 0, `${JSON.stringify(args)} reached the browser`);
+    const driven = move(routes(sourceRoute(), targetRoute(), targetApi()), args);
+    const failure = await failureOf(() => driven.rows);
+    assert(failure?.code === 'ARGUMENT', `${JSON.stringify(args)} accepted: ${failure && failure.code}`);
+    assert(driven.page.navigations.length === 0, `${JSON.stringify(args)} reached the browser`);
   }
 });
 
 check('remove-reserved works the same as in the other listing commands', async () => {
-  const rows = [{ ...ROW, apiItemId: '8329291056', apiReserved: true }, ROW];
-  const filtered = await COMMAND.run(movePage(observedMove(rows)), {
-    searchUrl: SOURCE, to: 'Мобильные телефоны', 'remove-reserved': true,
-  });
-  assert(filtered.length === 1 && filtered[0].itemId === ROW.apiItemId, 'the reserved row must be dropped');
+  const items = [item({ id: '8329291056', isReserved: true }), item({ id: '8288791269' })];
+  const withItems = () => routes(sourceRoute(), targetRoute(), targetApi({ items }));
+  const filtered = await move(withItems(), { 'remove-reserved': true }).rows;
+  assert(filtered.length === 1 && filtered[0].itemId === '8288791269', 'the reserved row must be dropped');
 
-  const whole = await COMMAND.run(movePage(observedMove(rows)), { searchUrl: SOURCE, to: 'Мобильные телефоны' });
+  const whole = await move(withItems()).rows;
   assert(whole.length === 2, 'without the flag the page must come back whole');
 });
 
-export default await run('move-category (browser and node sides)');
+export default await run('move-category');

@@ -9,7 +9,7 @@
  * full, and the API all fifty (F-089).
  */
 
-import { fail } from './refusal.mjs';
+import { CommandExecutionError } from '../runtime/errors.mjs';
 import {
   addParamValues,
   addScalar,
@@ -17,10 +17,13 @@ import {
   sameParamValue,
   sameValues,
 } from './text.mjs';
+import { AVITO_ORIGIN } from './url.mjs';
 
 export const ITEMS_API_PATH = '/web/1/js/items';
 
-export const ITEMS_API_TIMEOUT_MS = 20000;
+/** Ceilings on what a `searchCore` may carry before it stops being one. */
+const MAX_PARAMS = 400;
+const MAX_PARAM_VALUES = 2000;
 
 /**
  * The fields that describe the search rather than the request that carried it.
@@ -32,20 +35,34 @@ export const PRESERVED_CORE_FIELDS = [
   'priceMin', 'priceMax', 'owner', 'withDeliveryOnly', 'localPriority', 'sort',
 ];
 
+/** A request URL with nothing on it yet. */
+export function itemsApiUrl() {
+  return new URL(ITEMS_API_PATH, AVITO_ORIGIN);
+}
+
+/** The `params[...]` entries of a `searchCore`, refused if there are absurdly many. */
+export function coreParamEntries(core, subject) {
+  const entries = Object.entries(core.params ?? {});
+  if (entries.length > MAX_PARAMS) {
+    throw new CommandExecutionError(`${subject} carries an implausible params count`);
+  }
+  return entries;
+}
+
 /**
  * Carry a `searchCore` onto a request URL unchanged. `skipParamIds` belongs to
  * the caller that replaces a `params[...]` entry instead of preserving it;
  * everyone else passes null and carries the lot.
  */
-export function carrySearchCore(apiUrl, sourceCore, maxParamValues, skipParamIds) {
+export function carrySearchCore(apiUrl, sourceCore, skipParamIds = null) {
   addScalar(apiUrl, 'categoryId', sourceCore.categoryId);
   addScalar(apiUrl, 'locationId', sourceCore.locationId);
   addScalar(apiUrl, 'name', sourceCore.query);
   normalizeValues(sourceCore.metroId).forEach((entry, index) => {
-    apiUrl.searchParams.append('metro[' + index + ']', entry);
+    apiUrl.searchParams.append(`metro[${index}]`, entry);
   });
   normalizeValues(sourceCore.districtId).forEach((entry, index) => {
-    apiUrl.searchParams.append('district[' + index + ']', entry);
+    apiUrl.searchParams.append(`district[${index}]`, entry);
   });
   // A radius without a point is silently dropped, so the two always travel together.
   if (Array.isArray(sourceCore.geoCoords) && sourceCore.geoCoords.length === 2) {
@@ -55,7 +72,7 @@ export function carrySearchCore(apiUrl, sourceCore, maxParamValues, skipParamIds
   addScalar(apiUrl, 'cd', sourceCore.correctorMode ?? 0);
   for (const [attrId, value] of Object.entries(sourceCore.params ?? {})) {
     if (skipParamIds && skipParamIds.has(attrId)) continue;
-    addParamValues(apiUrl, attrId, value, maxParamValues);
+    addParamValues(apiUrl, attrId, value, MAX_PARAM_VALUES);
   }
   addScalar(apiUrl, 'verticalCategoryId', sourceCore.verticalCategoryId);
   addScalar(apiUrl, 'rootCategoryId', sourceCore.rootCategoryId);
@@ -85,81 +102,20 @@ export function addItemsApiPage(apiUrl, page) {
  * reading a deep document passes `requireContext` false, and one reading page 1
  * passes true, where a missing context is drift rather than an absent key.
  */
-export function sealItemsApiUrl(apiUrl, loaderState, requireContext) {
-  const subscription = loaderState.subscription;
-  if (subscription && typeof subscription === 'object' && !Array.isArray(subscription)) {
-    for (const key of ['visible', 'isShowSavedTooltip', 'isErrorSaved', 'isAuthenticated']) {
-      if (subscription[key] != null) addScalar(apiUrl, 'subscription[' + key + ']', subscription[key]);
-    }
+export function sealItemsApiUrl(apiUrl, state, requireContext) {
+  for (const key of ['visible', 'isShowSavedTooltip', 'isErrorSaved', 'isAuthenticated']) {
+    const value = state.subscription?.[key];
+    if (value != null) addScalar(apiUrl, `subscription[${key}]`, value);
   }
-  addScalar(apiUrl, 'proprofile', loaderState.meta?.proprofile);
+  addScalar(apiUrl, 'proprofile', state.meta?.proprofile);
   apiUrl.searchParams.set('useReload', 'true');
   apiUrl.searchParams.set('spaFlow', 'true');
-  const context = loaderState.context;
+  const context = state.context;
   if (context == null && !requireContext) return;
-  if (typeof context !== 'string' || !context || context.length > 10000) {
-    throw new Error('Avito SSR state has no usable opaque context');
+  if (!context) {
+    throw new CommandExecutionError('Avito SSR state has no usable opaque context');
   }
   apiUrl.searchParams.set('context', context);
-}
-
-/** One request. Returns `{ failure }` or `{ data }`; the API is never retried. */
-export async function readItemsApi(apiUrl, referrer, env) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), ITEMS_API_TIMEOUT_MS);
-  let response;
-  let data;
-  try {
-    response = await env.fetch(apiUrl.href, {
-      credentials: 'include',
-      referrer,
-      headers: {
-        Accept: 'application/json',
-        'X-Requested-With': 'XMLHttpRequest',
-        'X-Source': 'client-browser',
-      },
-      signal: controller.signal,
-    });
-    const text = await response.text();
-    try {
-      data = JSON.parse(text);
-    } catch {
-      return { failure: fail('api', 'parse', 'Avito items API returned malformed JSON', { status: response.status }) };
-    }
-  } catch (error) {
-    return { failure: fail('api', 'transport', String(error?.message || error)) };
-  } finally {
-    clearTimeout(timer);
-  }
-
-  if (response.status === 429 || data?.['too-many-requests'] || data?.firewallCaptcha || data?.captcha) {
-    return { failure: fail('api', 'access', 'Avito rate limit or access challenge', { status: response.status }) };
-  }
-  if (!response.ok || response.status !== 200) {
-    return { failure: fail('api', 'http', 'Avito items API request failed', { status: response.status }) };
-  }
-  if (!(response.headers.get('content-type') || '').toLowerCase().includes('application/json')) {
-    return { failure: fail('api', 'content_type', 'Avito items API response is not JSON') };
-  }
-  return { data };
-}
-
-/** The four carriers every caller needs out of a response, or `{ failure }`. */
-export function itemsApiState(data) {
-  const core = data?.searchCore;
-  const catalog = data?.catalog;
-  const sections = data?.filtersV2?.Sections;
-  if (
-    !core || typeof core !== 'object'
-    || !catalog || typeof catalog !== 'object'
-    || !Array.isArray(sections)
-    || typeof data?.url !== 'string'
-  ) {
-    return { failure: fail('api', 'shape', 'Avito items API response is missing required state') };
-  }
-  return {
-    core, catalog, sections, url: data.url,
-  };
 }
 
 /** The name of the first preserved field the response changed, or null. */
@@ -173,7 +129,7 @@ export function preservedCoreDrift(sourceCore, resultCore, fields) {
 /** The ID of the first `params[...]` entry the response changed, or null. */
 export function preservedParamsDrift(sourceParamEntries, resultParams) {
   for (const [attrId, value] of sourceParamEntries) {
-    if (!sameParamValue(value, resultParams[attrId])) return attrId;
+    if (!sameParamValue(value, resultParams?.[attrId])) return attrId;
   }
   return null;
 }
@@ -183,9 +139,8 @@ export function preservedParamsDrift(sourceParamEntries, resultParams) {
  * witness beside `searchCore.page`, because the two are produced by different
  * halves of Avito's own response.
  */
-export function itemsApiUrlPage(url, env) {
-  const parsed = new URL(url, env.location.origin);
-  const page = parsed.searchParams.get('p');
+export function itemsApiUrlPage(url) {
+  const page = url.searchParams.get('p');
   if (page == null) return 1;
   return /^\d+$/.test(page) ? Number(page) : null;
 }

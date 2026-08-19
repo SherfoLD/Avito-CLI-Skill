@@ -49,6 +49,16 @@ export function assertRow(command, row) {
   return assertRows(command, [row])[0];
 }
 
+/** The error a call threw, or null if it did not throw. */
+export async function failureOf(call) {
+  try {
+    await call();
+  } catch (error) {
+    return error;
+  }
+  return null;
+}
+
 export function runner() {
   const checks = [];
   return {

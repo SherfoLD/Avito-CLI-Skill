@@ -1,23 +1,47 @@
 /**
- * `avito search` — the node half: argument validation, the navigation budget,
- * the directory calls that check a geo selection *before* Avito can silently
- * ignore it, and the guards on whatever the browser half returned.
+ * `avito search` — start a search and return its first page.
  *
- * The order matters. Avito accepts geo values it does not apply, so a check made
- * after the search would be checking the wrong thing (F-037).
+ * Two document hops and one items API call. Avito answers the public `?q=` route
+ * with a payload that names the canonical target itself, so no region slug or
+ * category route is ever constructed; the canonical catalog document then
+ * carries the `searchCore` the API request is built from, and the API answers
+ * with all fifty cards where the SSR catalog is complete only in its first
+ * twenty (F-089).
+ *
+ * The directory calls come first on purpose. Avito accepts geo values it does
+ * not apply, so a check made after the search would be checking the wrong thing
+ * (F-037).
  */
 
-import {
-  ArgumentError,
-  CommandExecutionError,
-  EmptyResultError,
-  TimeoutError,
-} from '../runtime/errors.mjs';
+import { ArgumentError, CommandExecutionError, EmptyResultError } from '../runtime/errors.mjs';
 import { defineCommand } from '../runtime/command.mjs';
-import { searchContext } from '../browser/commands/search.mjs';
+import { CATALOG_DOCUMENT, QUERY_DOCUMENT } from '../schemas/document.mjs';
 import { LISTING_ROW, applyReservedFilter, listingRows } from '../site/listing.mjs';
+import { catalogRows } from '../site/card.mjs';
 import {
-  AVITO_BASE_URL,
+  CATALOG_KEYS,
+  primeOrigin,
+  readCatalogPage,
+  readDocument,
+  resultCount,
+} from '../site/carriers.mjs';
+import {
+  PRESERVED_CORE_FIELDS,
+  carrySearchCore,
+  coreParamEntries,
+  itemsApiUrl,
+  preservedCoreDrift,
+  preservedParamsDrift,
+  sealItemsApiUrl,
+} from '../site/items.mjs';
+import {
+  addScalar,
+  cleanText,
+  normalizeValues,
+  sameValues,
+} from '../site/text.mjs';
+import { AVITO_ORIGIN, answeredUrl } from '../site/url.mjs';
+import {
   capabilityParameter,
   fetchAvitoJson,
   geoDirectory,
@@ -25,19 +49,8 @@ import {
   locationDisplayName,
 } from '../site/geo.mjs';
 
-// Origin priming only: the body is never read. Rendering the catalog would pull its
-// scripts, images and telemetry for the sake of one JSON blob in the markup.
-const ORIGIN_BOOTSTRAP_URL = 'https://www.avito.ru/robots.txt';
+const COMMAND = 'avito search';
 const MAX_GEO_VALUES = 50;
-const MAX_PARAMS = 400;
-const MAX_PARAM_VALUES = 2000;
-// Backoff before the single bootstrap-recovery retry, so a missing schema is not asked
-// for again in the same instant. This is not a courtesy gap between normal requests.
-const RECOVERY_BACKOFF_SECONDS = 2;
-
-function cleanText(value) {
-  return String(value ?? '').replace(/\s+/g, ' ').trim();
-}
 
 function normalizeLocationId(value) {
   if (value == null || value === '') return null;
@@ -110,33 +123,11 @@ function normalizeBoolean(value, label) {
   throw new ArgumentError(`${label} must be a boolean flag`);
 }
 
-function asExecutionError(error, action) {
-  const message = error instanceof Error ? error.message : String(error);
-  if (/timed?\s*out|timeout/i.test(message)) {
-    throw new TimeoutError(action, 15);
-  }
-  throw new CommandExecutionError(`${action} failed: ${message}`);
-}
-
-function normalizeSearchUrl(value) {
-  let parsed;
-  try {
-    parsed = new URL(String(value ?? ''));
-  } catch {
-    throw new CommandExecutionError('Avito returned an invalid search result URL');
-  }
-  if (parsed.protocol !== 'https:' || parsed.hostname !== 'www.avito.ru') {
-    throw new CommandExecutionError('Avito returned a search result URL outside www.avito.ru');
-  }
-  parsed.hash = '';
-  return parsed.href;
-}
-
 // Avito answers `https://www.avito.ru/?q=<query>` from the bare origin, keeps the session
 // region and reports the canonical target itself, so the search is one deterministic
 // navigation instead of a visible form submit.
 export function buildQueryUrl(query) {
-  const requestUrl = new URL('/', AVITO_BASE_URL);
+  const requestUrl = new URL('/', AVITO_ORIGIN);
   requestUrl.searchParams.set('q', query);
   return requestUrl.href;
 }
@@ -147,7 +138,7 @@ export function buildQueryUrl(query) {
 // An absorbed query is a real Avito answer, so it is accepted; a preserved `q` must still
 // be exactly the requested one, and the bare homepage is never a search result.
 export function decodeLandedSearch(href, query) {
-  const landed = new URL(normalizeSearchUrl(href));
+  const landed = answeredUrl(href, 'search result URL');
   const landedQuery = landed.searchParams.get('q');
   if (landedQuery != null && cleanText(landedQuery) !== cleanText(query)) {
     return { accepted: false, reason: 'query' };
@@ -156,6 +147,15 @@ export function decodeLandedSearch(href, query) {
     return { accepted: false, reason: 'homepage' };
   }
   return { accepted: true, landedUrl: landed.href, queryPreserved: landedQuery != null };
+}
+
+/** The one message a rejected landing gets, wherever it was rejected. */
+function landingError(reason) {
+  return new CommandExecutionError(
+    reason === 'query'
+      ? 'Avito answered with a different query than the requested one'
+      : 'Avito did not canonicalize the requested query into a search URL',
+  );
 }
 
 function decodeGeoDirectoryIds(payload, mode) {
@@ -249,60 +249,136 @@ async function validateRadiusSelection(page, locationId, radius) {
   return { locationName };
 }
 
-async function resolveSearchContext(
-  page,
-  queryUrl,
-  query,
-  refinement,
-  allowSchemaRecovery = true,
-) {
-  let observed;
-  try {
-    observed = await page.evaluateWithArgs(searchContext, {
-      queryUrl,
-      query,
-      refinement,
-      MAX_PARAMS,
-      MAX_PARAM_VALUES,
-      forceFreshSchema: !allowSchemaRecovery,
+/** Hop one: the canonical route Avito names for this query, in its own words. */
+async function resolveCanonicalUrl(page, query) {
+  const entry = await readDocument(page, {
+    requestUrl: buildQueryUrl(query),
+    stage: 'submit',
+    keep: CATALOG_KEYS,
+    schema: QUERY_DOCUMENT,
+    subject: 'Avito SSR query state',
+    command: COMMAND,
+  });
+
+  const state = entry.state;
+  const named = entry.redirect ?? state.url;
+  const answered = state.searchCore && state.filtersV2?.Sections
+    ? entry.responseUrl
+    : (named == null || named === '' ? null : String(named));
+  if (answered === null) {
+    throw new CommandExecutionError('Avito did not report a canonical target for the query');
+  }
+
+  const canonical = answeredUrl(answered, 'search result URL');
+  const landed = decodeLandedSearch(canonical.href, query);
+  if (!landed.accepted) throw landingError(landed.reason);
+  return canonical.href;
+}
+
+/**
+ * The catalog filters of the landed route are carried unchanged: this command
+ * only creates the context, and every refinement of it lives in
+ * `avito apply-filters`. Geo is the exception, because it is the one thing a URL
+ * cannot apply.
+ */
+function buildSearchRequest(state, refinement) {
+  const apiUrl = itemsApiUrl();
+  carrySearchCore(apiUrl, state.searchCore);
+
+  // Geo arrives as indexed keys, so a carried selection and a requested one
+  // would stack into one repeated key instead of replacing it.
+  const dropCarriedGeoIds = () => {
+    for (const key of [...apiUrl.searchParams.keys()]) {
+      if (key.startsWith('metro[') || key.startsWith('district[')) apiUrl.searchParams.delete(key);
+    }
+  };
+  if (refinement.locationRequested) {
+    addScalar(apiUrl, 'locationId', refinement.locationId);
+    // A metro, district or point of the landed route describes nothing in the
+    // city the caller just named, and Avito accepts a foreign ID without a word
+    // (F-037), so a new city discards the old geo rather than inheriting it.
+    dropCarriedGeoIds();
+    apiUrl.searchParams.delete('geoCoords');
+    apiUrl.searchParams.delete('radius');
+  }
+  if (refinement.geoMode) {
+    dropCarriedGeoIds();
+    refinement.geoIds.forEach((geoId, index) => {
+      apiUrl.searchParams.append(`${refinement.geoMode}[${index}]`, geoId);
     });
-  } catch (error) {
-    asExecutionError(error, 'resolving the Avito search context');
   }
+  // A radius without a point is silently dropped, so the two always travel together.
+  if (refinement.radiusRequested) {
+    addScalar(apiUrl, 'geoCoords', refinement.coords);
+    addScalar(apiUrl, 'radius', refinement.radius);
+  }
+  sealItemsApiUrl(apiUrl, state, true);
+  return apiUrl;
+}
 
-  if (!observed || typeof observed !== 'object') {
-    throw new CommandExecutionError('Avito search context returned an invalid result');
+/** What the answer has to show before its rows mean anything. */
+function assertSearchApplied(sourceCore, resultCore, refinement) {
+  const driftedField = preservedCoreDrift(sourceCore, resultCore, PRESERVED_CORE_FIELDS);
+  if (driftedField) {
+    throw new CommandExecutionError(`Avito changed preserved search field ${driftedField}`);
   }
-  if (observed.success !== true) {
-    const message = String(observed.message || 'Avito search context resolution failed');
+  if (!refinement.locationRequested && !sameValues(sourceCore.locationId, resultCore.locationId)) {
+    throw new CommandExecutionError('Avito changed preserved search field locationId');
+  }
+  // Geo the caller did not touch belongs to the route the query landed on and has
+  // to survive, the same way it does through avito apply-filters. A requested city
+  // is the one case where it is discarded rather than preserved.
+  if (!refinement.locationRequested) {
     if (
-      allowSchemaRecovery
-      && observed.stage === 'schema'
-      && observed.code === 'missing'
+      !refinement.geoMode
+      && !(sameValues(sourceCore.metroId, resultCore.metroId)
+        && sameValues(sourceCore.districtId, resultCore.districtId))
     ) {
-      try {
-        await page.wait(RECOVERY_BACKOFF_SECONDS);
-      } catch (error) {
-        asExecutionError(error, 'waiting for Avito short-key bootstrap recovery');
-      }
-      return resolveSearchContext(page, queryUrl, query, refinement, false);
+      throw new CommandExecutionError('Avito changed the preserved geo selection');
     }
-    if (observed.code === 'argument') {
-      throw new ArgumentError(message);
+    if (
+      !refinement.radiusRequested
+      && !(sameValues(sourceCore.geoCoords, resultCore.geoCoords)
+        && sameValues(sourceCore.searchRadius, resultCore.searchRadius))
+    ) {
+      throw new CommandExecutionError('Avito changed the preserved search point');
     }
-    if (observed.code === 'empty') {
-      throw new EmptyResultError('avito search', message);
-    }
-    if (observed.code === 'transport' && /timed?\s*out|timeout|aborted/i.test(message)) {
-      throw new TimeoutError(`Avito search ${observed.stage || 'request'}`, 20);
-    }
-    if (observed.code === 'access') {
-      throw new CommandExecutionError(`Avito requires human verification or a rate-limit cooldown (${message})`);
-    }
-    throw new CommandExecutionError(`${observed.stage || 'Avito search'} failed: ${message}`);
   }
-
-  return observed;
+  if (Number(resultCore.page) !== 1) {
+    throw new CommandExecutionError('Avito returned an unexpected page');
+  }
+  if (refinement.locationRequested && !sameValues(resultCore.locationId, refinement.locationId)) {
+    throw new CommandExecutionError('Avito did not apply the requested location');
+  }
+  if (refinement.geoMode) {
+    // Avito answers 200 with an empty set for an unknown ID and accepts a foreign one,
+    // so the applied set must match exactly and the other geo mode must stay empty.
+    const appliedGeo = refinement.geoMode === 'metro' ? resultCore.metroId : resultCore.districtId;
+    if (!sameValues(appliedGeo, refinement.geoIds)) {
+      throw new CommandExecutionError(`Avito did not apply the requested ${refinement.geoMode}`);
+    }
+    const otherGeo = refinement.geoMode === 'metro' ? resultCore.districtId : resultCore.metroId;
+    if (normalizeValues(otherGeo).length !== 0) {
+      throw new CommandExecutionError('Avito returned a second active geo mode');
+    }
+  }
+  if (refinement.radiusRequested) {
+    // An ignored radius comes back as searchRadius null rather than as an error, and
+    // the point is only honoured together with it, so both are confirmed exactly.
+    // Coordinates are compared numerically because the response returns them as
+    // numbers while the argument arrives as text.
+    if (!sameValues(resultCore.searchRadius, refinement.radius)) {
+      throw new CommandExecutionError('Avito did not apply the requested radius');
+    }
+    const appliedCoords = normalizeValues(resultCore.geoCoords).map(Number);
+    if (
+      appliedCoords.length !== 2
+      || appliedCoords[0] !== Number(refinement.latitude)
+      || appliedCoords[1] !== Number(refinement.longitude)
+    ) {
+      throw new CommandExecutionError('Avito did not apply the requested coordinates');
+    }
+  }
 }
 
 export default defineCommand({
@@ -384,13 +460,7 @@ export default defineCommand({
       longitude: requestedCoords?.longitude ?? null,
     };
 
-    const queryUrl = buildQueryUrl(query);
-
-    try {
-      await page.goto(ORIGIN_BOOTSTRAP_URL, { waitUntil: 'load', settleMs: 0 });
-    } catch (error) {
-      asExecutionError(error, 'opening the Avito same-origin search context');
-    }
+    await primeOrigin(page, COMMAND);
 
     // Geo IDs are checked against the target location's fresh directory before the search
     // is refined, because Avito silently ignores an unknown ID and silently accepts a
@@ -402,21 +472,47 @@ export default defineCommand({
       await validateRadiusSelection(page, requestedLocationId, requestedRadius);
     }
 
-    const observedContext = await resolveSearchContext(
+    const canonicalUrl = await resolveCanonicalUrl(page, query);
+
+    // Hop two: the canonical catalog document carries searchCore and filtersV2, so
+    // it serves both the postconditions and the request the rows come back on.
+    const schema = await readDocument(page, {
+      requestUrl: canonicalUrl,
+      stage: 'schema',
+      keep: CATALOG_KEYS,
+      schema: CATALOG_DOCUMENT,
+      subject: 'Avito SSR search state',
+      command: COMMAND,
+    });
+    const sourceCore = schema.state.searchCore;
+    if (!Array.isArray(schema.state.filtersV2?.Sections)) {
+      throw new CommandExecutionError('Avito SSR search state carries no filter schema');
+    }
+    if (Number(sourceCore.page) !== 1) {
+      throw new CommandExecutionError('Avito initial search did not resolve to page 1');
+    }
+    if (!cleanText(sourceCore.locationName)) {
+      throw new CommandExecutionError('Avito SSR search state has unsupported effective context');
+    }
+    const sourceParamEntries = coreParamEntries(sourceCore, 'Avito SSR searchCore');
+
+    const api = await readCatalogPage(
       page,
-      queryUrl,
-      query,
-      refinement,
-      true,
+      buildSearchRequest(schema.state, refinement),
+      schema.responseUrl,
+      COMMAND,
     );
-    const searchLocation = cleanText(observedContext.resultSearchLocation);
-    const searchLocationId = Number(observedContext.contextLocationId);
-    if (
-      !searchLocation
-      || observedContext.contextLocationId == null
-      || !Number.isInteger(searchLocationId)
-      || searchLocationId <= 0
-    ) {
+    const resultCore = api.searchCore;
+
+    assertSearchApplied(sourceCore, resultCore, refinement);
+    const driftedParam = preservedParamsDrift(sourceParamEntries, resultCore.params);
+    if (driftedParam) {
+      throw new CommandExecutionError(`Avito changed preserved params[${driftedParam}]`);
+    }
+
+    const searchLocation = cleanText(resultCore.locationName);
+    const searchLocationId = Number(resultCore.locationId);
+    if (!searchLocation || !Number.isInteger(searchLocationId) || searchLocationId <= 0) {
       throw new CommandExecutionError('Avito SSR searchCore has an invalid effective location');
     }
     if (requestedLocationId != null && String(searchLocationId) !== requestedLocationId) {
@@ -424,25 +520,22 @@ export default defineCommand({
         `Avito applied location ${searchLocationId} ("${searchLocation}") instead of ${requestedLocationId}`,
       );
     }
-    if (Number(observedContext.contextPage) !== 1) {
-      throw new CommandExecutionError(`Avito search unexpectedly resolved to page ${observedContext.contextPage}`);
-    }
 
-    const searchUrl = normalizeSearchUrl(observedContext.resultSearchUrl);
+    const searchUrl = answeredUrl(api.url, 'search result URL').href;
     const landed = decodeLandedSearch(searchUrl, query);
-    if (!landed.accepted) {
-      throw new CommandExecutionError(
-        landed.reason === 'query'
-          ? 'Avito answered with a different query than the requested one'
-          : 'Avito did not canonicalize the requested query into a search URL',
-      );
-    }
-    if (!Array.isArray(observedContext.resultRows) || observedContext.resultRows.length === 0) {
-      throw new CommandExecutionError('Avito search returned no decoded rows');
+    if (!landed.accepted) throw landingError(landed.reason);
+
+    const decodedRows = catalogRows(api.catalog);
+    if (decodedRows.length === 0) {
+      if (resultCount(api) === 0) {
+        throw new EmptyResultError(COMMAND, 'No listings match the requested query in this location');
+      }
+      throw new CommandExecutionError('Avito returned no catalog items with a non-zero result count');
     }
 
-    const resultRows = applyReservedFilter(observedContext.resultRows, removeReserved, 'avito search');
-
-    return listingRows(resultRows, searchUrl);
+    return listingRows(
+      applyReservedFilter(decodedRows, removeReserved, COMMAND),
+      searchUrl,
+    );
   },
 });

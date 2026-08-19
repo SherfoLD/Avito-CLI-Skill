@@ -1,0 +1,130 @@
+// The catalog decoder, checked directly: this is the boundary where an Avito
+// payload becomes a row, and the schema and the fallback chains meet there.
+import { runner } from './harness.mjs';
+import { catalogRows } from '../src/site/card.mjs';
+import { ORIGIN, cardPhoto, item } from './carrier.mjs';
+
+const { check, assert, run } = runner();
+
+const decode = (items) => catalogRows({ items });
+const one = (extra = {}) => decode([item(extra)])[0];
+
+/** The message of whatever `catalogRows` threw, or null if it returned. */
+function refusal(items) {
+  try {
+    decode(items);
+    return null;
+  } catch (error) {
+    return String(error?.message ?? error);
+  }
+}
+
+check('a card decodes into the columns the four listing commands declare', () => {
+  const row = one();
+  assert(row.itemId === '7881841669' && row.title === 'DDR5 32gb Kingston Fury', `identity: ${JSON.stringify(row)}`);
+  assert(row.price === 43691, `the visible bonus price is the price, got ${row.price}`);
+  assert(row.minPrice === null && row.hasPriceList === false, `not a floor and not a table: ${JSON.stringify(row)}`);
+  assert(row.location === 'Китай-город, до 5 мин.', `location: ${row.location}`);
+  assert(row.descriptionPreview?.startsWith('Авитодоставка открыта'), `description: ${row.descriptionPreview}`);
+  assert(row.published === '2026-08-13T23:15:41Z', `published: ${row.published}`);
+  assert(row.sellerName === 'AMD INTEL' && row.sellerRating === 5 && row.sellerReviewsCount === 2015,
+    `seller: ${JSON.stringify([row.sellerName, row.sellerRating, row.sellerReviewsCount])}`);
+  assert(row.imageCount === 2, `photo count: ${row.imageCount}`);
+  assert(row.url === `${ORIGIN}/moskva/tovary_dlya_kompyutera/ddr5_7881841669`, `url: ${row.url}`);
+  // `reserved` travels beside the columns and never becomes one.
+  assert(row.reserved === false, `reserved: ${row.reserved}`);
+});
+
+// The SSR catalog sends its cards past the twentieth without a photo block at
+// all, and that is not a listing without photos (F-089, D-062).
+check('the photo count separates an empty list from a card that carries no list', () => {
+  assert(one({ images: [cardPhoto('one'), cardPhoto('two')] }).imageCount === 2, 'two photos must count as two');
+  assert(one({ images: [] }).imageCount === 0, 'a listing Avito says has no photos counts zero');
+  assert(one({ images: null }).imageCount === null, 'a card without the key must not count as zero');
+  assert(/\b0\.images/.test(refusal([item({ images: 'one photo' })]) ?? ''),
+    'a photo list that is not a list is drift, and the message must name the path');
+});
+
+// Avito puts banners and widgets in the same two arrays as the cards, and none
+// of them would satisfy a card's declarations. They are not rows and they are
+// not drift either, so the page must survive one.
+check('an entry that is not a listing is skipped rather than failing the page', () => {
+  const rows = catalogRows({
+    items: [{ type: 'widget', id: 'promo', images: { main: 'x.jpg' }, sortTimeStamp: 'вчера' }, item()],
+  });
+  assert(rows.length === 1 && rows[0].itemId === '7881841669', `unexpected rows: ${JSON.stringify(rows)}`);
+});
+
+// Avito sends the card text with its own markup in it, and a row carries text.
+check('markup Avito sent inside a description becomes the text it renders as', () => {
+  const row = one({ description: 'Отправим <b>сегодня</b> &mdash; в наличии' });
+  assert(row.descriptionPreview === 'Отправим сегодня — в наличии', `not rendered: ${row.descriptionPreview}`);
+  assert(one({ description: 'Комплект 2x16gb' }).descriptionPreview === 'Комплект 2x16gb',
+    'text without markup must pass through untouched');
+});
+
+// A stamp of the wrong shape is refused by the schema and one of the wrong
+// magnitude by the decoder: 1786662941 is seconds where Avito sends
+// milliseconds, which reads as January 1970.
+check('the publication stamp is the instant Avito prints, and drift stops the call', () => {
+  assert(one().published === '2026-08-13T23:15:41Z', 'the stamp must decode to the UTC instant');
+  assert(one({ sortTimeStamp: null }).published === null, 'a card without the stamp keeps its row');
+  for (const drift of [1786662941, 'вчера', -1, 1.5]) {
+    const message = refusal([item({ sortTimeStamp: drift })]);
+    assert(message != null && /sortTimeStamp|publication stamp/.test(message),
+      `a stamp of ${JSON.stringify(drift)} must stop the call, got ${message}`);
+  }
+});
+
+// The step is the whole answer wherever Avito sent one, and the flat field —
+// which carries the base price — is read only where there is no step (F-076).
+check('the price is the number the card prints, and a floor is not a price', () => {
+  assert(one({ visiblePrice: null }).price === 43800, 'no step means the flat base price');
+  const floor = one({ priceForm: 'floor' });
+  assert(floor.price === null && floor.minPrice === 43691, `«от» is a floor, got ${JSON.stringify(floor)}`);
+  assert(one({ priceForm: 'negotiable' }).price === null, '«Цена договорная» is no number at all');
+  assert(one({ priceForm: 'free' }).price === 0, '«Бесплатно» is a real zero');
+});
+
+// A services card prices by a table, and then the scalar beside it is a floor
+// rather than a price (F-079). The table itself belongs to `get-item` (F-081).
+check('a card priced by a table says so and hands over no table', () => {
+  const priced = one({ priceList: { values: [{ title: 'Стрижка' }], valuesAll: [{ title: 'Стрижка' }] } });
+  assert(priced.hasPriceList === true, 'a card with a table must say so');
+  assert(priced.price === null && priced.minPrice === 43691, `the scalar beside a table is its floor: ${JSON.stringify(priced)}`);
+  assert(!('priceList' in priced), 'the table is not a column');
+  assert(/priceList/.test(refusal([item({ priceList: { values: [], countHint: 'Ещё 1 услуга' } })]) ?? ''),
+    'a table in an unknown shape is drift, and the message must name the path');
+});
+
+// An anonymous session gets no seller-info step at all on a private seller's
+// card, while the flat rating survives: identity and rating come from different
+// carriers and neither can be derived from the other (F-049, D-028).
+check('a card without the seller-info step keeps its rating and returns no name', () => {
+  const row = one({ sellerInfo: false, rating: { score: 4.8, summary: '19 отзывов' } });
+  assert(row.sellerName === null, `the name must stay null, got ${row.sellerName}`);
+  assert(row.sellerRating === 4.8 && row.sellerReviewsCount === 19,
+    `the rating must survive, got ${row.sellerRating} / ${row.sellerReviewsCount}`);
+  assert(one({ sellerInfo: false, rating: { score: 5, summary: 'нет отзывов' } }).sellerReviewsCount === 0,
+    '"нет отзывов" is a real zero, not a missing count');
+});
+
+check('the reservation flag is read from the card and an absent key stays null', () => {
+  assert(one({ isReserved: true }).reserved === true, 'a reserved card must decode to true');
+  assert(one({ isReserved: false }).reserved === false, 'an available card must decode to false');
+  assert(one({ isReserved: null }).reserved === null, 'a missing flag must stay null, not become false');
+});
+
+check('an item this decoder cannot name stops the call instead of becoming a row', () => {
+  assert(/malformed item/.test(refusal([{ type: 'item', id: 'x', title: 'y' }]) ?? ''),
+    'an id that is not an Avito id must stop the call');
+  assert(/invalid item URL/.test(refusal([item({ id: '8288791269' })].map((entry) => ({ ...entry, urlPath: '/moskva/telefony/iphone' }))) ?? ''),
+    'a route that does not end in the item id must stop the call');
+  assert(decode([{ type: 'banner', id: '1' }]).length === 0, 'a catalog entry that is not an item is not a row');
+});
+
+check('the same listing twice is one row', () => {
+  assert(decode([item(), item()]).length === 1, 'a repeated id must not become a second row');
+});
+
+export default await run('catalog decoder');

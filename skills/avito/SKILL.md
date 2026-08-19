@@ -204,11 +204,15 @@ them.
 |---|---|---|
 | 2 | you passed something the command cannot act on | read the message; it names the constraint |
 | 66 | the request worked and there is nothing to return | that is an answer — report it |
-| 1 | the answer could not be trusted: an HTTP refusal, a challenge, a shape that drifted, a postcondition that failed | stop and report. Never retry. |
+| 1 | the answer could not be trusted: an HTTP refusal, a shape that drifted, a postcondition that failed | stop and report. Never retry. |
 | 75 | no answer in time | report it |
+| 77 | Avito is not answering this session at all | take it to the user — see below |
 
-A CAPTCHA or a rate limit is a full stop. Do not interact with it, do not repeat
-the request, do not try a different route to the same data.
+**77 is the one you cannot fix.** Avito answered, but not with data: a rate
+limit, a verification page, or a page carrying no state. All three mean the same
+thing and none of them is a bug in the command. Do not retry, do not interact
+with a CAPTCHA, do not try a different route to the same data. Ask the user to
+open www.avito.ru in the same browser and see what it is asking for.
 
 One refusal is not about Avito at all: **`could not reach the browser: …`** means
 the CLI never got as far as the site. The message names the endpoint it tried.

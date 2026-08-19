@@ -1,6 +1,6 @@
 /**
- * The catalog-card decoder shared by `search`, `get-page`, `apply-filters` and
- * `move-category`.
+ * The catalog-card decoder: one Avito item as it arrives on the items API, and
+ * the row the four listing commands hand over.
  *
  * What the card *shows* is not what the flat item says:
  *
@@ -8,14 +8,63 @@
  *   visible text      iva.DescriptionStep[].payload           (flat: empty in SSR)
  *   visible location  geo.geoReferences[0] + walking time     (flat: null on most)
  *
- * The flat fields stay as fallbacks, so drift here does not fail — it answers
- * four commands with the other meaning.
+ * The flat fields stay as fallbacks, so drift there does not fail — it answers
+ * four commands with the other meaning. `CATALOG_ITEM` marks every such carrier
+ * `z.unknown()`: what the schema declares is the shape that already stops the
+ * call, and what it leaves open is where a fallback still decides.
  */
 
-import { fail } from './refusal.mjs';
-import { cleanText } from './text.mjs';
+import { CommandExecutionError } from '../runtime/errors.mjs';
+import { decode, z } from '../runtime/schema.mjs';
+import { AVITO_BASE_URL } from './geo.mjs';
+import { parseFragment } from './html.mjs';
 
-export function stepPayload(item, step, component) {
+/**
+ * The keys this decoder reads. `z.unknown().optional()` is not laziness: those
+ * are the carriers a fallback chain reaches past, and declaring a shape for one
+ * would fail the call where the decoder answers from the other carrier instead.
+ */
+const CATALOG_ITEM = z.looseObject({
+  type: z.unknown().optional(),
+  id: z.unknown().optional(),
+  title: z.unknown().optional(),
+  urlPath: z.unknown().optional(),
+  url: z.unknown().optional(),
+  description: z.unknown().optional(),
+  priceDetailed: z.unknown().optional(),
+  location: z.unknown().optional(),
+  addressDetailed: z.unknown().optional(),
+  geo: z.unknown().optional(),
+  rating: z.unknown().optional(),
+  iva: z.unknown().optional(),
+  isReserved: z.unknown().optional(),
+  // An empty list is a listing with no photos (F-047); the key missing
+  // altogether is Avito not sending the block, which is every card past the
+  // twentieth of the SSR catalog (F-089). Anything else is drift.
+  images: z.array(z.unknown()).nullish(),
+  // Avito sorts by this stamp and prints the same moment on the listing page,
+  // so it is the publication date rather than a creation date (D-039, F-059).
+  sortTimeStamp: z.number().int().positive().nullish(),
+  // `values` is what Avito draws, `valuesAll` the whole list (F-079).
+  priceList: z.looseObject({ valuesAll: z.array(z.unknown()) }).nullish(),
+});
+
+/**
+ * The two lists a catalog arrives in, before anything in them is a card. Avito
+ * puts banners and widgets in the same arrays, and every one of them would fail
+ * a card's declarations — so the entries are taken as they come and the ones
+ * that say `type: 'item'` are decoded afterwards.
+ */
+const CATALOG = z.looseObject({
+  items: z.array(z.unknown()).nullish(),
+  extraBlockItems: z.array(z.unknown()).nullish(),
+});
+
+function cleanText(value) {
+  return String(value ?? '').replace(/\s+/g, ' ').trim();
+}
+
+function stepPayload(item, step, component) {
   const steps = Array.isArray(item?.iva?.[step]) ? item.iva[step] : [];
   return steps.find((entry) => entry?.componentData?.component === component)?.payload;
 }
@@ -81,12 +130,7 @@ export function itemPriceIsFloor(item) {
  * page's (F-081), so the row says only that `get-item` has one to read.
  */
 export function itemHasPriceList(item) {
-  const priceList = item?.priceList;
-  if (priceList == null) return false;
-  if (typeof priceList !== 'object' || Array.isArray(priceList) || !Array.isArray(priceList.valuesAll)) {
-    throw new Error('item price list is malformed');
-  }
-  return priceList.valuesAll.length > 0;
+  return (item?.priceList?.valuesAll?.length ?? 0) > 0;
 }
 
 /**
@@ -113,13 +157,12 @@ export function itemLocation(item) {
   return candidates.map(cleanText).find(Boolean) || null;
 }
 
-export function itemDescription(item, env) {
+export function itemDescription(item) {
   const raw = cleanText(stepPayload(item, 'DescriptionStep', 'description')?.description
     ?? item?.description);
   if (!raw) return null;
   if (!/[<>]/.test(raw)) return raw;
-  const copy = new env.DOMParser().parseFromString(raw, 'text/html');
-  return cleanText(copy.body?.textContent) || null;
+  return cleanText(parseFragment(raw)?.textContent) || null;
 }
 
 /** "нет отзывов" is a real zero; anything else must contain a number. */
@@ -128,27 +171,25 @@ export function reviewCount(value) {
   if (!text) return null;
   if (/^нет отзывов$/i.test(text)) return 0;
   const digits = text.replace(/[^\d]/g, '');
-  if (!digits) throw new Error('seller review summary is malformed');
+  if (!digits) throw new CommandExecutionError('Avito catalog: seller review summary is malformed');
   const count = Number(digits);
-  if (!Number.isSafeInteger(count) || count < 0) throw new Error('seller review count is malformed');
+  if (!Number.isSafeInteger(count) || count < 0) {
+    throw new CommandExecutionError('Avito catalog: seller review count is malformed');
+  }
   return count;
 }
 
 /**
- * Avito sorts the listing by this stamp and prints the same moment on the
- * listing page, so it is the publication date rather than an untouchable
- * creation date: re-publishing moves it. A stamp Avito did not send stays null
- * like every other nullable column; a stamp it sent in an impossible shape is
- * drift and stops the call (D-039, F-059).
+ * A stamp Avito did not send stays null like every other nullable column; a
+ * stamp it sent in an impossible shape is drift and stops the call.
  */
 export function itemPublished(item) {
   const stamp = item?.sortTimeStamp;
   if (stamp == null) return null;
-  if (!Number.isSafeInteger(stamp) || stamp <= 0) throw new Error('item publication stamp is malformed');
   const published = new Date(stamp);
   const year = published.getUTCFullYear();
   if (!Number.isFinite(published.getTime()) || year < 2000 || year > 2100) {
-    throw new Error('item publication stamp is out of range');
+    throw new CommandExecutionError('Avito catalog: item publication stamp is out of range');
   }
   return published.toISOString().replace(/\.000Z$/, 'Z');
 }
@@ -166,7 +207,7 @@ export function itemSeller(item) {
   const rawRating = payload?.rating?.score ?? item?.rating?.score;
   const rating = rawRating == null ? null : Number(rawRating);
   if (rating != null && (!Number.isFinite(rating) || rating < 0 || rating > 5)) {
-    throw new Error('seller rating is malformed');
+    throw new CommandExecutionError('Avito catalog: seller rating is malformed');
   }
   return {
     name: cleanText(payload?.profile?.title) || null,
@@ -190,52 +231,55 @@ export function itemReserved(item) {
  * How many photos the card carries. Nothing here reads a photo URL: the sizes
  * are Avito's vocabulary, the originals are `get-item`'s, and a card whose
  * placeholder is served from outside the photo CDN — every résumé — stays
- * readable because of it.
- *
- * An empty list is a listing with no photos (F-047); the key missing altogether
- * is Avito not sending the block, which is every card past the twentieth of the
- * SSR catalog (F-089). Those are different answers and 0 is only the first.
+ * readable because of it (D-061, F-087).
  */
 export function itemImageCount(item) {
-  if (item?.images == null) return null;
-  if (!Array.isArray(item.images)) throw new Error('item images are malformed');
-  return item.images.length;
+  return item?.images == null ? null : item.images.length;
+}
+
+function itemUrl(item, itemId) {
+  let parsed;
+  try {
+    parsed = new URL(String(item?.urlPath ?? item?.url ?? ''), AVITO_BASE_URL);
+  } catch {
+    throw new CommandExecutionError('Avito catalog contains an invalid item URL');
+  }
+  if (
+    parsed.protocol !== 'https:'
+    || parsed.hostname !== 'www.avito.ru'
+    || !parsed.pathname.endsWith('_' + itemId)
+  ) {
+    throw new CommandExecutionError('Avito catalog contains an invalid item URL');
+  }
+  return parsed.origin + parsed.pathname;
 }
 
 /**
- * Decode a whole catalog into intermediate rows. The `api*` prefix marks these
- * as the decoder's own shape: the command maps them onto its declared columns,
- * and `apiReserved` never reaches a row because it is not one of the columns.
- *
- * Returns `{ rows }` or `{ failure }`.
+ * Decode a whole catalog. The rows carry `reserved`, which is not a column:
+ * `applyReservedFilter` reads it and `listingRows` drops it.
  */
-export function decodeCatalogRows(catalog, env) {
-  const rawItems = [
-    ...(Array.isArray(catalog?.items) ? catalog.items : []),
-    ...(Array.isArray(catalog?.extraBlockItems) ? catalog.extraBlockItems : []),
-  ].filter((entry) => entry?.type === 'item');
+export function catalogRows(catalog) {
+  const decoded = decode(CATALOG, catalog, 'Avito catalog');
+  const rawItems = decode(
+    z.array(CATALOG_ITEM),
+    [
+      ...(decoded.items ?? []),
+      ...(decoded.extraBlockItems ?? []),
+    ].filter((entry) => entry?.type === 'item'),
+    'Avito catalog',
+  );
+
   const rows = [];
   const seenIds = new Set();
   for (const item of rawItems) {
     const itemId = cleanText(item?.id);
     const title = cleanText(item?.title);
     if (!/^\d+$/.test(itemId) || !title) {
-      return { failure: fail('catalog', 'shape', 'Avito catalog contains a malformed item') };
+      throw new CommandExecutionError('Avito catalog contains a malformed item');
     }
     if (seenIds.has(itemId)) continue;
-
-    let itemUrl;
-    try {
-      const parsed = new URL(String(item?.urlPath ?? item?.url ?? ''), env.location.origin);
-      if (parsed.protocol !== 'https:' || parsed.hostname !== 'www.avito.ru' || !parsed.pathname.endsWith('_' + itemId)) {
-        throw new Error('invalid item URL');
-      }
-      itemUrl = parsed.origin + parsed.pathname;
-    } catch {
-      return { failure: fail('catalog', 'shape', 'Avito catalog contains an invalid item URL') };
-    }
-
     seenIds.add(itemId);
+
     const hasPriceList = itemHasPriceList(item);
     // One number cannot stand for a table of them, and which entry Avito took
     // the scalar from is not stated anywhere: beside a list of 900 ₽ and up the
@@ -243,23 +287,27 @@ export function decodeCatalogRows(catalog, env) {
     // still the floor Avito advertised, and it is handed over as one.
     const printedPrice = itemPrice(item);
     const isFloor = hasPriceList || itemPriceIsFloor(item);
+    const seller = itemSeller(item);
     rows.push({
-      apiItemId: itemId,
-      apiTitle: title,
-      apiPrice: isFloor ? null : printedPrice,
-      apiMinPrice: isFloor ? printedPrice : null,
-      apiHasPriceList: hasPriceList,
-      apiLocation: itemLocation(item),
-      apiDescriptionPreview: itemDescription(item, env),
-      apiPublished: itemPublished(item),
-      apiSeller: itemSeller(item),
-      apiImageCount: itemImageCount(item),
-      apiReserved: itemReserved(item),
-      apiUrl: itemUrl,
+      itemId,
+      title,
+      price: isFloor ? null : printedPrice,
+      minPrice: isFloor ? printedPrice : null,
+      hasPriceList,
+      location: itemLocation(item),
+      descriptionPreview: itemDescription(item),
+      published: itemPublished(item),
+      sellerName: seller.name,
+      sellerRating: seller.rating,
+      sellerReviewsCount: seller.reviewsCount,
+      imageCount: itemImageCount(item),
+      url: itemUrl(item, itemId),
+      reserved: itemReserved(item),
     });
   }
   if (rawItems.length > 0 && rows.length === 0) {
-    return { failure: fail('catalog', 'shape', 'Avito catalog items could not be decoded') };
+    throw new CommandExecutionError('Avito catalog items could not be decoded');
   }
-  return { rows };
+  return rows;
 }
+

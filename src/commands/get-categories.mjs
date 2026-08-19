@@ -6,7 +6,7 @@
  * The columns that are not a copy of the node:
  *
  *   `role`           `branch`, `option`, `current` (the node's `type`, see
- *                    `src/browser/prelude/rubricator.mjs`) or `back`, the way up
+ *                    `src/site/rubricator.mjs`) or `back`, the way up
  *   `parent`         the visible name of the node this one hangs under, so a row
  *                    read on its own still says which branch it is on
  *   `navigable`      whether `move-category` can be pointed at this row: it has
@@ -21,83 +21,35 @@
  * could not place in a category (F-084).
  */
 
-import {
-  ArgumentError,
-  CommandExecutionError,
-  EmptyResultError,
-  TimeoutError,
-} from '../runtime/errors.mjs';
+import { CommandExecutionError, EmptyResultError } from '../runtime/errors.mjs';
 import { defineCommand } from '../runtime/command.mjs';
 import {
   decode,
   rank,
-  requiredText,
   searchUrl,
   text,
   z,
 } from '../runtime/schema.mjs';
-import { isFollowableNode, sidebarRole } from '../browser/prelude/rubricator.mjs';
-import { readCategoryState } from '../browser/commands/get-categories.mjs';
+import { SIDEBAR_DOCUMENT } from '../schemas/document.mjs';
+import { MAX_NAME_LENGTH, SIDEBAR_NODE } from '../schemas/rubricator.mjs';
+import { isFollowableNode, sidebarRole } from '../site/rubricator.mjs';
+import { primeOrigin, readDocument } from '../site/carriers.mjs';
+import { requestedSearchUrl } from '../site/url.mjs';
 
-// Origin priming only: the body is never read. Rendering the catalog would pull its
-// scripts, images and telemetry for the sake of one JSON blob in the markup.
-const ORIGIN_BOOTSTRAP_URL = 'https://www.avito.ru/robots.txt';
+const COMMAND = 'avito get-categories';
 const AVITO_HOSTS = new Set(['avito.ru', 'www.avito.ru']);
 const MAX_SIDE_NODES = 200;
 const MAX_DEPTH = 20;
-const MAX_NAME_LENGTH = 300;
 
-// Avito's three node kinds (`src/browser/prelude/rubricator.mjs`) plus the one this
-// command adds: `back`, the row that leads up out of the current category.
+// Avito's three node kinds (`src/site/rubricator.mjs`) plus the one this command
+// adds: `back`, the row that leads up out of the current category.
 const SIDEBAR_ROLE = z.enum(['branch', 'option', 'current', 'back']);
-
-/**
- * The part of a sidebar node that is a shape. What a node *means* — whether its
- * type and state agree, whether two nodes claim to be current, where its URL
- * points — is decided below.
- */
-const SIDEBAR_NODE = z.object({
-  id: z.number().int().positive(),
-  type: z.number().int(),
-  name: requiredText().pipe(z.string().max(MAX_NAME_LENGTH)),
-  children: z.array(z.unknown()),
-  isCurrent: z.boolean(),
-  isOpened: z.boolean(),
-  hasBack: z.boolean(),
-  url: z.unknown(),
-});
 
 /** The search this sidebar belongs to. An empty query is a category browse. */
 const CATEGORY_CONTEXT = z.object({
   query: z.string(),
   locationId: z.number().int().positive(),
 });
-
-function normalizeCatalogUrl(value) {
-  const raw = String(value ?? '').trim();
-  if (!raw) throw new ArgumentError('searchUrl must be a non-empty Avito search URL');
-
-  let parsed;
-  try {
-    parsed = new URL(raw);
-  } catch {
-    throw new ArgumentError('searchUrl must be a valid absolute URL');
-  }
-
-  if (
-    parsed.protocol !== 'https:'
-    || !AVITO_HOSTS.has(parsed.hostname)
-    || parsed.port
-    || parsed.username
-    || parsed.password
-  ) {
-    throw new ArgumentError('searchUrl must use https://www.avito.ru');
-  }
-
-  parsed.hostname = 'www.avito.ru';
-  parsed.hash = '';
-  return parsed.href;
-}
 
 function normalizeResultUrl(value, baseUrl, label) {
   const raw = String(value ?? '').trim();
@@ -125,14 +77,6 @@ function normalizeResultUrl(value, baseUrl, label) {
   parsed.hostname = 'www.avito.ru';
   parsed.hash = '';
   return parsed;
-}
-
-function asExecutionError(error, action) {
-  const message = error instanceof Error ? error.message : String(error);
-  if (/timed?\s*out|timeout|aborted/i.test(message)) {
-    throw new TimeoutError(action, 20);
-  }
-  throw new CommandExecutionError(`${action} failed: ${message}`);
 }
 
 function normalizeQuery(value) {
@@ -174,48 +118,17 @@ export default defineCommand({
     searchUrl: searchUrl().nullable(),
   }),
   run: async (page, args) => {
-    const requestedUrl = normalizeCatalogUrl(args.searchUrl);
+    const requestedUrl = requestedSearchUrl(args.searchUrl);
 
-    try {
-      await page.goto(ORIGIN_BOOTSTRAP_URL, { waitUntil: 'load', settleMs: 0 });
-    } catch (error) {
-      asExecutionError(error, 'opening the Avito origin');
-    }
-
-    let observed;
-    try {
-      observed = await page.evaluateWithArgs(readCategoryState, { requestUrl: requestedUrl });
-    } catch (error) {
-      asExecutionError(error, 'fetching Avito category navigation state');
-    }
-
-    if (!observed || typeof observed !== 'object') {
-      throw new CommandExecutionError('Avito category navigation request returned an invalid result');
-    }
-    if (observed.success !== true) {
-      const message = String(observed.message || 'Avito category navigation request failed');
-      if (observed.code === 'access') {
-        throw new CommandExecutionError(`Avito requires human verification (${message})`);
-      }
-      if (observed.code === 'http') {
-        throw new CommandExecutionError(`Avito category navigation request returned HTTP ${observed.details?.status || 0}`);
-      }
-      if (observed.code === 'content_type') {
-        throw new CommandExecutionError(
-          `Avito category navigation request returned ${observed.details?.contentType || 'an unknown content type'}`,
-        );
-      }
-      if (observed.code === 'parse') {
-        throw new CommandExecutionError('Avito SSR bootstrap JSON is malformed');
-      }
-      if (observed.code === 'missing') {
-        throw new EmptyResultError('avito get-categories', 'This Avito page has no SSR search state');
-      }
-      if (observed.code === 'transport' && /timed?\s*out|timeout|aborted/i.test(message)) {
-        throw new TimeoutError('Avito category navigation request', 20);
-      }
-      throw new CommandExecutionError(`${observed.stage || 'Avito get-categories'} failed: ${message}`);
-    }
+    await primeOrigin(page, COMMAND);
+    const observed = await readDocument(page, {
+      requestUrl: requestedUrl,
+      stage: 'schema',
+      keep: ['url', 'searchCore', 'rubricators'],
+      schema: SIDEBAR_DOCUMENT,
+      subject: 'Avito category navigation state',
+      command: COMMAND,
+    });
 
     const responseUrl = normalizeResultUrl(
       observed.responseUrl,
@@ -223,7 +136,7 @@ export default defineCommand({
       'category navigation response',
     );
     const payloadUrl = normalizeResultUrl(
-      observed.url,
+      observed.state.url,
       responseUrl.href,
       'category navigation state',
     );
@@ -233,11 +146,11 @@ export default defineCommand({
 
     const searchCore = decode(
       CATEGORY_CONTEXT,
-      observed.searchCore,
+      observed.state.searchCore,
       'Avito category navigation state',
     );
 
-    const rawSideNodes = observed.sideNodes;
+    const rawSideNodes = observed.state.rubricators?.side?.nodes;
     if (!Array.isArray(rawSideNodes)) {
       throw new CommandExecutionError('Avito category sidebar has an unexpected shape');
     }

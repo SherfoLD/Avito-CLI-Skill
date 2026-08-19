@@ -72,6 +72,14 @@ semantics. Nothing about the *shape* catches it — a fallback value is the righ
 type — so the only automatic defence is the mandatory non-empty
 `descriptionPreview` in the strict fixtures, and that one does not catch price.
 
+## Where a payload becomes a row
+
+A catalog page crosses the page boundary raw and is decoded in Node
+(`src/site/card.mjs`, D-065). What stays in the page is the fetch chain — the
+document read, the `searchCore` carried onto the items API request, the
+postconditions over both — because each request is built from the response
+before it and every read has to be same-origin.
+
 ## Output shape
 
 The listing row is 14 keys, one schema — `LISTING_ROW` in
@@ -113,7 +121,7 @@ schema (D-053).
   key parses as `<width>x<height>`; a record with no such key stops the command.
   Hardcoding `208x208` would produce `images: []` on every row the day the key is
   renamed — indistinguishable from a listing with no photos. One decoder is left
-  holding this rule, `decodeItemImages` in `src/browser/prelude/item.mjs`; the
+  holding this rule, `decodeItemImages` in `src/site/item.mjs`; the
   listing row and the review feed stopped reading photo URLs at all (D-061).
 - **D-028 — `sellerName` is nullable** in all five commands that return it.
   `null` means "Avito did not send a name", not "there is no seller". The name is
@@ -243,6 +251,114 @@ schema (D-053).
   range, `return []` in a catch, `?? 'unknown'`, an Avito identifier pinned in
   source — moved from regular expressions over source text to four ESLint rules
   over a real AST, where a comment is not a node and a catch block is a scope.
+
+- **D-065 — a catalog crosses the boundary raw, and Node decides what it means.**
+  The card decoder used to run in the page, where a serialized function carries
+  no imports and every shape check is hand-written. It now runs in Node against
+  `CATALOG_ITEM`, and the page returns `catalog` as Avito sent it. Measured on a
+  50-card page: 559 KB raw against 33 KB of decoded rows, ~35 ms against ~7 ms
+  for the return trip through the broker — against two Avito fetches of seconds,
+  which is what makes the raw carrier affordable at all.
+  What that buys is one place where a schema can name the path that drifted
+  (`items.3.images: expected array`) instead of four hand-written `throw`s, and
+  a decoder testable without assembling the prelude. What it costs is `linkedom`
+  as a runtime dependency: the description carries Avito's own markup and only a
+  parser turns it into text. It needs the `<body>` wrapper a browser adds — a
+  bare fragment leaves `documentElement` null, which is a live-only failure the
+  offline suite did not have a case for until it happened.
+  The schema declares only what already stopped the call — `images` an array,
+  `sortTimeStamp` a positive integer, `priceList.valuesAll` a list. Every carrier
+  a fallback chain reaches past is `z.unknown().optional()`, which is what makes
+  the move a no-op: the old decoder and the new one were compared field by field
+  over one live 50-card page and answered identically. Those `unknown`s are the
+  map of what tightening is still worth arguing about — the price step wins over
+  the flat base price and nothing notices if it disappears (F-076).
+
+- **D-066 — the HTML never leaves the page, and a document with no state is one
+  refusal.** `readDocument` parses the markup where a real `DOMParser` is, pulls
+  `loaderData` out of the state script and hands over JSON. Node never sees HTML.
+  Doing it the other way round was measured and rejected: `linkedom`'s
+  `innerText` includes the contents of `<script>`, so the challenge detector
+  would have read the whole page state as page text — and Avito's state spells
+  `captcha` in its own keys. That is F-044 a second time, and the offline suite
+  would not have caught it, because the synthetic carrier ships a small state
+  with no such word in it. `tests/get-page.test.mjs` now has that case.
+  With the parser settled, the text detector went with it. It only ever
+  separated "a verification page" from "the bootstrap did not arrive", and those
+  are the same 200 HTML page with no state script, calling for the same thing: a
+  person looking at the browser. So `readDocument` refuses `no_state` once, and
+  eight copies of `if (document.challenge)` across six commands went with it.
+  `looksLikeChallenge` stays where there is a rendered page to read — `get-item`
+  and `get-location` — and where a response that should have been JSON came back
+  as HTML.
+  That refusal is `AccessError`, exit code 77, the fifth class. It is the one
+  refusal a caller must not retry and cannot fix, so it stops looking like a
+  drifted shape. Two mappings changed with it: `get-filters` used to answer a
+  stateless document with `EMPTY_RESULT` "this page has no SSR filter schema"
+  and `get-categories` with "no SSR search state" — both wrong. A route without
+  filters still ships a bootstrap, with an empty `Sections` list.
+
+- **D-067 — one Avito response, one schema, one file.** `src/schemas/` holds
+  what Avito answers with, a file per response: `search-core.mjs` for the object
+  both catalog carriers echo, `filters.mjs` for the `filtersV2` tree. A command
+  imports the schema rather than re-describing the shape, which is what four
+  browser halves were doing to `searchCore` in parallel.
+  The tree is recursive and read loosely, with one strict object in it:
+  `RANGE_VALUE` is `{from, to}` and nothing else, because a third side is a bound
+  this reader does not apply and would silently drop (F-063). Everything else is
+  `looseObject` — Avito adds keys for its own rendering and a page must not be
+  refused over one nothing here reads.
+  What it removed from `get-filters`: the `searchCore` object check, the
+  non-scalar throw in `scalarOrNull`, the `Array.isArray` on `values`, the
+  object check on an option, and the hand-rolled `unknownSides` walk over a
+  range — 38 lines for 22, and the refusals now name the path
+  (`filtersV2.Sections.0.Filters.0.currentValue`) instead of saying "implausible".
+  `get-page` lost its filter walk from the page entirely: it applies no filter
+  and reads none, so the tree is decoded in Node as a postcondition on the
+  document. That walk had no offline coverage while it lived in the page; it has
+  one now.
+
+- **D-068 — the last decoder left the page.** `get-item`'s `buyerItem` decoder
+  moved to `src/site/item.mjs` against `BUYER_ITEM`, and both of its carriers —
+  the item API and the hydration state of a rendered listing — now hand the
+  payload over as Avito sent it. `src/browser/prelude/` holds no decoder at all.
+  The schema is read with `safeParse`, not `decode`, and that is the whole point:
+  this carrier has a second one behind it, so a shape the decoder cannot trust is
+  the same answer as a value it cannot trust — `null`, meaning "try the page"
+  (D-064). Five hand-written `Array.isArray` guards became declarations and kept
+  that contract exactly.
+  What stayed in the page is what needs a real DOM: `document.body.innerText`
+  and the hydration state of a listing that was actually rendered. There is no
+  second copy of those to hand over.
+
+- **D-069 — the page fetches, Node decides.** The four catalog commands built
+  their request, checked their postconditions and refused their selections
+  inside the page, because the items API is only addressable from a `searchCore`
+  the SSR document carries (F-090). All of that is Node now, and the page is two
+  functions: read one document and hand over the state that was inside it, fetch
+  one URL Node built and hand over the JSON. Six commands run them —
+  `get-filters` and `get-categories` had a one-document page half each, and those
+  were the same function with a different slice taken.
+  What that closed: `apply-filters` checked every selection against the fresh
+  schema of the URL before a request existed (D-031), with hand-written walks
+  over the filter tree and hand-written comparisons of what came back. Those are
+  `src/schemas/filters.mjs` and `src/site/` now, where the offline suite reaches
+  them and a refusal names the path. `searchCore` was being re-described in four
+  browser halves in parallel; it is `SEARCH_CORE` once. The request builder,
+  the scalar comparisons, the filter walk and the sidebar vocabulary moved out of
+  `prelude/` with them — three files are left there, all of them fetch.
+  Two things the move found, neither reachable from the old shape: `searchCore.params`
+  carries a `{from, to}` range for a range filter and the schema had declared only
+  scalars and lists, so any route with an applied range would have failed the
+  decode; and `avito search` still carried a bounded retry for a refusal
+  (`stage: 'schema'`, `code: 'missing'`) that no reader produces any more. The
+  schema was widened, and the retry went.
+  The page names nothing: `readDocumentState` copies the top-level state keys the
+  node half asked for and interprets none of them. That list is what keeps a
+  document read from shipping an SSR catalog nobody reads — the four catalog
+  commands take their rows from the API, and `search` reads two documents.
+  It costs one extra `evaluateWithArgs` per catalog command, about 7 ms on a small
+  return, against two Avito fetches of seconds.
 
 - **D-049 — a verify fixture is a schema over the whole returned array.** The
   fixtures were JSON in a small dialect — `rowCount`, `patterns`, `notEmpty`,

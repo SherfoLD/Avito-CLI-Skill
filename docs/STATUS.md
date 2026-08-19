@@ -7,7 +7,7 @@ How each command is built is in its domain file, [docs/areas/](areas/).
 
 ## Commands
 
-Ten commands, all read-only. `npm run check` is green; the offline suite is 221
+Ten commands, all read-only. `npm run check` is green; the offline suite is 211
 checks across sixteen suites. All ten fixtures pass live against the descriptor
 schemas (D-048, D-049).
 
@@ -19,6 +19,18 @@ holds over a row's shape: the listing row declares 14, `get-item` 14 and
 `get-categories` 10. A `verify/<command>.mjs` fixture is a schema over the whole
 returned array, saying what that one request must answer with. What neither can
 express is four ESLint rules over the AST (`npm run lint`).
+
+What Avito answers with is declared in `src/schemas/`, one file per response,
+and a command imports it rather than describing the shape again (D-067). The
+page fetches and nothing more: `src/browser/` is four entry points and three
+prelude files, two of the entry points being the reads six commands share, and
+every request, postcondition and decode is Node (D-069). A command's offline
+suite therefore drives both halves over one set of stubbed routes.
+
+A refusal is one of five typed classes, and exit code 77 (`ACCESS`) is the one
+that is not about the command: Avito answered without data — a rate limit, a
+verification page, a document with no state — and only the person holding the
+browser can act on it (D-066).
 
 The browser has to be one the user already runs, with debugging on at
 `chrome://inspect/#remote-debugging` — a purpose-launched empty profile is
@@ -33,21 +45,24 @@ interruption left is the one approval prompt per connection (F-071, F-073).
 
 | Command | Domain | Strict live verify |
 |---|---|---|
-| `search` | [search](areas/search.md) | 2026-08-18 |
-| `get-page` | [search](areas/search.md) | 2026-08-18 |
-| `get-filters` | [filters](areas/filters.md) | 2026-08-16 |
-| `apply-filters` | [filters](areas/filters.md) | 2026-08-18 |
-| `get-categories` | [categories](areas/categories.md) | 2026-08-18 |
-| `move-category` | [categories](areas/categories.md) | 2026-08-18 |
-| `get-location` | [geo](areas/geo.md) | 2026-08-15 |
-| `get-coords` | [geo](areas/geo.md) | 2026-08-15 |
-| `get-item` | [item](areas/item.md) | 2026-08-18 |
-| `get-seller-reviews` | [item](areas/item.md) | 2026-08-17 |
+| `search` | [search](areas/search.md) | 2026-08-19 |
+| `get-page` | [search](areas/search.md) | 2026-08-19 |
+| `get-filters` | [filters](areas/filters.md) | 2026-08-19 |
+| `apply-filters` | [filters](areas/filters.md) | 2026-08-19 |
+| `get-categories` | [categories](areas/categories.md) | 2026-08-19 |
+| `move-category` | [categories](areas/categories.md) | 2026-08-19 |
+| `get-location` | [geo](areas/geo.md) | 2026-08-19 |
+| `get-coords` | [geo](areas/geo.md) | 2026-08-19 |
+| `get-item` | [item](areas/item.md) | 2026-08-19 |
+| `get-seller-reviews` | [item](areas/item.md) | 2026-08-19 |
 
 Every command that returns a catalog page reads two carriers: the SSR document
 for the postconditions and the items API for the rows, because that document's
 catalog is complete only in its first twenty cards (F-089, D-063). A page is
 fifty complete rows on all four, and the same fifty whichever command asked.
+The page fetches those carriers and hands the catalog over as Avito sent it;
+the request, the postconditions and what a card means are all Node
+(`src/site/items.mjs`, `src/site/card.mjs`, D-065, D-069).
 
 The consumer flow is one chain around one carrier of state, the canonical `searchUrl`:
 

@@ -81,8 +81,8 @@ url, searchUrl
 
 For the four listing commands this exact list and this exact order are fixed —
 they share one `LISTING_ROW` schema in `src/site/listing.mjs`, along with the
-mapping from the decoder's `api*` rows and the reservation filter. Changing that
-schema changes four commands at once.
+reservation filter, and one decoder in `src/site/card.mjs`. Changing either
+changes four commands at once.
 
 The order in the schema is the order in the output: rows are parsed through it
 before printing, so the JSON key order follows the declaration rather than

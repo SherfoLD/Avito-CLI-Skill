@@ -8,10 +8,11 @@
  *   readItemPage   the same object out of the hydration state the rendered
  *                  listing still carries
  *
- * Neither throws for something Avito is allowed to answer. `readItemApi`
- * reports what came back and lets the node half decide; the shared decoder
- * returns `null` for an item it cannot trust, which is this command's way of
- * saying "fall through to the page" rather than "stop".
+ * Neither throws for something Avito is allowed to answer, and neither decodes:
+ * both report what came back and hand the `buyerItem` over as Avito sent it.
+ * What the node half makes of it — including `null` for an item it cannot trust,
+ * which is this command's way of saying "fall through to the page" — is decided
+ * there, against a schema.
  *
  * The primed origin is never scanned for challenge text: `robots.txt` lists
  * `captcha` in its own `Clean-param` directives, so a detector run against it
@@ -19,11 +20,10 @@
  * it is real — in the API response, and in the rendered page.
  */
 
-import { decodeBuyerItemInBrowser } from '../prelude/item.mjs';
 import { looksLikeChallenge } from '../prelude/document.mjs';
 
 export async function readItemApi(input, env) {
-  const { requestUrl, expectedItemId } = input;
+  const { requestUrl } = input;
 
   let response;
   try {
@@ -56,12 +56,11 @@ export async function readItemApi(input, env) {
       || (responseParseError && looksLikeChallenge(responseText.slice(0, 4000))),
     redirectCode: payload?.redirectCode ?? null,
     redirectUrl: payload?.redirectUrl ?? null,
-    decodedBuyerItem: decodeBuyerItemInBrowser(payload?.buyerItem, expectedItemId, env),
+    buyerItem: payload?.buyerItem ?? null,
   };
 }
 
 export function readItemPage(input, env) {
-  const { expectedItemId } = input;
   const { document } = env;
   const pageText = document.title + '\n' + document.body.innerText;
   const hydrationBuyerItem = env.window.__staticRouterHydrationData
@@ -71,6 +70,6 @@ export function readItemPage(input, env) {
     accessBlocked: looksLikeChallenge(pageText),
     itemUnavailable: /объявление (?:снято|удалено|заблокировано)|страница не найдена|такой страницы нет/i.test(pageText),
     observedDocumentTitle: document.title,
-    decodedHydrationItem: decodeBuyerItemInBrowser(hydrationBuyerItem, expectedItemId, env),
+    buyerItem: hydrationBuyerItem ?? null,
   };
 }

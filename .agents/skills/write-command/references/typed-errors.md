@@ -2,21 +2,22 @@
 
 Read this before writing the body of a command.
 
-A command has exactly two honest outcomes: correct data, or one of four typed
+A command has exactly two honest outcomes: correct data, or one of five typed
 errors. There is no third. Every silent middle ground — an empty array standing
 in for a failed fetch, a row with `unknown` in it, an argument bent into range —
 converts a caught failure into an uncaught one.
 
-## The four classes
+## The five classes
 
 | Class | Exit | Means | Thrown when |
 |---|---|---|---|
 | `ArgumentError` | 2 | the caller passed something this command cannot act on | before the network, always |
-| `CommandExecutionError` | 1 | the request went out and the answer cannot be trusted | HTTP refusal, challenge, shape drift, failed postcondition |
+| `CommandExecutionError` | 1 | the request went out and the answer cannot be trusted | HTTP refusal, shape drift, failed postcondition |
 | `EmptyResultError` | 66 | the request succeeded and there is genuinely nothing | Avito returned zero matching records |
 | `TimeoutError` | 75 | a browser or network operation did not answer in time | the CDP call or the fetch exceeded its budget |
+| `AccessError` | 77 | Avito is not serving this session at all | a rate limit, a verification page, a document with no state |
 
-They live in `src/runtime/errors.mjs`. Import them; do not invent a fifth.
+They live in `src/runtime/errors.mjs`. Import them; do not invent a sixth.
 
 ## Where each one goes
 
@@ -35,11 +36,9 @@ both is refused even though the server accepts both.
 
 This is the class that carries almost all of this repository's weight. It covers:
 
-- an HTTP status you did not expect, including `429`;
-- a challenge detected in the response to the data request or in the render — and
-  never by text-scanning the primed origin (F-044);
-- a response whose shape does not match what the decoder needs: a missing
-  bootstrap, an absent `searchCore`, a filter type that is not in the type map;
+- an HTTP status you did not expect;
+- a response whose shape does not match what the decoder needs: an absent
+  `searchCore`, a filter type that is not in the type map;
 - a postcondition that did not hold: the applied value is not in the carrier that
   proves application, or a field the call did not change came back changed.
 
@@ -60,6 +59,14 @@ clearly has some — that is drift, and drift is `CommandExecutionError`.
 
 Carries the label and the budget so the message says what timed out. Do not
 retry behind it.
+
+**`AccessError` — Avito is not answering this session.**
+
+A `429`, a verification page, or a 200 HTML document with no state script. The
+last two are the same answer and are not told apart: the page text is never
+scanned to try (F-044). This is the one refusal a caller can neither retry nor
+fix, and it stops looking like drift so nobody tries. Everything in
+`src/site/carriers.mjs` maps `access` and `no_state` onto it.
 
 ## The three silent anti-patterns
 

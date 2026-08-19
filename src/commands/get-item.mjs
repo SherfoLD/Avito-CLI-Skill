@@ -22,6 +22,7 @@ import {
   z,
 } from '../runtime/schema.mjs';
 import { assertPhotoDirectory, savePhotos } from '../site/photos.mjs';
+import { decodeBuyerItem } from '../site/item.mjs';
 import { readItemApi, readItemPage } from '../browser/commands/get-item.mjs';
 
 // Origin priming only: the body is never read. Rendering the catalog would pull its
@@ -177,10 +178,7 @@ export default defineCommand({
     if (apiContextReady) {
       let apiAttempt;
       try {
-        apiAttempt = await page.evaluateWithArgs(readItemApi, {
-          requestUrl: itemApiUrl,
-          expectedItemId: normalizedItemId,
-        });
+        apiAttempt = await page.evaluateWithArgs(readItemApi, { requestUrl: itemApiUrl });
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         apiAttempt = { requestError: message };
@@ -200,9 +198,9 @@ export default defineCommand({
         && !apiAttempt.responseParseError
         && !apiAttempt.redirectCode
         && !apiAttempt.redirectUrl
-        && apiAttempt.decodedBuyerItem
       ) {
-        return withPhotos(apiAttempt.decodedBuyerItem);
+        const decoded = decodeBuyerItem(apiAttempt.buyerItem, normalizedItemId);
+        if (decoded) return withPhotos(decoded);
       }
       apiFailureReason = describeApiFailure(apiAttempt);
     }
@@ -217,7 +215,7 @@ export default defineCommand({
 
     let fallbackObserved;
     try {
-      fallbackObserved = await page.evaluateWithArgs(readItemPage, { expectedItemId: normalizedItemId });
+      fallbackObserved = await page.evaluateWithArgs(readItemPage, {});
     } catch (error) {
       asExecutionError(error, 'reading Avito item fallback');
     }
@@ -227,9 +225,8 @@ export default defineCommand({
         `Avito requires human verification (${fallbackObserved.observedDocumentTitle || 'access challenge'})`,
       );
     }
-    if (fallbackObserved?.decodedHydrationItem) {
-      return withPhotos(fallbackObserved.decodedHydrationItem);
-    }
+    const fallbackItem = decodeBuyerItem(fallbackObserved?.buyerItem, normalizedItemId);
+    if (fallbackItem) return withPhotos(fallbackItem);
     if (fallbackObserved?.itemUnavailable) {
       throw new EmptyResultError('avito get-item', `Item ${normalizedItemId} is unavailable`);
     }

@@ -4,41 +4,43 @@ Everything a command runs *inside the page*, in two directories that differ by
 who ships them:
 
 ```
-commands/<name>.mjs   the page half of one command, shipped on the call
+commands/<name>.mjs   an entry point, serialized into the page on the call
 prelude/*.mjs         shared by all of them, inlined into every call
 ```
 
-`commands/<name>.mjs` has the same name as its Node half in `src/commands/`, and
-exports the one function that gets serialized into the page. It fetches and reads
-documents, which is why it is here and not there.
+The page fetches. It does not decide, check or decode: a carrier crosses to Node
+as Avito sent it, and what it means is settled there against a schema in
+`src/schemas/` (D-065, D-068, D-069). Only two things keep code here at all —
+same-origin `fetch` with the user's cookies, and a real DOM.
+
+## commands/
+
+| File | What it is for |
+|---|---|
+| `carriers.mjs` | the two reads six commands share: one SSR document, and one URL the node half built |
+| `get-item.mjs` | the item API, and the hydration state of a listing that was actually rendered |
+| `get-coords.mjs` | one JSON read, plus the one classification only that endpoint makes |
+| `get-location.mjs` | whether the rendered homepage is a challenge |
+
+`carriers.mjs` is what `search`, `get-page`, `apply-filters`, `move-category`,
+`get-filters` and `get-categories` run. `readDocumentState` hands over the state
+that was inside one document — the top-level keys the caller named, and nothing
+interpreted. `readItemsApi` fetches one URL Node built and hands over the JSON.
+Neither knows which command asked.
+
+Each entry point is serialized on its own, so it may reach only for a prelude
+name — a constant in its own file does not exist in the page.
 
 ## prelude/
 
 | File | What it owns |
 |---|---|
 | `refusal.mjs` | the `{ success: false, stage, code, message }` envelope |
-| `text.mjs` | scalar comparison, ranges, what "cleared" and "unset" mean |
-| `document.mjs` | reading one SSR document, challenge text, search-URL guards |
+| `document.mjs` | reading one SSR document, and the challenge text |
 | `json.mjs` | one same-origin JSON GET and the three ways a challenge arrives |
-| `filters.mjs` | the `filtersV2` tree: the walk, and the options of one filter |
-| `rubricator.mjs` | what a node of the category sidebar means (D-046) |
-| `card.mjs` | the catalog-card decoder shared by the four listing commands |
-| `item.mjs` | the `buyerItem` decoder behind both carriers of `get-item` (D-064) |
-| `items.mjs` | the items API: building the request from a `searchCore`, reading the answer, and what must have survived it |
 
-`prelude/items.mjs` is the other half of what every listing command does. The
-four of them read rows from `/web/1/js/items` and postconditions from the SSR
-document (D-063), and two of them also refine the request — `search` replaces the
-location and adds geo, `apply-filters` replaces `params[...]` and the short keys.
-So the carry, the request and the preserved-field checks are shared, and what
-each command overrides on top stays in its own file.
-
-`prelude/filters.mjs` is the one file with two kinds of caller. `get-filters` and
-`apply-filters` read the tree as data; `get-page` and `move-category` walk it
-only to refuse a document whose filter state is malformed, and read no filter at
-all. A shape check is worth sharing even where the meaning is not — which is
-also why nothing in that file knows which type is a range or takes several
-values. That vocabulary belongs to the command applying it.
+`src/site/carriers.mjs` is the other side of that envelope: it turns a refusal
+into one of the five typed errors and a response into a decoded value.
 
 ## Two rules
 
@@ -58,27 +60,30 @@ export inlines as an expression rather than a declaration, and a `RegExp` or a
 belongs inside a function — that is why the challenge pattern is
 `looksLikeChallenge(text)` and not an exported regular expression.
 
-Both rules are covered by `tests/prelude.test.mjs`, which also decodes a
-synthetic catalog twice — once through the imports, once through the inlined
-prelude — and compares the rows. If the two copies ever diverge, that is where it
-shows.
+Three files is small, and the machinery still earns its place: `document.mjs`
+reaches into `refusal.mjs` and `json.mjs` into `document.mjs`, which is exactly
+the cross-file call a serialized function cannot make on its own.
+`tests/prelude.test.mjs` runs both of those edges twice — imported and inlined —
+and compares the answers.
+
+## The HTML stops here
+
+`readDocument` is the only place that parses HTML, and what it hands over is the
+JSON that was inside the state script — never the markup. There is one HTML
+parser for a document and it is the browser's own (D-066). A document with no
+state script is a refusal from there, not a value for a caller to classify: what
+Avito serves as a verification page and what a missing bootstrap looks like are
+the same 200 HTML page, and `looksLikeChallenge` is not run over it. That
+function survives only where there is a real rendered page to read —
+`get-item`'s hydration path, `get-location`, and the text of a response that
+should have been JSON.
 
 ## What does not belong here
 
-Anything that runs in Node: argument validation, the navigation budget, typed
-errors, mapping the `api*` rows onto declared columns. That is `src/commands/` —
-and for the four listing commands, `src/site/listing.mjs`, which holds the
-mapping and the row schema they share.
+Everything else: argument validation, the request a fetch is pointed at, the
+postconditions on what came back, typed errors, and turning an Avito payload into
+rows. All of it is Node, in `src/commands/`, `src/site/` and `src/schemas/`.
 
-That boundary is also why the guards here are hand-written while the Node half
-decodes with a schema: `zod` cannot cross `Function.prototype.toString()` any
-more than any other import can.
-
-Avito knowledge that runs in Node is a third thing again, and it has its own
-place: `src/site/` (D-047). The geo directories live there because they are
-plain JSON reads that never have to happen in a page.
-
-A helper used by exactly one command belongs in that command's page half, not in
-`prelude/`. Shared code earns its place by being shared; moved too early, it
-becomes a parameter list that describes one caller. It also costs something real
-here — the whole prelude ships on every call.
+The guards that do remain here are hand-written because `zod` cannot cross
+`Function.prototype.toString()` any more than any other import can. That is the
+reason there are so few of them left.

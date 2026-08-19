@@ -1,10 +1,13 @@
 /**
- * Reading an Avito SSR document, and the guards around a search URL.
+ * Reading an Avito SSR document.
  *
  * Every command that needs schema, filters or a catalog reads it the same way:
  * one same-origin `fetch`, parse the HTML, pull `loaderData` out of the state
  * script. The catalog is never rendered — after hydration the live DOM carries
  * neither `script[data-mfe-state]` nor `searchCore`.
+ *
+ * The HTML stops here. What crosses to Node is the JSON that was inside it, so
+ * there is one HTML parser in this system and it is the browser's own.
  */
 
 import { fail } from './refusal.mjs';
@@ -24,25 +27,18 @@ export function looksLikeChallenge(text) {
     .test(String(text ?? ''));
 }
 
-export function normalizeSearchUrl(value, env) {
-  const parsed = new URL(String(value || ''), env.location.origin);
-  if (parsed.protocol !== 'https:' || parsed.hostname !== 'www.avito.ru') {
-    throw new Error('result URL is outside www.avito.ru');
-  }
-  parsed.hash = '';
-  return parsed.href;
-}
-
 /**
- * Fetch one document and report what came back without deciding what it means:
- * `{ failure }`, or the bootstrap payload plus what the caller needs to classify
- * a missing one — whether the body reads as a challenge, how many state scripts
- * failed to parse, the status, and the URL the response came from.
+ * Fetch one document and hand over the state that was inside it: `{ failure }`,
+ * or `{ status, contentType, responseUrl, title, bootstrap, state }`.
  *
- * `forceFresh` bypasses the HTTP cache for the single bounded
- * bootstrap-recovery retry and for nothing else.
+ * A document with no state is a refusal here rather than a value the caller has
+ * to classify. Avito serves a verification page as 200 HTML with no state
+ * script, which is indistinguishable from a bootstrap that did not arrive — and
+ * the two call for the same thing, a person looking at the browser. Nothing
+ * reads the page text to tell them apart: `robots.txt` alone would defeat that
+ * (F-044).
  */
-export async function readDocument(url, stage, env, { forceFresh = false } = {}) {
+export async function readDocument(url, stage, env) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), DOCUMENT_TIMEOUT_MS);
   let response;
@@ -51,7 +47,6 @@ export async function readDocument(url, stage, env, { forceFresh = false } = {})
     response = await env.fetch(url, {
       credentials: 'include',
       headers: { Accept: 'text/html' },
-      cache: forceFresh ? 'reload' : 'default',
       signal: controller.signal,
     });
     html = await response.text();
@@ -62,7 +57,6 @@ export async function readDocument(url, stage, env, { forceFresh = false } = {})
   }
 
   const parsed = new env.DOMParser().parseFromString(html, 'text/html');
-  const text = [parsed.title, parsed.body?.innerText || ''].join('\n');
   if (response.status === 429) {
     return { failure: fail(stage, 'access', parsed.title || 'Avito access challenge', { status: response.status }) };
   }
@@ -76,25 +70,36 @@ export async function readDocument(url, stage, env, { forceFresh = false } = {})
     return { failure: fail(stage, 'content_type', 'Avito SSR response is not HTML', { contentType }) };
   }
 
-  let payload = null;
+  let bootstrap = null;
   let parseErrors = 0;
   for (const script of [...parsed.querySelectorAll('script[data-mfe-state="true"]')]
     .filter((script) => script.type === 'mime/invalid')) {
     try {
       const candidate = JSON.parse(script.textContent || '')?.loaderData;
       if (candidate) {
-        payload = candidate;
+        bootstrap = candidate;
         break;
       }
     } catch {
       parseErrors += 1;
     }
   }
+
+  const state = bootstrap?.data;
+  if (!state || typeof state !== 'object' || Array.isArray(state)) {
+    return {
+      failure: fail(stage, 'no_state', parsed.title || 'Avito answered a page with no state', {
+        status: response.status,
+        parseErrors,
+      }),
+    };
+  }
+
   return {
-    payload,
-    parseErrors,
-    challenge: looksLikeChallenge(text),
-    documentTitle: parsed.title,
+    bootstrap,
+    state,
+    title: parsed.title,
+    contentType,
     status: response.status,
     responseUrl: response.url || url,
   };

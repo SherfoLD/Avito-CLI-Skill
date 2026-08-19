@@ -1,23 +1,29 @@
 # Command layout
 
-Two files with the same name, and the split is the CDP boundary:
+One file is the command, and the CDP boundary is drawn as narrowly as it can be:
 
 ```
-src/commands/<name>.mjs          the Node half: arguments, navigation budget,
-                                 typed errors, postconditions, the row
-src/browser/commands/<name>.mjs  the page half: shipped into the page and run
-                                 there, so it fetches and reads the document
+src/commands/<name>.mjs   arguments, the request, the postconditions, the row
+src/schemas/*.mjs         what Avito answers with, one file per response
+src/site/*.mjs            Avito knowledge that runs in Node: decoders, request
+                          builders, the URL rules
+src/browser/              only what a browser is needed for
 ```
 
-A third place exists for what the page halves share: `src/browser/prelude/`,
-inlined into **every** call by `src/runtime/browser-prelude.mjs`. A helper used
-by one command stays in that command's page half.
+Everything that decides anything is Node, because Node can use `zod` and the
+page cannot: a serialized function carries none of its imports, so a guard
+written in the page is a schema nobody can read and no offline suite reaches
+(D-069).
 
-Which half a decision belongs to follows from what it needs. Anything that needs
-`fetch`, the DOM or `location` is the page half. Anything that throws a typed
-error, validates an argument or decides what a row is, is the Node half — it can
-use `zod`, and the page half cannot, because a serialized function carries none
-of its imports.
+What is left in the page is a same-origin `fetch` with the user's cookies and a
+real DOM. Two entry points cover most of it —
+`src/browser/commands/carriers.mjs` reads one SSR document and hands over the
+state that was inside it, or fetches one URL the node half built and hands over
+the JSON. Reach for those before writing a page half of your own; write one only
+when you need something a fetch cannot give you, and then it fetches and decides
+nothing. Shared page code goes in `src/browser/prelude/`, inlined into **every**
+call by `src/runtime/browser-prelude.mjs` under two rules `src/browser/README.md`
+states.
 
 ## The descriptor
 
@@ -71,27 +77,32 @@ Returns the same listing columns as avito search" does that; "Paginate" does not
 ## The body
 
 ```js
-run: async (ctx, args) => {
+run: async (page, args) => {
   // 1. Validate everything that can be validated without the network.
-  const requestedUrl = normalizeCatalogUrl(args.searchUrl);   // throws ArgumentError
+  const requestedUrl = requestedSearchUrl(args.searchUrl);   // throws ArgumentError
 
   // 2. Prime the origin. The body is never read, and it is never text-scanned
   //    for a challenge — robots.txt contains the word `captcha` itself (F-044).
-  await ctx.goto(ORIGIN_BOOTSTRAP_URL);
+  await primeOrigin(page, COMMAND);
 
-  // 3. One same-origin read from page context. No retry.
-  const observed = await ctx.evaluate(readCatalog, { requestUrl: requestedUrl });
+  // 3. One same-origin read from page context, decoded against a schema. A
+  //    refusal from the page becomes one of the five typed errors here.
+  const { state, responseUrl } = await readDocument(page, {
+    requestUrl: requestedUrl,
+    stage: 'schema',
+    keep: ['url', 'searchCore'],
+    schema: EXAMPLE_DOCUMENT,
+    subject: 'Avito SSR example state',
+    command: COMMAND,
+  });
 
-  // 4. Fail closed on anything that is not the shape we can decode.
-  if (!observed.ok) throw asExecutionError(observed);
-
-  // 5. Check the postconditions before decoding, against the carrier that
+  // 4. Check the postconditions before decoding, against the carrier that
   //    actually proves application.
-  assertPreserved(observed.payload.searchCore, requestedUrl);
+  assertPreserved(state.searchCore, requestedUrl, responseUrl);
 
-  // 6. Decode. Pure function, same one the offline suite exercises.
-  const rows = decodeRows(observed.payload);
-  if (rows.length === 0) throw new EmptyResultError('example');
+  // 5. Decode. Pure function, same one the offline suite exercises.
+  const rows = decodeRows(state);
+  if (rows.length === 0) throw new EmptyResultError(COMMAND);
   return rows;
 },
 ```
@@ -117,10 +128,11 @@ const decoded = decode(COORDS_PAYLOAD, payload, 'Avito coords response');
 // → "Avito coords response has an unexpected shape — point.latitude: expected number, received string"
 ```
 
-`src/browser/commands/` and `src/browser/` are the exception and cannot do this: they are
-serialized into the page and carry none of their imports, so their guards stay
-hand-written. That boundary is the reason a decoder returns a reported shape
-rather than throwing — the command turns it into a typed error on the Node side.
+`src/browser/` is the one place that cannot do this — it is serialized into the
+page and carries none of its imports — which is why nothing there decodes at
+all. A page half reports what came back, as an `{ success: false, stage, code,
+message }` envelope or the payload itself, and `src/site/carriers.mjs` turns
+that into a typed error or a decoded value.
 
 A schema replaces a shape check, not a judgement. Whether Avito applied the
 location you asked for, whether two nodes both claim to be current, whether the
@@ -145,20 +157,18 @@ shapes in this repository are:
 
 ## Things that bite
 
-- **Name an intermediate shape after itself, not after the row.** The `api*`
-  prefix in the card decoder and `suggested*` in `get-location` exist for this: a
-  carrier that shares its key names with the columns is one rename away from
-  being mistaken for output. The schema will catch the mistake now, but the
-  reader still has to tell the two apart.
+- **Name an intermediate shape after itself, not after the row.** `suggested*`
+  in `get-location` exists for this: a carrier that shares its key names with the
+  columns is one rename away from being mistaken for output. The schema will
+  catch the mistake now, but the reader still has to tell the two apart.
 - **The browser-side script is a module, not a template string.** No
   double-escaping of regexes, no marker comments for the harness to find, and
   `import` instead of textual surgery. See `src/browser/README.md` for the two
   rules the prelude enforces on anything shared.
-- **A shared decoder serves four commands.** `search`, `get-page`,
-  `apply-filters` and `move-category` return the same row from the same decoder
-  (`src/browser/prelude/card.mjs`) through the same schema and mapping
-  (`src/site/listing.mjs`). A change in either is a change to four commands, and
-  the offline suites for all four have to run.
+- **The four listing commands are one row and one request builder.** `search`,
+  `get-page`, `apply-filters` and `move-category` share `src/site/card.mjs`,
+  `src/site/listing.mjs` and `src/site/items.mjs`. A change in any of the three
+  is a change to four commands, and all four offline suites have to run.
 - **Anchor on `data-marker`, never on class names or visible text.** CSS-module
   class names carry build hashes. Visible text, `aria-label`, `title` and
   `placeholder` are all locale-dependent — a selector written against Russian

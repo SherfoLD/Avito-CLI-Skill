@@ -1,11 +1,14 @@
 /**
- * Scalar and query-parameter handling shared by every browser half.
+ * How Avito's own state objects compare, and how a value of one goes back onto
+ * a request URL.
  *
- * Nothing here knows about listings. What it knows is how Avito's own state
- * objects compare: a value that arrives as a number on one carrier and as a
- * string on the other is the same value, a one-element array is the same as the
- * bare scalar, and a range is an object that must never be flattened.
+ * Nothing here knows about listings. What it knows is that a value arriving as
+ * a number on one carrier and as a string on the other is the same value, that
+ * a one-element array is the same as the bare scalar, and that a range is an
+ * object which must never be flattened.
  */
+
+import { CommandExecutionError } from '../runtime/errors.mjs';
 
 export function cleanText(value) {
   return String(value ?? '').replace(/\s+/g, ' ').trim();
@@ -92,7 +95,7 @@ export function sameParamValue(left, right) {
 export function addScalar(url, key, value) {
   if (value == null || value === '') return;
   const scalar = normalizeScalar(value);
-  if (scalar == null) throw new Error('unsupported scalar for ' + key);
+  if (scalar == null) throw new CommandExecutionError(`Avito sent a ${key} this request cannot carry`);
   url.searchParams.set(key, scalar);
 }
 
@@ -102,10 +105,10 @@ export function addScalar(url, key, value) {
  * `[1]`, … and a single value bare.
  */
 export function addParamValues(url, attrId, value, maxValues) {
-  if (!/^\d+$/.test(attrId)) throw new Error('malformed params key');
+  if (!/^\d+$/.test(attrId)) throw new CommandExecutionError('Avito searchCore carries a malformed params key');
   if (isRange(value)) {
     for (const side of Object.keys(value)) {
-      if (side !== 'from' && side !== 'to') throw new Error('malformed params range');
+      if (side !== 'from' && side !== 'to') throw new CommandExecutionError('Avito searchCore carries a range with an unknown side');
     }
     for (const side of ['from', 'to']) {
       const bound = rangeBound(value[side]);
@@ -115,7 +118,7 @@ export function addParamValues(url, attrId, value, maxValues) {
   }
   const values = normalizeValues(value);
   if (values.length === 0 || values.length > maxValues) {
-    throw new Error('malformed params value list');
+    throw new CommandExecutionError(`Avito searchCore carries an implausible value list for params[${attrId}]`);
   }
   if (Array.isArray(value)) {
     values.forEach((entry, index) => url.searchParams.append('params[' + attrId + '][' + index + ']', entry));

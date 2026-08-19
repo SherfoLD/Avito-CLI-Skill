@@ -1,32 +1,38 @@
 /**
- * The shape of the filter tree Avito ships in `filtersV2`, never the meaning of
- * a value. Which types are ranges, which take several values, which serialize
- * bare — that vocabulary belongs to the command applying them.
+ * Walking the filter tree Avito ships in `filtersV2`, never the meaning of a
+ * value. Which types are ranges, which take several values, which serialize
+ * bare — that vocabulary belongs to the command applying them, and the tree's
+ * shape to `src/schemas/filters.mjs`.
  */
+
+import { CommandExecutionError } from '../runtime/errors.mjs';
+
+/** A tree wider than this is a response that has stopped being a filter tree. */
+const MAX_FILTERS = 400;
 
 /**
  * Every filter in the tree, flattened depth-first.
  *
- * A tree deeper than ten levels or wider than `maxFilters` is not a big search
+ * A tree deeper than ten levels or wider than `MAX_FILTERS` is not a big search
  * page; it is a response that has stopped being a filter tree, and walking it
  * further would be guessing.
  */
-export function flattenFilters(sections, maxFilters) {
+export function flattenFilters(sections) {
   const result = [];
   const visit = (filter, depth = 0) => {
     if (!filter || typeof filter !== 'object' || Array.isArray(filter) || depth > 10) {
-      throw new Error('malformed filter tree');
+      throw new CommandExecutionError('Avito filter tree is malformed');
     }
     result.push(filter);
-    if (result.length > maxFilters) throw new Error('implausible filter count');
+    if (result.length > MAX_FILTERS) throw new CommandExecutionError('Avito filter tree carries an implausible filter count');
     if (filter.content != null && !Array.isArray(filter.content)) {
-      throw new Error('malformed filter content');
+      throw new CommandExecutionError('Avito filter tree carries malformed content');
     }
     for (const child of filter.content || []) visit(child, depth + 1);
   };
   for (const section of sections) {
     if (!section || typeof section !== 'object' || !Array.isArray(section.Filters)) {
-      throw new Error('malformed filter section');
+      throw new CommandExecutionError('Avito filter tree carries a malformed section');
     }
     for (const filter of section.Filters) visit(filter);
   }

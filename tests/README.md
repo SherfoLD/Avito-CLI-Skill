@@ -41,6 +41,11 @@ the implementation drifts. Nothing here is a copy of the code.
   checked without a browser: that each one loads and names columns its command
   returns, that a fixture constraining nothing is refused, and that the matcher
   reports the row and the column rather than passing them.
+- `card.test.mjs` — the catalog decoder: one Avito card against the fourteen
+  columns four commands declare, and every place a payload stops the call rather
+  than becoming a plausible row — a photo list that is not a list, a stamp in
+  seconds, a price table in an unknown shape, an item URL that does not end in
+  its own id.
 - `search.test.mjs` — the Node half of `search`: navigation budget, the
   arguments handed to the browser context, the guards on the returned
   `searchUrl`, typed errors, the single bounded schema recovery, and geo
@@ -55,7 +60,7 @@ the implementation drifts. Nothing here is a copy of the code.
 - `get-page.test.mjs` — one document, and the postconditions that prove
   it is the page that was asked for: the canonical URL compared pair by pair
   against the requested one with `p` excluded, `searchCore.page`, page 1 without
-  `p`. Then the card decoder and the reservation predicate on the node side.
+  `p`. Then the reservation predicate on the node side.
 - `apply-filters.test.mjs` — the largest suite, and the one with the most
   to prove: the `;` / `,` / `..` grammar parsed by the command's own parser, each
   Avito filter type serialized its own way, and every selection confirmed against

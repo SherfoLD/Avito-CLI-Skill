@@ -7,7 +7,13 @@
  *              so drift has to stop the call.
  *   item.mjs   returns `null` for the whole item. `get-item` has a fallback —
  *              the rendered page — and null is how this decoder says "try it".
+ *
+ * `BUYER_ITEM` is read with `safeParse` for that reason: a shape this decoder
+ * cannot trust is the same answer as a value it cannot trust.
  */
+
+import { BUYER_ITEM } from '../schemas/item.mjs';
+import { parseFragment } from './html.mjs';
 
 /** Local to this carrier: `undefined` means malformed, `null` means absent. */
 export function itemReviewCount(value) {
@@ -118,12 +124,12 @@ export function decodeItemImages(rawItemImageUrls, galleryMedia) {
  * Decode one `buyerItem` payload, or return `null` if it is not the item that
  * was asked for or its shape cannot be trusted.
  */
-export function decodeBuyerItemInBrowser(buyerItem, expectedItemId, env) {
+export function decodeBuyerItem(rawBuyerItem, expectedItemId) {
   const clean = (value) => String(value ?? '').replace(/\s+/g, ' ').trim();
-  if (!buyerItem || typeof buyerItem !== 'object' || Array.isArray(buyerItem)) return null;
-
+  const parsed = BUYER_ITEM.safeParse(rawBuyerItem);
+  if (!parsed.success) return null;
+  const buyerItem = parsed.data;
   const rawItem = buyerItem.item;
-  if (!rawItem || typeof rawItem !== 'object' || Array.isArray(rawItem)) return null;
 
   const decodedItemId = String(rawItem.id ?? '');
   const decodedTitle = clean(rawItem.title);
@@ -148,8 +154,7 @@ export function decodeBuyerItemInBrowser(buyerItem, expectedItemId, env) {
   ) ? rawItem.descriptionHtml : rawItem.description;
   let decodedDescription = null;
   if (typeof descriptionSource === 'string' && descriptionSource.trim()) {
-    const descriptionDocument = new env.DOMParser().parseFromString(descriptionSource, 'text/html');
-    const descriptionParts = [...descriptionDocument.body.childNodes]
+    const descriptionParts = [...parseFragment(descriptionSource).childNodes]
       .map((node) => clean(node.textContent))
       .filter(Boolean);
     decodedDescription = descriptionParts.join('\n') || null;
@@ -162,10 +167,7 @@ export function decodeBuyerItemInBrowser(buyerItem, expectedItemId, env) {
   if (rawItem.sortFormatedDate != null && typeof rawItem.sortFormatedDate !== 'string') return null;
   const decodedPublishedText = clean(rawItem.sortFormatedDate) || null;
 
-  const searchLocations = rawItem.searchLocation == null
-    ? []
-    : rawItem.searchLocation;
-  if (!Array.isArray(searchLocations)) return null;
+  const searchLocations = rawItem.searchLocation ?? [];
   const decodedLocation = clean(rawItem.location?.name)
     || clean(searchLocations.find((entry) => entry?.current)?.name)
     || clean(rawItem.sellerAddressInfo?.fullAddress?.locality)
@@ -176,10 +178,7 @@ export function decodeBuyerItemInBrowser(buyerItem, expectedItemId, env) {
   const categoryParams = Array.isArray(buyerItem.paramsDto?.items)
     ? buyerItem.paramsDto.items
     : buyerItem.paramsBlock?.items;
-  const rawAttributeGroups = [conditionParams, categoryParams].filter((group) => group != null);
-  if (rawAttributeGroups.some((group) => !Array.isArray(group))) return null;
-
-  const rawAttributes = rawAttributeGroups.flat();
+  const rawAttributes = [conditionParams, categoryParams].filter((group) => group != null).flat();
   if (rawAttributes.length > 200) return null;
   const decodedAttributes = {};
   for (const rawAttribute of rawAttributes) {

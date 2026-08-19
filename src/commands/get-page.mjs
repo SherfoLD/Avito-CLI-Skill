@@ -1,53 +1,47 @@
 /**
- * `avito get-page` — the node half.
+ * `avito get-page` — another result page of a search URL.
  *
  * It applies no filter, chooses no region and constructs no route: every one of
  * those decisions is already inside the URL it was handed, and re-deciding any
  * of them would silently change the search the caller is paging through.
+ *
+ * The document is what proves the page. Avito canonicalizes the URL it is given,
+ * and a search URL that quietly lost a filter still returns fifty perfectly
+ * plausible listings — nothing in the rows would show it. So the canonical URL
+ * is compared pair by pair against the requested one with `p` excluded, and
+ * `searchCore.page` must be the requested number rather than merely a number.
+ *
+ * The rows come from the items API, which the document's own `searchCore` and
+ * `context` address: the SSR catalog carries only its first twenty cards in
+ * full, and the same page through the API is complete on all fifty (F-089).
  */
 
-import {
-  ArgumentError,
-  CommandExecutionError,
-  EmptyResultError,
-  TimeoutError,
-} from '../runtime/errors.mjs';
+import { ArgumentError, CommandExecutionError, EmptyResultError } from '../runtime/errors.mjs';
 import { defineCommand } from '../runtime/command.mjs';
-import { paginate } from '../browser/commands/get-page.mjs';
+import { CATALOG_DOCUMENT } from '../schemas/document.mjs';
 import { LISTING_ROW, applyReservedFilter, listingRows } from '../site/listing.mjs';
+import { catalogRows } from '../site/card.mjs';
+import {
+  CATALOG_KEYS,
+  primeOrigin,
+  readCatalogPage,
+  readDocument,
+} from '../site/carriers.mjs';
+import {
+  PRESERVED_CORE_FIELDS,
+  addItemsApiPage,
+  carrySearchCore,
+  coreParamEntries,
+  itemsApiUrl,
+  itemsApiUrlPage,
+  preservedCoreDrift,
+  preservedParamsDrift,
+  sealItemsApiUrl,
+} from '../site/items.mjs';
+import { cleanText, comparableText } from '../site/text.mjs';
+import { answeredUrl, requestedSearchUrl } from '../site/url.mjs';
 
-// Origin priming only: the body is never read. Rendering the catalog would pull its
-// scripts, images and telemetry for the sake of one JSON blob in the markup.
-const ORIGIN_BOOTSTRAP_URL = 'https://www.avito.ru/robots.txt';
-const AVITO_HOSTS = new Set(['avito.ru', 'www.avito.ru']);
-const MAX_FILTERS = 400;
-const MAX_PARAMS = 400;
-const MAX_PARAM_VALUES = 2000;
-
-function normalizeCatalogUrl(value) {
-  const raw = String(value ?? '').trim();
-  if (!raw) throw new ArgumentError('searchUrl must be a non-empty Avito catalog or search URL');
-
-  let parsed;
-  try {
-    parsed = new URL(raw);
-  } catch {
-    throw new ArgumentError('searchUrl must be a valid absolute URL');
-  }
-  if (
-    parsed.protocol !== 'https:'
-    || !AVITO_HOSTS.has(parsed.hostname)
-    || parsed.port
-    || parsed.username
-    || parsed.password
-  ) {
-    throw new ArgumentError('searchUrl must use https://www.avito.ru');
-  }
-
-  parsed.hostname = 'www.avito.ru';
-  parsed.hash = '';
-  return parsed.href;
-}
+const COMMAND = 'avito get-page';
 
 function normalizePage(value) {
   const page = Number(value);
@@ -63,26 +57,18 @@ function normalizeBoolean(value, label) {
   throw new ArgumentError(`${label} must be a boolean flag`);
 }
 
-function normalizeResultUrl(value) {
-  let parsed;
-  try {
-    parsed = new URL(String(value ?? ''));
-  } catch {
-    throw new CommandExecutionError('Avito pagination returned an invalid search URL');
-  }
-  if (parsed.protocol !== 'https:' || parsed.hostname !== 'www.avito.ru') {
-    throw new CommandExecutionError('Avito pagination returned a search URL outside www.avito.ru');
-  }
-  parsed.hash = '';
-  return parsed.href;
+// A pair list of everything except the page number, so the comparison is about
+// the search and not about the hop. The NUL join keeps `a=b&c` from comparing
+// equal to `a=b&c=` and the sort makes the order Avito's business.
+function queryPairsWithoutPage(url) {
+  return [...url.searchParams.entries()]
+    .filter(([key]) => key !== 'p')
+    .map(([key, value]) => `${key}\u0000${value}`)
+    .sort();
 }
 
-function asExecutionError(error, action) {
-  const message = error instanceof Error ? error.message : String(error);
-  if (/timed?\s*out|timeout|aborted/i.test(message)) {
-    throw new TimeoutError(action, 20);
-  }
-  throw new CommandExecutionError(`${action} failed: ${message}`);
+function sameList(left, right) {
+  return left.length === right.length && left.every((value, index) => value === right[index]);
 }
 
 export default defineCommand({
@@ -98,58 +84,100 @@ export default defineCommand({
   ],
   row: LISTING_ROW,
   run: async (page, args) => {
-    const requestedUrl = normalizeCatalogUrl(args.searchUrl);
+    const sourceUrl = new URL(requestedSearchUrl(args.searchUrl));
     const requestedPage = normalizePage(args.page);
     const removeReserved = normalizeBoolean(args['remove-reserved'], 'remove-reserved');
 
-    try {
-      await page.goto(ORIGIN_BOOTSTRAP_URL, { waitUntil: 'load', settleMs: 0 });
-    } catch (error) {
-      asExecutionError(error, 'opening the Avito same-origin pagination context');
+    const targetUrl = new URL(sourceUrl.href);
+    // Page 1 is the URL without `p` — asking for `p=1` is a different URL that
+    // Avito canonicalizes back, so the postcondition below would fail on a page
+    // that was in fact correct.
+    if (requestedPage === 1) targetUrl.searchParams.delete('p');
+    else targetUrl.searchParams.set('p', String(requestedPage));
+
+    await primeOrigin(page, COMMAND);
+
+    const document = await readDocument(page, {
+      requestUrl: targetUrl.href,
+      stage: 'document',
+      keep: CATALOG_KEYS,
+      schema: CATALOG_DOCUMENT,
+      subject: 'Avito SSR page state',
+      command: COMMAND,
+    });
+
+    const resultUrl = answeredUrl(document.responseUrl, 'canonical page URL');
+    if (resultUrl.pathname !== sourceUrl.pathname) {
+      throw new CommandExecutionError('Avito changed the preserved search pathname');
+    }
+    if (!sameList(queryPairsWithoutPage(sourceUrl), queryPairsWithoutPage(resultUrl))) {
+      throw new CommandExecutionError('Avito changed preserved search query parameters');
+    }
+    if (requestedPage === 1 && resultUrl.searchParams.has('p')) {
+      throw new CommandExecutionError('Avito did not canonicalize page 1 without p');
+    }
+    if (requestedPage > 1 && resultUrl.searchParams.get('p') !== String(requestedPage)) {
+      throw new CommandExecutionError('Avito returned an unexpected canonical page number');
     }
 
-    let observed;
-    try {
-      observed = await page.evaluateWithArgs(paginate, {
-        requestedUrl,
-        requestedPage,
-        MAX_FILTERS,
-        MAX_PARAMS,
-        MAX_PARAM_VALUES,
-      });
-    } catch (error) {
-      asExecutionError(error, 'reading the Avito result page');
+    const documentCore = document.state.searchCore;
+    if (Number(documentCore.page) !== requestedPage) {
+      throw new CommandExecutionError('Avito searchCore returned an unexpected page');
+    }
+    const locationId = Number(documentCore.locationId);
+    const searchLocation = cleanText(documentCore.locationName);
+    if (!Number.isInteger(locationId) || locationId <= 0 || !searchLocation) {
+      throw new CommandExecutionError('Avito searchCore has an invalid location');
+    }
+    const requestedQuery = sourceUrl.searchParams.get('q');
+    if (requestedQuery != null && comparableText(documentCore.query) !== comparableText(requestedQuery)) {
+      throw new CommandExecutionError('Avito changed the preserved search query');
+    }
+    const documentParamEntries = coreParamEntries(documentCore, 'Avito SSR searchCore');
+
+    const apiUrl = itemsApiUrl();
+    carrySearchCore(apiUrl, documentCore);
+    addItemsApiPage(apiUrl, requestedPage);
+    // Page 1 ships a context and a missing one there is drift; a deeper document
+    // has no such key at all (F-092).
+    sealItemsApiUrl(apiUrl, document.state, requestedPage === 1);
+
+    const api = await readCatalogPage(page, apiUrl, document.responseUrl, COMMAND);
+
+    // Nothing about the page may change on the way to the second carrier: the
+    // document already named the search, and the API is being asked for its rows.
+    const driftedField = preservedCoreDrift(documentCore, api.searchCore, [
+      ...PRESERVED_CORE_FIELDS, 'locationId', 'metroId', 'districtId',
+    ]);
+    if (driftedField) {
+      throw new CommandExecutionError(`Avito changed preserved search field ${driftedField}`);
+    }
+    if (Number(api.searchCore.page) !== requestedPage) {
+      throw new CommandExecutionError('Avito items API returned an unexpected page');
+    }
+    const driftedParam = preservedParamsDrift(documentParamEntries, api.searchCore.params);
+    if (driftedParam) {
+      throw new CommandExecutionError(`Avito changed preserved params[${driftedParam}]`);
     }
 
-    if (!observed || typeof observed !== 'object') {
-      throw new CommandExecutionError('Avito pagination returned an invalid result');
+    const apiAnsweredUrl = answeredUrl(api.url, 'items API URL');
+    if (apiAnsweredUrl.pathname !== sourceUrl.pathname) {
+      throw new CommandExecutionError('Avito items API answered on a different route');
     }
-    if (observed.success !== true) {
-      const message = String(observed.message || 'Avito pagination failed');
-      if (observed.code === 'empty') {
-        throw new EmptyResultError('avito get-page', message);
-      }
-      if (observed.code === 'transport' && /timed?\s*out|timeout|aborted/i.test(message)) {
-        throw new TimeoutError(`Avito page ${observed.stage || 'request'}`, 20);
-      }
-      if (observed.code === 'access') {
-        throw new CommandExecutionError(`Avito requires human verification or a rate-limit cooldown (${message})`);
-      }
-      throw new CommandExecutionError(`${observed.stage || 'Avito page'} failed: ${message}`);
+    if (itemsApiUrlPage(apiAnsweredUrl) !== requestedPage) {
+      throw new CommandExecutionError('Avito items API returned an unexpected page number in its URL');
     }
 
-    if (!Array.isArray(observed.resultRows) || observed.resultRows.length === 0) {
-      throw new CommandExecutionError('Avito pagination returned no decoded rows');
-    }
-    const searchLocation = String(observed.resultSearchLocation || '').trim();
-    const searchUrl = normalizeResultUrl(observed.resultSearchUrl);
-    if (!searchLocation) {
-      throw new CommandExecutionError('Avito pagination returned invalid search metadata');
+    const decodedRows = catalogRows(api.catalog);
+    if (decodedRows.length === 0) {
+      throw new EmptyResultError(COMMAND, 'The requested Avito result page has no listings');
     }
 
+    // The document's canonical URL, not the API's: this is the URL the next
+    // command pages, and the API answers about a route rather than to one.
     return listingRows(
-      applyReservedFilter(observed.resultRows, removeReserved, 'avito get-page'),
-      searchUrl,
+      applyReservedFilter(decodedRows, removeReserved, COMMAND),
+      resultUrl.href,
     );
   },
 });

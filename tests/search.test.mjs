@@ -1,6 +1,14 @@
-// Node-level offline checks for the search command flow: navigation budget, argument
-// plumbing and the final guards that run outside the browser context.
-import { assertRow, loadCommand, runner } from './harness.mjs';
+// Offline end-to-end for `avito search`: the real command over a synthetic Avito
+// SSR carrier for both document hops plus the items API response the rows come
+// from. What a card means is `card.test.mjs`; what this suite watches is the
+// argument guards, the directory calls that run before any search request, the
+// request the two hops build, and every postcondition on the answer.
+import {
+  assertRow, assertRows, failureOf, loadCommand, runner,
+} from './harness.mjs';
+import {
+  FILTERS, ITEMS_API_PATH, ORIGIN, bootstrapHtml, browserPage, item, itemsApiResponse, searchCore,
+} from './carrier.mjs';
 
 const { COMMAND, buildQueryUrl, decodeLandedSearch } = await loadCommand('search', [
   'buildQueryUrl', 'decodeLandedSearch',
@@ -8,49 +16,51 @@ const { COMMAND, buildQueryUrl, decodeLandedSearch } = await loadCommand('search
 const { check, assert, run } = runner();
 
 const ROBOTS = 'https://www.avito.ru/robots.txt';
-const CANONICAL_PRESERVED = 'https://www.avito.ru/moskva/tovary_dlya_kompyutera/komplektuyuschie/operativnaya_pamyat-ASgB?cd=1&q=ddr5+32gb';
-const CANONICAL_ABSORBED = 'https://www.avito.ru/moskva/telefony/mobilnye_telefony/apple-ASgB?cd=1&context=H4sIAAAA';
+const CANONICAL = '/moskva/tovary_dlya_kompyutera/komplektuyuschie/operativnaya_pamyat-ASgB?localPriority=1&q=ddr5+32gb';
+const ABSORBED = '/moskva/telefony/mobilnye_telefony/apple-ASgB?cd=1&context=H4sIAAA';
+const API = `${ORIGIN}${ITEMS_API_PATH}`;
 
-const ROW = {
-  apiItemId: '7881841669',
-  apiTitle: 'DDR5 32gb Kingston Fury',
-  apiPrice: 43691,
-  apiMinPrice: null,
-  apiHasPriceList: false,
-  apiLocation: 'Китай-город, до 5 мин.',
-  apiDescriptionPreview: 'Авитодоставка открыта',
-  apiPublished: '2026-08-13T23:15:41Z',
-  apiSeller: { name: 'AMD INTEL', rating: 5, reviewsCount: 2015 },
-  apiImageCount: 1,
-  apiUrl: 'https://www.avito.ru/moskva/tovary_dlya_kompyutera/ddr5_7881841669',
-};
+// The landed document names the search and ships the context that addresses the
+// API; its own catalog is never read, being the twenty-complete-cards carrier (F-089).
+function catalogState({ query = 'ddr5 32gb', core = {} } = {}) {
+  return {
+    loaderData: {
+      data: {
+        searchCore: searchCore({ query, ...core }),
+        filtersV2: FILTERS,
+        context: 'opaque-context',
+      },
+    },
+  };
+}
 
-const context = (searchUrl, overrides = {}) => ({
-  success: true,
-  refined: false,
-  resultSearchLocation: 'Москва',
-  resultSearchSort: 'default',
-  resultSearchUrl: searchUrl,
-  contextLocationId: 637640,
-  contextPage: 1,
-  resultRows: [ROW],
+const redirectState = (target) => ({ loaderData: { redirect: target, data: { status: 200, redirected: true, url: target } } });
+
+const hop1 = (target = CANONICAL) => ({ match: `${ORIGIN}/?q=`, body: bootstrapHtml(redirectState(target)) });
+
+const hop2 = ({ state = catalogState(), path = '/moskva/tovary', responseUrl = ORIGIN + CANONICAL } = {}) => ({
+  match: `${ORIGIN}${path}`,
+  body: bootstrapHtml(state),
+  responseUrl,
+});
+
+const apiRoute = ({
+  items = [item()], core = {}, url = ORIGIN + CANONICAL, ...overrides
+} = {}) => ({
+  match: API,
+  contentType: 'application/json',
+  body: itemsApiResponse({ items, core: { query: 'ddr5 32gb', ...core }, url }),
   ...overrides,
 });
 
-function makePage(observed) {
-  const calls = { goto: [], evaluateWithArgs: [], fetchJson: [], waits: [] };
-  return {
-    calls,
-    async goto(url) { calls.goto.push(url); },
-    async wait(target) { calls.waits.push(target); },
-    async evaluate(source) { calls.evaluateWithArgs.push({ source: String(source), args: null }); return null; },
-    async evaluateWithArgs(source, args) {
-      calls.evaluateWithArgs.push({ source: String(source), args });
-      return typeof observed === 'function' ? observed(args) : observed;
-    },
-    async fetchJson(url) { calls.fetchJson.push(url); throw new Error('unexpected directory call'); },
-  };
-}
+const routes = (api = apiRoute(), document = hop2(), entry = hop1()) => [entry, document, api];
+
+const search = (routeList, args = {}, options = {}) => {
+  const page = browserPage(routeList, options);
+  return { page, rows: COMMAND.run(page, { query: 'ddr5 32gb', ...args }) };
+};
+
+// ── the guards that never reach the network ──────────────────────────────────
 
 check('buildQueryUrl encodes the query on the bare origin', () => {
   assert(buildQueryUrl('ddr5 32gb') === 'https://www.avito.ru/?q=ddr5+32gb', 'unexpected query URL');
@@ -58,126 +68,28 @@ check('buildQueryUrl encodes the query on the bare origin', () => {
 });
 
 check('preserved q must match exactly, absorbed q is accepted, homepage never is', () => {
-  assert(decodeLandedSearch(CANONICAL_PRESERVED, 'ddr5 32gb').accepted === true, 'preserved q rejected');
-  assert(decodeLandedSearch(CANONICAL_ABSORBED, 'iphone').accepted === true, 'absorbed query rejected');
-  assert(decodeLandedSearch(CANONICAL_ABSORBED, 'iphone').queryPreserved === false, 'absorbed reported as preserved');
-  assert(decodeLandedSearch('https://www.avito.ru/moskva/telefony?q=android', 'iphone').reason === 'query', 'foreign q accepted');
-  assert(decodeLandedSearch('https://www.avito.ru/?q=iphone', 'iphone').reason === 'homepage', 'homepage accepted');
-});
-
-check('a default search primes robots.txt only and never renders a catalog page', async () => {
-  const page = makePage(context(CANONICAL_ABSORBED));
-  const rows = await COMMAND.run(page, { query: 'iphone', limit: 3 });
-  assert(rows.length === 1 && rows[0].itemId === ROW.apiItemId, 'rows not mapped');
-  assert(rows[0].price === 43691 && rows[0].location === 'Китай-город, до 5 мин.', 'card semantics not preserved');
-  assert(rows[0].searchUrl === CANONICAL_ABSORBED, 'searchUrl not returned');
-  assertRow(COMMAND, rows[0]);
-  assert(page.calls.goto.length === 1 && page.calls.goto[0] === ROBOTS, `expected one robots.txt priming, got ${JSON.stringify(page.calls.goto)}`);
-  assert(page.calls.evaluateWithArgs.length === 1, 'more than one browser evaluation');
-  const args = page.calls.evaluateWithArgs[0].args;
-  assert(args.queryUrl === 'https://www.avito.ru/?q=iphone' && args.query === 'iphone', 'query arguments not passed');
-  assert(!('requestUrl' in args), 'stale requestUrl argument still passed');
-});
-
-check('a location refinement keeps the same single-priming budget', async () => {
-  const refinedUrl = `${CANONICAL_PRESERVED}&locationId=654918`;
-  const page = makePage(context(refinedUrl, { refined: true, contextLocationId: 654918 }));
-  const rows = await COMMAND.run(page, { query: 'ddr5 32gb', 'location-id': 654918 });
-  assert(rows[0].searchUrl === refinedUrl, 'server URL not preserved');
-  assert(page.calls.goto.length === 1 && page.calls.goto[0] === ROBOTS, 'refinement changed the navigation budget');
-  assert(page.calls.evaluateWithArgs[0].args.refinement.locationRequested === true, 'refinement not requested');
+  assert(decodeLandedSearch(ORIGIN + CANONICAL, 'ddr5 32gb').accepted === true, 'preserved q rejected');
+  assert(decodeLandedSearch(ORIGIN + ABSORBED, 'iphone').accepted === true, 'absorbed query rejected');
+  assert(decodeLandedSearch(ORIGIN + ABSORBED, 'iphone').queryPreserved === false, 'absorbed reported as preserved');
+  assert(decodeLandedSearch(`${ORIGIN}/moskva/telefony?q=android`, 'iphone').reason === 'query', 'foreign q accepted');
+  assert(decodeLandedSearch(`${ORIGIN}/?q=iphone`, 'iphone').reason === 'homepage', 'homepage accepted');
 });
 
 // The six catalog-filter flags moved to `avito apply-filters`, and an agent reading only
 // descriptions must not be able to smuggle them back in through this command (D-031).
-check('the catalog filter flags are gone and never reach the browser context', async () => {
-  const page = makePage(context(CANONICAL_PRESERVED));
+check('the catalog filter flags are gone and never reach a request', async () => {
   const declared = COMMAND.args.map((arg) => arg.name);
   for (const gone of ['sort', 'price-min', 'price-max', 'seller', 'delivery-only', 'local-priority']) {
     assert(!declared.includes(gone), `${gone} is still declared by avito search`);
   }
-  await COMMAND.run(page, {
-    query: 'ddr5 32gb', sort: 'date', 'price-max': 30000, seller: 'company', 'delivery-only': true,
+  const driven = search(routes(), {
+    sort: 'date', 'price-max': 30000, seller: 'company', 'delivery-only': true,
   });
-  const { refinement } = page.calls.evaluateWithArgs[0].args;
-  assert(refinement.locationRequested === false && refinement.geoMode === null && refinement.radiusRequested === false,
-    'a filter flag was mistaken for a geo refinement');
-  for (const gone of ['sortRequested', 'priceRequested', 'sellerRequested', 'deliveryOnly', 'localPriority']) {
-    assert(!(gone in refinement), `${gone} still travels to the browser context`);
-  }
-});
-
-check('a search URL that drifted to another query is rejected outside the browser too', async () => {
-  const page = makePage(context('https://www.avito.ru/moskva/telefony?q=android'));
-  let failure = null;
-  try {
-    await COMMAND.run(page, { query: 'iphone', limit: 3 });
-  } catch (error) { failure = error; }
-  assert(failure != null && /different query/.test(failure.message), `foreign query accepted: ${failure && failure.message}`);
-});
-
-check('a homepage search URL is rejected outside the browser too', async () => {
-  const page = makePage(context('https://www.avito.ru/?q=iphone'));
-  let failure = null;
-  try {
-    await COMMAND.run(page, { query: 'iphone', limit: 3 });
-  } catch (error) { failure = error; }
-  assert(failure != null && /did not canonicalize/.test(failure.message), `homepage accepted: ${failure && failure.message}`);
-});
-
-check('typed errors survive the context boundary', async () => {
-  const cases = [
-    { observed: { success: false, stage: 'submit', code: 'access', message: 'Доступ ограничен' }, expect: /human verification/, code: 'COMMAND_EXEC' },
-    { observed: { success: false, stage: 'catalog', code: 'empty', message: 'No listings match the requested query' }, expect: /No listings/, code: 'EMPTY_RESULT' },
-    { observed: { success: false, stage: 'submit', code: 'drift', message: 'Avito answered with a different query' }, expect: /different query/, code: 'COMMAND_EXEC' },
-  ];
-  for (const testCase of cases) {
-    const page = makePage(testCase.observed);
-    let failure = null;
-    try {
-      await COMMAND.run(page, { query: 'iphone', limit: 3 });
-    } catch (error) { failure = error; }
-    assert(failure != null, `case ${testCase.code} did not fail`);
-    assert(failure.code === testCase.code, `expected ${testCase.code}, got ${failure.code}: ${failure.message}`);
-    assert(testCase.expect.test(failure.message), `unexpected message: ${failure.message}`);
-  }
-});
-
-// A bootstrap that came back without the search state is retried exactly once with a
-// cache-bypassing read; anything else stops on the first answer.
-check('a missing bootstrap is retried once and then reported', async () => {
-  let calls = 0;
-  const page = makePage(() => {
-    calls += 1;
-    return { success: false, stage: 'schema', code: 'missing', message: 'Avito SSR search bootstrap has no complete search/filter state' };
-  });
-  let failure = null;
-  try {
-    await COMMAND.run(page, { query: 'ddr5 32gb' });
-  } catch (error) { failure = error; }
-  assert(failure != null && failure.code === 'COMMAND_EXEC', `unexpected error: ${failure && failure.code}`);
-  assert(calls === 2, `expected exactly one bounded schema recovery, got ${calls} attempts`);
-  assert(page.calls.evaluateWithArgs[1].args.forceFreshSchema === true, 'the retry must bypass the cache');
-});
-
-check('geo IDs are validated before any search request', async () => {
-  const page = makePage(context(CANONICAL_PRESERVED));
-  const seen = [];
-  page.fetchJson = async (url) => {
-    seen.push(url);
-    if (url.includes('/web/1/search/locations')) {
-      return { result: { params: [{ parameters: [{ id: 'locationId', value: { id: 650400, names: { 1: 'Казань' }, hasMetro: true } }] }] } };
-    }
-    return { stations: [{ id: 2046, name: 'Кремлёвская' }] };
-  };
-  let failure = null;
-  try {
-    await COMMAND.run(page, { query: 'ddr5 32gb', limit: 3, 'location-id': 650400, metro: '999999' });
-  } catch (error) { failure = error; }
-  assert(failure != null && failure.code === 'ARGUMENT', `unknown metro accepted: ${failure && failure.message}`);
-  assert(seen.length === 2, `expected two directory calls, got ${seen.length}`);
-  assert(page.calls.evaluateWithArgs.length === 0, 'search ran despite an invalid geo ID');
-  assert(page.calls.goto.length === 1 && page.calls.goto[0] === ROBOTS, 'geo validation changed the navigation budget');
+  await driven.rows;
+  const requested = new URL(driven.page.calls[2]);
+  assert(requested.get === undefined && requested.searchParams.get('s') === null,
+    `a filter flag reached the request: ${driven.page.calls[2]}`);
+  assert(requested.searchParams.get('pmax') === null, `a price flag reached the request: ${driven.page.calls[2]}`);
 });
 
 check('radius arguments are rejected unless they form one applicable geo mode', async () => {
@@ -191,108 +103,283 @@ check('radius arguments are rejected unless they form one applicable geo mode', 
     { args: { coords: '55.760256,37.611446', radius: 0, 'location-id': 637640 }, expect: /positive integer/ },
   ];
   for (const testCase of cases) {
-    const page = makePage(context(CANONICAL_PRESERVED));
-    let failure = null;
-    try {
-      await COMMAND.run(page, { query: 'ddr5 32gb', limit: 3, ...testCase.args });
-    } catch (error) { failure = error; }
-    assert(failure != null && failure.code === 'ARGUMENT', `accepted ${JSON.stringify(testCase.args)}`);
+    const driven = search(routes(), testCase.args);
+    const failure = await failureOf(() => driven.rows);
+    assert(failure?.code === 'ARGUMENT', `accepted ${JSON.stringify(testCase.args)}`);
     assert(testCase.expect.test(failure.message), `unexpected message: ${failure.message}`);
-    assert(page.calls.evaluateWithArgs.length === 0, 'search ran despite an invalid radius argument');
+    assert(driven.page.calls.length === 0, 'a request was made despite an invalid radius argument');
   }
 });
 
+// ── the directory calls that run before any search request ───────────────────
+
+const CAPABILITIES = {
+  result: {
+    params: [{
+      parameters: [
+        { id: 'locationId', value: { id: 650400, names: { 1: 'Казань' }, hasMetro: true, hasDistricts: true } },
+        { id: 'smallRadius', type: 'select', values: [
+          { id: '1_general', title: '1 км', radiusValue: 1 },
+          { id: '5_general', title: '5 км', radiusValue: 5 },
+        ] },
+      ],
+    }],
+  },
+};
+
+const directory = (url) => (url.includes('/web/1/search/locations')
+  ? CAPABILITIES
+  : { stations: [{ id: 2046, name: 'Кремлёвская' }] });
+
+check('geo IDs are validated before any search request', async () => {
+  const driven = search(routes(), { 'location-id': 650400, metro: '999999' }, { directory });
+  const failure = await failureOf(() => driven.rows);
+  assert(failure?.code === 'ARGUMENT', `unknown metro accepted: ${failure && failure.message}`);
+  assert(driven.page.calls.length === 2, `expected two directory calls, got ${JSON.stringify(driven.page.calls)}`);
+  assert(driven.page.navigations.length === 1 && driven.page.navigations[0] === ROBOTS,
+    'geo validation changed the navigation budget');
+});
+
 check('the radius is checked against the visible list before any search request', async () => {
-  const capabilities = {
-    result: {
-      params: [{
-        parameters: [
-          { id: 'locationId', value: { id: 637640, names: { 1: 'Москва' }, hasMetro: true, hasDistricts: true } },
-          { id: 'smallRadius', type: 'select', values: [
-            { id: '1_general', title: '1 км', radiusValue: 1 },
-            { id: '5_general', title: '5 км', radiusValue: 5 },
-          ] },
-        ],
-      }],
-    },
-  };
-
-  const rejecting = makePage(context(CANONICAL_PRESERVED));
-  const seen = [];
-  rejecting.fetchJson = async (url) => { seen.push(url); return capabilities; };
-  let failure = null;
-  try {
-    await COMMAND.run(rejecting, {
-      query: 'ddr5 32gb', limit: 3, 'location-id': 637640, coords: '55.760256,37.611446', radius: 7,
-    });
-  } catch (error) { failure = error; }
-  assert(failure != null && failure.code === 'ARGUMENT', `unoffered radius accepted: ${failure && failure.message}`);
+  const rejecting = search(
+    routes(), { 'location-id': 650400, coords: '55.760256,37.611446', radius: 7 }, { directory },
+  );
+  const failure = await failureOf(() => rejecting.rows);
+  assert(failure?.code === 'ARGUMENT', `unoffered radius accepted: ${failure && failure.message}`);
   assert(/Visible values: 1, 5/.test(failure.message), `visible list not reported: ${failure.message}`);
-  assert(seen.length === 1 && seen[0].includes('locationId=637640'), `unexpected directory calls: ${JSON.stringify(seen)}`);
-  assert(rejecting.calls.evaluateWithArgs.length === 0, 'search ran despite an unoffered radius');
-  assert(rejecting.calls.goto.length === 1 && rejecting.calls.goto[0] === ROBOTS, 'radius validation changed the navigation budget');
+  assert(rejecting.page.calls.length === 1 && rejecting.page.calls[0].includes('locationId=650400'),
+    `unexpected directory calls: ${JSON.stringify(rejecting.page.calls)}`);
+  assert(rejecting.page.navigations.length === 1, 'radius validation changed the navigation budget');
 
-  const accepting = makePage(context(`${CANONICAL_PRESERVED}&radius=5`, { refined: true }));
-  accepting.fetchJson = async () => capabilities;
-  const rows = await COMMAND.run(accepting, {
-    query: 'ddr5 32gb', limit: 3, 'location-id': 637640, coords: '55.760256,37.611446', radius: 5,
-  });
-  assert(rows.length === 1, 'offered radius did not search');
-  const passed = accepting.calls.evaluateWithArgs[0].args.refinement;
-  assert(passed.radiusRequested === true && passed.radius === '5', 'radius not handed to the browser context');
-  assert(passed.coords === '55.760256,37.611446', 'coordinate pair not handed to the browser context');
-  assert(passed.latitude === '55.760256' && passed.longitude === '37.611446', 'coordinate parts not passed');
+  const accepting = search(routes(apiRoute({
+    core: { locationId: 650400, locationName: 'Казань', geoCoords: [55.760256, 37.611446], searchRadius: 5 },
+    url: `${ORIGIN}${CANONICAL}&radius=5`,
+  })), { 'location-id': 650400, coords: '55.760256,37.611446', radius: 5 }, { directory });
+  await accepting.rows;
+  const requested = new URL(accepting.page.calls[3]);
+  assert(requested.searchParams.get('radius') === '5', `radius not sent: ${accepting.page.calls[3]}`);
+  assert(requested.searchParams.get('geoCoords') === '55.760256,37.611446',
+    `coordinate pair not sent: ${accepting.page.calls[3]}`);
+});
+
+// ── the two hops and the request they build ──────────────────────────────────
+
+check('two document hops name the search and the items API answers it with the rows', async () => {
+  const driven = search(routes());
+  const rows = await driven.rows;
+  assert(driven.page.calls.length === 3, `expected two documents and one API call, got ${JSON.stringify(driven.page.calls)}`);
+  assert(driven.page.calls[1] === ORIGIN + CANONICAL, `second hop used ${driven.page.calls[1]}`);
+  assert(driven.page.calls[2].startsWith(API), `the rows must come from the items API, got ${driven.page.calls[2]}`);
+  assert(rows[0].searchUrl === ORIGIN + CANONICAL, `unexpected searchUrl ${rows[0].searchUrl}`);
+  assertRows(COMMAND, rows);
+  assert(driven.page.navigations.length === 1 && driven.page.navigations[0] === ROBOTS,
+    `expected one robots.txt priming, got ${JSON.stringify(driven.page.navigations)}`);
+});
+
+// A search without a geo argument refines nothing, and that is exactly what the
+// request must say: the landed searchCore carried over unchanged, no geo key added.
+check('a search with no geo argument still asks the API, carrying the landed context', async () => {
+  const driven = search(routes());
+  await driven.rows;
+  const requested = new URL(driven.page.calls[2]);
+  assert(requested.searchParams.get('context') === 'opaque-context', `context not carried: ${driven.page.calls[2]}`);
+  assert(requested.searchParams.get('categoryId') === '101', `searchCore not carried: ${driven.page.calls[2]}`);
+  assert(requested.searchParams.get('locationId') === '637640', `the landed location must be carried: ${driven.page.calls[2]}`);
+  assert(!requested.searchParams.has('metro[0]') && !requested.searchParams.has('district[0]'),
+    `no geo may be invented: ${driven.page.calls[2]}`);
+  assert(!requested.searchParams.has('p'), `the initial search is page 1: ${driven.page.calls[2]}`);
+});
+
+check('an absorbed query is accepted and a foreign q is rejected', async () => {
+  const absorbed = search([
+    hop1(ABSORBED),
+    hop2({ state: catalogState({ query: '' }), path: '/moskva/telefony', responseUrl: ORIGIN + ABSORBED }),
+    apiRoute({ core: { query: '' }, url: ORIGIN + ABSORBED }),
+  ], { query: 'iphone' });
+  const rows = await absorbed.rows;
+  assert(rows.length === 1, 'absorbed query rejected');
+
+  const foreign = search([hop1('/moskva/telefony?q=android')], { query: 'iphone' });
+  const failure = await failureOf(() => foreign.rows);
+  assert(failure != null && /different query/.test(failure.message), `foreign q accepted: ${failure && failure.message}`);
+  assert(foreign.page.calls.length === 1, 'second hop ran despite a failed guard');
+});
+
+check('a homepage target never passes as a search result', async () => {
+  const driven = search([hop1('/')]);
+  const failure = await failureOf(() => driven.rows);
+  assert(failure != null && /did not canonicalize/.test(failure.message), `homepage accepted: ${failure && failure.message}`);
+  assert(driven.page.calls.length === 1, 'second hop ran for a homepage target');
+});
+
+check('HTTP 429 and access challenges stop on the first hop', async () => {
+  const rate = await failureOf(() => search([
+    { match: `${ORIGIN}/?q=`, status: 429, body: '<html><title>Доступ ограничен</title></html>' },
+  ]).rows);
+  assert(rate?.code === 'ACCESS', `429 not reported as access: ${rate && rate.code}`);
+
+  // A verification page is 200 HTML with no state script, which is exactly what a
+  // bootstrap that did not arrive looks like. Nothing reads the page text to tell
+  // them apart — they call for the same thing.
+  const challenge = await failureOf(() => search([{
+    match: `${ORIGIN}/?q=`,
+    body: '<html><head><title>Доступ ограничен: проблема с IP</title></head><body>проверим, что вы человек</body></html>',
+  }]).rows);
+  assert(challenge?.code === 'ACCESS', `challenge not reported as access: ${challenge && challenge.code}`);
+});
+
+check('an empty catalog with a zero count is a typed empty result', async () => {
+  const failure = await failureOf(() => search(routes(apiRoute({ items: [], count: 0 }))).rows);
+  assert(failure?.code === 'EMPTY_RESULT', `expected EMPTY_RESULT, got ${failure && failure.code}`);
+});
+
+// ── the geo refinements, on the request and on the answer ────────────────────
+
+// The city cannot be applied by editing the URL, so an explicit location travels as a
+// key of the API request and is confirmed against the searchCore that came back.
+check('a location refinement is carried on the request and confirmed on the answer', async () => {
+  const apiRow = item({ id: '8299623583', visiblePrice: 25000, basePrice: 25500 });
+  const driven = search(routes(apiRoute({
+    items: [apiRow],
+    core: { locationId: 654918, locationName: 'Казань' },
+    url: `${ORIGIN}${CANONICAL}&locationId=654918`,
+  })), { 'location-id': 654918 }, { directory: () => CAPABILITIES });
+  const rows = await driven.rows;
+  assert(rows[0].itemId === '8299623583', 'API rows not used');
+  assert(rows.length === 1 && driven.page.calls.filter((c) => c.startsWith(API)).length === 1, 'more than one API request');
+  const requested = new URL(driven.page.calls[2]);
+  assert(requested.searchParams.get('locationId') === '654918', `requested location not sent: ${driven.page.calls[2]}`);
+  assert(requested.searchParams.get('spaFlow') === 'true' && requested.searchParams.get('context') === 'opaque-context',
+    `unexpected API URL: ${driven.page.calls[2]}`);
+  assert(rows[0].searchUrl === `${ORIGIN}${CANONICAL}&locationId=654918`, 'server URL not returned');
+  assertRow(COMMAND, rows[0]);
+});
+
+// A location that came back as the landed one means Avito ignored the request, and
+// that answers 200 with a full plausible page.
+check('a location the API did not apply is drift, not rows', async () => {
+  const failure = await failureOf(() => search(
+    routes(apiRoute({ url: `${ORIGIN}${CANONICAL}` })), { 'location-id': 654918 },
+  ).rows);
+  assert(failure != null && /did not apply the requested location/.test(failure.message),
+    `an ignored location was accepted: ${failure && failure.message}`);
+});
+
+// The catalog filters of the landed route belong to `avito apply-filters`, so this command
+// must carry them untouched and stop if Avito changes one behind its back.
+check('a catalog filter changed by Avito during a location refinement is drift', async () => {
+  const failure = await failureOf(() => search(routes(apiRoute({
+    core: { locationId: 654918, locationName: 'Казань', sort: '104' },
+    url: `${ORIGIN}${CANONICAL}&locationId=654918`,
+  })), { 'location-id': 654918 }).rows);
+  assert(failure != null && /preserved search field sort/.test(failure.message),
+    `a changed sort must be drift: ${failure && failure.message}`);
+});
+
+// Geo travels as indexed keys, so a landed route that already carries one and a
+// caller who asks for another must not end up sending both under `metro[0]`.
+check('a requested geo selection replaces the one the route landed with', async () => {
+  const landed = catalogState({ core: { metroId: ['1', '2'] } });
+  const driven = search(
+    routes(apiRoute({ core: { metroId: ['9'], locationId: 650400, locationName: 'Казань' } }), hop2({ state: landed })),
+    { 'location-id': 650400, metro: '9' },
+    { directory: (url) => (url.includes('/search/locations') ? CAPABILITIES : { stations: [{ id: 9, name: 'Кремлёвская' }] }) },
+  );
+  await driven.rows;
+  const apiCall = driven.page.calls.find((call) => call.startsWith(API));
+  const sent = [...new URL(apiCall).searchParams.entries()].filter(([key]) => key.startsWith('metro['));
+  assert(sent.length === 1 && sent[0][0] === 'metro[0]' && sent[0][1] === '9',
+    `the carried selection must be replaced, not stacked: ${JSON.stringify(sent)}`);
+});
+
+// The city the caller names is a different place, and a metro ID of the old one
+// describes nothing in it — Avito accepts a foreign ID in silence (F-037).
+check('a requested city discards the geo of the route the query landed on', async () => {
+  const landed = catalogState({ core: { metroId: ['1'], geoCoords: [55.75, 37.61], searchRadius: 5 } });
+  const driven = search(routes(
+    apiRoute({ core: { locationId: 654918, locationName: 'Казань' }, url: `${ORIGIN}${CANONICAL}&locationId=654918` }),
+    hop2({ state: landed }),
+  ), { 'location-id': 654918 });
+  await driven.rows;
+  const sent = new URL(driven.page.calls[2]).searchParams;
+  assert(![...sent.keys()].some((key) => key.startsWith('metro[') || key.startsWith('district[')),
+    `the old geo IDs must not travel to a new city: ${driven.page.calls[2]}`);
+  assert(!sent.has('geoCoords') && !sent.has('radius'), `the old point must not travel either: ${driven.page.calls[2]}`);
+});
+
+// Geo the caller did not touch is part of the search, so losing it is drift and
+// not a wider result set.
+check('geo the caller did not touch must come back unchanged', async () => {
+  const landed = catalogState({ core: { metroId: ['1', '2'] } });
+  const kept = search(routes(apiRoute({ core: { metroId: ['1', '2'] } }), hop2({ state: landed })));
+  await kept.rows;
+  const sent = [...new URL(kept.page.calls[2]).searchParams.entries()].filter(([key]) => key.startsWith('metro['));
+  assert(sent.length === 2, `the landed selection must be carried: ${JSON.stringify(sent)}`);
+
+  const dropped = await failureOf(() => search(
+    routes(apiRoute({ core: { metroId: [] } }), hop2({ state: landed })),
+  ).rows);
+  assert(dropped != null && /preserved geo selection/.test(dropped.message),
+    `a dropped selection was accepted: ${dropped && dropped.message}`);
+
+  const moved = await failureOf(() => search(routes(
+    apiRoute({ core: { geoCoords: [55.75, 37.61], searchRadius: 5 } }), hop2({ state: catalogState() }),
+  )).rows);
+  assert(moved != null && /preserved search point/.test(moved.message),
+    `an invented point was accepted: ${moved && moved.message}`);
+});
+
+// ── the page, whole ──────────────────────────────────────────────────────────
+
+// Avito fixes the page at 50 rows and offers no page-size parameter, so a full page must
+// come back whole. Until 2026-08-14 a --limit default of 10 silently dropped 40 of them.
+check('every listing Avito put on the page is returned, never a local slice', async () => {
+  const items = Array.from({ length: 50 }, (unused, index) => item({ id: String(7881841669 + index) }));
+  const rows = await search(routes(apiRoute({ items }))).rows;
+  assert(rows.length === 50, `expected the whole page, got ${rows.length}`);
+  assert(rows.every((row) => row.descriptionPreview && row.location && row.imageCount === 2),
+    'the API page must be complete on every row, not only its first twenty');
 });
 
 // Avito offers no server-side reservation filter, so --remove-reserved is an explicit local
 // predicate over the page it returned: it drops the reserved rows, refuses to guess when the
 // flag is gone and never silently turns a filtered-out page into a successful empty answer.
 check('remove-reserved drops reserved rows without asking Avito to refine anything', async () => {
-  const rows = [
-    { ...ROW, apiItemId: '8329291056', apiReserved: true },
-    { ...ROW, apiItemId: '8288791269', apiReserved: false },
-    { ...ROW, apiItemId: '8220283533', apiReserved: true },
+  const items = [
+    item({ id: '8329291056', isReserved: true }),
+    item({ id: '8288791269', isReserved: false }),
+    item({ id: '8220283533', isReserved: true }),
   ];
-  const page = makePage(context(CANONICAL_PRESERVED, { resultRows: rows }));
-  const result = await COMMAND.run(page, { query: 'ddr5 32gb', 'remove-reserved': true });
-  assert(result.length === 1 && result[0].itemId === '8288791269', `unexpected rows: ${JSON.stringify(result.map((r) => r.itemId))}`);
-  assert(!('isReserved' in result[0]), 'the flag must stay out of the row contract');
-  const passed = page.calls.evaluateWithArgs[0].args;
-  assert(passed.refinement.locationRequested === false && passed.refinement.geoMode === null,
-    'remove-reserved must not look like a geo refinement');
-  assert(!('removeReserved' in passed.refinement), 'remove-reserved must not look like a server-applied key');
+  const driven = search(routes(apiRoute({ items })), { 'remove-reserved': true });
+  const rows = await driven.rows;
+  assert(rows.length === 1 && rows[0].itemId === '8288791269', `unexpected rows: ${JSON.stringify(rows.map((r) => r.itemId))}`);
+  assert(!('isReserved' in rows[0]) && !('reserved' in rows[0]), 'the flag must stay out of the row contract');
+  const requested = new URL(driven.page.calls[2]);
+  assert(![...requested.searchParams.keys()].some((key) => /reserv/i.test(key)),
+    `remove-reserved must never become a request key: ${driven.page.calls[2]}`);
 });
 
 check('a page whose listings are all reserved is a typed empty result', async () => {
-  const rows = [
-    { ...ROW, apiItemId: '8329291056', apiReserved: true },
-    { ...ROW, apiItemId: '8220283533', apiReserved: true },
+  const items = [
+    item({ id: '8329291056', isReserved: true }),
+    item({ id: '8220283533', isReserved: true }),
   ];
-  const page = makePage(context(CANONICAL_PRESERVED, { resultRows: rows }));
-  let failure = null;
-  try {
-    await COMMAND.run(page, { query: 'ddr5 32gb', 'remove-reserved': true });
-  } catch (error) { failure = error; }
-  assert(failure != null && failure.code === 'EMPTY_RESULT', `expected EMPTY_RESULT, got ${failure && failure.code}`);
-  assert(/\(2\) is reserved/.test(failure.message), `page size not reported: ${failure && failure.message}`);
+  const failure = await failureOf(() => search(routes(apiRoute({ items })), { 'remove-reserved': true }).rows);
+  assert(failure?.code === 'EMPTY_RESULT', `expected EMPTY_RESULT, got ${failure && failure.code}`);
+  assert(/\(2\) is reserved/.test(failure.message), `page size not reported: ${failure.message}`);
 });
 
 check('a missing reservation flag refuses the filter instead of keeping the row', async () => {
-  const rows = [
-    { ...ROW, apiItemId: '8288791269', apiReserved: false },
-    { ...ROW, apiItemId: '8234297329', apiReserved: null },
+  const items = [
+    item({ id: '8288791269', isReserved: false }),
+    item({ id: '8234297329', isReserved: null }),
   ];
-  const page = makePage(context(CANONICAL_PRESERVED, { resultRows: rows }));
-  let failure = null;
-  try {
-    await COMMAND.run(page, { query: 'ddr5 32gb', 'remove-reserved': true });
-  } catch (error) { failure = error; }
-  assert(failure != null && failure.code === 'COMMAND_EXEC', `drifted flag accepted: ${failure && failure.code}`);
-  assert(/reservation flag/.test(failure.message), `unexpected message: ${failure && failure.message}`);
+  const failure = await failureOf(() => search(routes(apiRoute({ items })), { 'remove-reserved': true }).rows);
+  assert(failure?.code === 'COMMAND_EXEC', `drifted flag accepted: ${failure && failure.code}`);
+  assert(/reservation flag/.test(failure.message), `unexpected message: ${failure.message}`);
 
-  const untouched = makePage(context(CANONICAL_PRESERVED, { resultRows: rows }));
-  const kept = await COMMAND.run(untouched, { query: 'ddr5 32gb' });
+  const kept = await search(routes(apiRoute({ items }))).rows;
   assert(kept.length === 2, 'without the flag the page must come back whole, drift or not');
 });
 
-export default await run('search flow (node side)');
+export default await run('search');

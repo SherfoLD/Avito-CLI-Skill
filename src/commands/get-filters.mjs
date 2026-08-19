@@ -12,20 +12,17 @@
  */
 
 import {
-  ArgumentError,
   CommandExecutionError,
   EmptyResultError,
-  TimeoutError,
 } from '../runtime/errors.mjs';
 import { defineCommand } from '../runtime/command.mjs';
 import { text, z } from '../runtime/schema.mjs';
-import { filterOptions, flattenFilters } from '../browser/prelude/filters.mjs';
-import { readFilterState } from '../browser/commands/get-filters.mjs';
+import { FILTER_STATE } from '../schemas/filters.mjs';
+import { filterOptions, flattenFilters } from '../site/filters.mjs';
+import { primeOrigin, readDocument } from '../site/carriers.mjs';
+import { requestedSearchUrl } from '../site/url.mjs';
 
-// Origin priming only: the body is never read. Rendering the catalog would pull its
-// scripts, images and telemetry for the sake of one JSON blob in the markup.
-const ORIGIN_BOOTSTRAP_URL = 'https://www.avito.ru/robots.txt';
-const AVITO_HOSTS = new Set(['avito.ru', 'www.avito.ru']);
+const COMMAND = 'avito get-filters';
 // What a caller may write as the value of a key. `valueSyntaxFor` returns one
 // of these or `null` for "not applicable", and the `valueSyntax` column accepts
 // exactly these.
@@ -77,7 +74,6 @@ const API_TYPE_TO_NORMALIZED = new Map([
 // from an unset one, and does not need to be — zero is where an unrestricted range starts.
 const EMPTY_RANGE_BOUNDS = new Set(['', '0']);
 const FILTER_KEY_PATTERN = /^(?:params\[\d+\]|[A-Za-z][A-Za-z0-9]{0,80})$/;
-const MAX_FILTERS = 400;
 // Implausibility guards, not a policy on size — trimming a vocabulary would be the silent
 // clamp this command exists to avoid. Truck parts name 12150 manufacturers in one
 // `multiselect`, all unique and well formed (F-067).
@@ -87,60 +83,30 @@ const MAX_LABEL_LENGTH = 300;
 const MAX_OPTION_VALUE_LENGTH = 300;
 const MAX_CURRENT_VALUE_LENGTH = 2000;
 
-function normalizeCatalogUrl(value) {
-  const raw = String(value ?? '').trim();
-  if (!raw) throw new ArgumentError('url must be a non-empty Avito catalog or search URL');
-
-  let parsed;
-  try {
-    parsed = new URL(raw);
-  } catch {
-    throw new ArgumentError('url must be a valid absolute URL');
-  }
-
-  if (
-    parsed.protocol !== 'https:'
-    || !AVITO_HOSTS.has(parsed.hostname)
-    || parsed.port
-    || parsed.username
-    || parsed.password
-  ) {
-    throw new ArgumentError('url must use https://www.avito.ru');
-  }
-
-  parsed.protocol = 'https:';
-  parsed.hostname = 'www.avito.ru';
-  parsed.hash = '';
-  return parsed.toString();
-}
-
-function asExecutionError(error, action) {
-  const message = error instanceof Error ? error.message : String(error);
-  if (/timed?\s*out|timeout|aborted/i.test(message)) {
-    throw new TimeoutError(action, 20);
-  }
-  throw new CommandExecutionError(`${action} failed: ${message}`);
-}
-
-function scalarOrNull(value, source) {
+// `String({})` is `[object Object]`, which is non-empty and passes every check
+// downstream, so a structure where a value belongs stops the call instead of
+// becoming a row (src/runtime/schema.mjs). It reaches here from a filter whose
+// type says list and whose currentValue is a range — the schema allows both,
+// because on a range filter that object is the answer.
+function scalarOrNull(value, subject = 'Avito filter schema') {
   if (value == null || value === '') return null;
-  if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
-    return String(value);
+  if (typeof value === 'object') {
+    throw new CommandExecutionError(`${subject} carries a non-scalar value`);
   }
-  throw new CommandExecutionError(`Avito ${source} carries a non-scalar value`);
+  return String(value);
 }
 
 // Avito answers `0` for a short-key switch nobody touched. That resting value is not a
 // selection and is not among the key's options, so it reads as nothing applied. `sort` has
 // no such value — its "по умолчанию" is an ordinary Avito option and stays visible (D-032).
 function selectionOrNull(value, restingValue = null) {
-  const scalar = scalarOrNull(value, 'searchCore');
+  const scalar = scalarOrNull(value);
   return scalar === null || scalar === restingValue ? null : scalar;
 }
 
 function rangeOrNull(from, to) {
-  const low = scalarOrNull(from, 'searchCore');
-  const high = scalarOrNull(to, 'searchCore');
+  const low = scalarOrNull(from);
+  const high = scalarOrNull(to);
   if (low === null && high === null) return null;
   return `${low ?? ''}..${high ?? ''}`;
 }
@@ -169,17 +135,15 @@ function cleanLabel(value) {
 }
 
 // Both carriers of a range arrive as `{from, to}`, written here the way `--set` takes it.
+// A range filter answering with a bare value instead is the one drift left for this
+// function: `RANGE_VALUE` proved the object, not that the filter sent one.
 function appliedRangeValue(rawValue, key) {
   if (rawValue == null) return null;
   if (typeof rawValue !== 'object' || Array.isArray(rawValue)) {
     throw new CommandExecutionError(`Avito filter ${key} has an implausible currentValue`);
   }
-  const unknownSides = Object.keys(rawValue).filter((side) => side !== 'from' && side !== 'to');
-  if (unknownSides.length > 0) {
-    throw new CommandExecutionError(`Avito filter ${key} has an implausible currentValue`);
-  }
   const bound = (value) => {
-    const scalar = scalarOrNull(value, `filter ${key}`);
+    const scalar = scalarOrNull(value, `Avito filter ${key}`);
     return scalar === null || EMPTY_RANGE_BOUNDS.has(scalar) ? null : scalar;
   };
   const from = bound(rawValue.from);
@@ -201,7 +165,7 @@ function appliedParamsValue(rawValue, key) {
     throw new CommandExecutionError(`Avito filter ${key} has an implausible currentValue`);
   }
   const applied = rawValues
-    .map((value) => scalarOrNull(value, `filter ${key}`))
+    .map((entry) => scalarOrNull(entry, `Avito filter ${key}`))
     .filter((value) => value !== null);
   if (applied.some((value) => value.length > MAX_OPTION_VALUE_LENGTH)) {
     throw new CommandExecutionError(`Avito filter ${key} has an implausible currentValue`);
@@ -217,8 +181,8 @@ function appliedParamsValue(rawValue, key) {
 // `filterOptions` resolves Avito's grouping and returns `null` when the flat and sectioned
 // forms are mixed. The ceilings stay here: "implausible" is this command's judgement.
 function optionsOf(rawFilter, key) {
-  const declaredValues = rawFilter.values == null ? [] : rawFilter.values;
-  if (!Array.isArray(declaredValues) || declaredValues.length > MAX_OPTIONS_PER_FILTER) {
+  const declaredValues = rawFilter.values ?? [];
+  if (declaredValues.length > MAX_OPTIONS_PER_FILTER) {
     throw new CommandExecutionError(`Avito filter ${key} has malformed or implausible values`);
   }
   const flattened = filterOptions(rawFilter);
@@ -232,9 +196,6 @@ function optionsOf(rawFilter, key) {
 }
 
 function normalizeOption(rawOption, key) {
-  if (!rawOption || typeof rawOption !== 'object' || Array.isArray(rawOption)) {
-    throw new CommandExecutionError(`Avito filter ${key} contains a malformed option`);
-  }
   const optionName = cleanLabel(rawOption.name ?? rawOption.title);
   const rawValue = rawOption.value ?? rawOption.id;
   const optionValue = rawValue == null ? '' : String(rawValue);
@@ -271,70 +232,29 @@ export default defineCommand({
     options: z.record(text().max(MAX_OPTION_VALUE_LENGTH), text().max(MAX_LABEL_LENGTH)),
   }),
   run: async (page, args) => {
-    const requestedUrl = normalizeCatalogUrl(args.searchUrl);
+    const requestedUrl = requestedSearchUrl(args.searchUrl);
 
-    try {
-      await page.goto(ORIGIN_BOOTSTRAP_URL, { waitUntil: 'load', settleMs: 0 });
-    } catch (error) {
-      asExecutionError(error, 'opening the Avito same-origin context');
+    await primeOrigin(page, COMMAND);
+    const { state } = await readDocument(page, {
+      requestUrl: requestedUrl,
+      stage: 'schema',
+      keep: ['url', 'searchCore', 'filtersV2'],
+      schema: FILTER_STATE,
+      subject: 'Avito SSR filter state',
+      command: COMMAND,
+    });
+
+    const sections = state.filtersV2?.Sections ?? [];
+    if (sections.length === 0) {
+      throw new EmptyResultError(COMMAND, 'This Avito page has no filtersV2 sections');
     }
 
-    let observed;
-    try {
-      observed = await page.evaluateWithArgs(readFilterState, { requestUrl: requestedUrl });
-    } catch (error) {
-      asExecutionError(error, 'fetching Avito SSR filter state');
-    }
+    // A nested filter belongs to the caller as much as a top-level one, and its
+    // parent may well be a constraint this command skips, so flattening happens
+    // before anything is judged.
+    const rawFilters = flattenFilters(sections);
 
-    if (!observed || typeof observed !== 'object') {
-      throw new CommandExecutionError('Avito SSR filter request returned an invalid result');
-    }
-    if (observed.success !== true) {
-      const message = String(observed.message || 'Avito SSR filter request failed');
-      if (observed.code === 'access') {
-        throw new CommandExecutionError(`Avito requires human verification (${message})`);
-      }
-      if (observed.code === 'http') {
-        throw new CommandExecutionError(`Avito SSR filter request returned HTTP ${observed.details?.status || 0}`);
-      }
-      if (observed.code === 'content_type') {
-        throw new CommandExecutionError(
-          `Avito SSR filter request returned ${observed.details?.contentType || 'an unknown content type'}`,
-        );
-      }
-      if (observed.code === 'parse') {
-        throw new CommandExecutionError('Avito SSR bootstrap JSON is malformed');
-      }
-      if (observed.code === 'missing') {
-        throw new EmptyResultError('avito get-filters', 'This Avito page has no SSR filter schema');
-      }
-      if (observed.code === 'transport' && /timed?\s*out|timeout|aborted/i.test(message)) {
-        throw new TimeoutError('Avito SSR filter request', 20);
-      }
-      throw new CommandExecutionError(`${observed.stage || 'Avito get-filters'} failed: ${message}`);
-    }
-
-    if (!observed.searchCore || typeof observed.searchCore !== 'object') {
-      throw new CommandExecutionError('Avito SSR filter state has no valid searchCore');
-    }
-
-    const sections = observed.filtersV2?.Sections;
-    if (!Array.isArray(sections) || sections.length === 0) {
-      throw new EmptyResultError('avito get-filters', 'This Avito page has no filtersV2 sections');
-    }
-
-    // The walk is the shared one: what a well-formed filter tree is does not differ between
-    // the command that reads it and the three that only refuse a malformed one. A nested
-    // filter belongs to the caller as much as a top-level one, and its parent may well be a
-    // constraint this command skips, so flattening happens before anything is judged.
-    let rawFilters;
-    try {
-      rawFilters = flattenFilters(sections, MAX_FILTERS);
-    } catch (error) {
-      throw new CommandExecutionError(`Avito filtersV2 is malformed: ${error.message}`);
-    }
-
-    const searchCore = observed.searchCore;
+    const searchCore = state.searchCore;
     const rows = [];
     const seenKeys = new Set();
     let totalOptionCount = 0;
@@ -401,7 +321,7 @@ export default defineCommand({
     }
 
     if (rows.length === 0) {
-      throw new EmptyResultError('avito get-filters', 'This Avito route has no filter this command can apply');
+      throw new EmptyResultError(COMMAND, 'This Avito route has no filter this command can apply');
     }
     return rows;
   },

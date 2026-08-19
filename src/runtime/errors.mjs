@@ -1,5 +1,5 @@
 /**
- * Four classes, four distinguishable exit codes, so a caller can tell "you
+ * Five classes, five distinguishable exit codes, so a caller can tell "you
  * passed bad arguments" from "Avito answered with a shape we refuse to guess
  * about" without parsing English.
  *
@@ -14,6 +14,7 @@ export const EXIT_CODES = {
   USAGE_ERROR: 2,      // bad arguments / command misuse
   EMPTY_RESULT: 66,    // the request succeeded and there is nothing to return
   TEMPFAIL: 75,        // timeout — the call may be repeated by a human, never by us
+  ACCESS: 77,          // Avito is not answering this session — a person has to look
 };
 
 export class CliError extends Error {
@@ -70,6 +71,22 @@ export class EmptyResultError extends CliError {
       exitCode: EXIT_CODES.EMPTY_RESULT,
     });
     this.command = command;
+  }
+}
+
+/**
+ * Avito answered, but not with data: a rate limit, a verification page, a
+ * document carrying no state at all. Its own exit code because it is the one
+ * refusal a caller must not retry and cannot fix — the browser has to be opened
+ * by the person who owns it.
+ */
+export class AccessError extends CliError {
+  constructor(message, hint, details) {
+    super('ACCESS', message, {
+      hint: hint ?? 'Open www.avito.ru in the same browser and check what it is asking for.',
+      exitCode: EXIT_CODES.ACCESS,
+      details,
+    });
   }
 }
 

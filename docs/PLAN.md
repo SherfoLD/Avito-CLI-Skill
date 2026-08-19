@@ -1,6 +1,6 @@
 # Plan
 
-Updated: 2026-08-18
+Updated: 2026-08-19
 
 The future only. What is already done is in [STATUS.md](STATUS.md) and in git.
 
@@ -221,6 +221,45 @@ Two things they exposed rather than solved:
       `descriptionPreview`; none yet asserts that the page is fifty rows, or that
       `location` and `sellerName` survive where Avito sends them — which is what
       would catch a silent return to the document catalog.
+
+## Phase 32 — The two walks over one sidebar
+
+`get-categories` and `move-category` read the same `rubricators.side.nodes`, and
+both are in Node now, decoding each node with the same `SIDEBAR_NODE` (D-069).
+The walk around it is still written twice: the depth bound, the node count, the
+role and the URL check.
+
+- [ ] Merge the two into one traversal in `src/site/rubricator.mjs` that yields
+      `{ node, depth, parent, route }`. The two commands differ in what they do
+      with a row, not in what a row is.
+- [ ] `get-categories` keeps a `normalizeResultUrl` of its own beside
+      `answeredUrl` in `src/site/url.mjs`. One of the two goes; check first which
+      of the two hostname rules the sidebar actually needs.
+
+## Phase 30 — The fallbacks the card decoder still answers from
+
+D-065 moved the decoder into Node against a schema, but deliberately changed no
+behaviour: every carrier a fallback chain reaches past is
+`z.unknown().optional()`, which is the map of what is left. Each entry below is
+one silent wrong answer, and each has to be argued separately — the fallback was
+written because Avito really does omit the step on some routes, and a refusal
+that fires on a live category is worse than the wrong meaning it replaced.
+
+- [ ] `iva.PriceStep` gone means the flat `priceDetailed`, which is the **base**
+      price and not the one the card prints (D-020, F-076). Find whether any live
+      route ships a card without the step before turning its absence into a stop.
+- [ ] The same question for `iva.DescriptionStep`, where the flat `description`
+      is empty in SSR and populated in the API.
+- [ ] `iva.GeoStep` is **not** one of these. Counted over a live 50-card page of
+      computer parts, 46 cards carry the step with an empty `geoReferences` and
+      the plain city is the answer Avito prints. The city is the primary carrier
+      for most cards, not a fallback, and requiring a reference would refuse a
+      page that is entirely correct.
+- [ ] `iva.<Step>` that is not an array is read as an empty one today. Nothing
+      justifies that: it is drift wearing the shape of an absent step.
+- [ ] `isReserved` that is not a boolean decodes to `null`, which
+      `--remove-reserved` then refuses (F-048). That is the right answer for an
+      absent key and the wrong one for a key carrying something else.
 
 ## Open questions
 

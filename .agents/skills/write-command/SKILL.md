@@ -107,7 +107,7 @@ Decode the fields — compare at least one against the visible page by eye
 Design the columns (references/output-design.md)
   │
   ▼
-Write src/commands/<name>.mjs + src/browser/commands/<name>.mjs
+Write src/commands/<name>.mjs — and a page half only if you need one
   │  (references/command-template.md, references/typed-errors.md)
   ▼
 Offline suite: npm test          ── red ──→ fix the command, never the assertion
@@ -167,13 +167,16 @@ npm run check                    ── green ──→ DONE
 [ ] 8. Write the command:
        [ ] copy the closest existing neighbour rather than starting blank
        [ ] descriptor first: description, args with help text, row schema, example
-       [ ] decode Avito's payload with a schema and `decode(...)` on the Node side
-       [ ] the browser-side script is a module, not a template string
-       [ ] the page half is one exported function in src/browser/commands/
+       [ ] declare Avito's response in src/schemas/ and read it with `decode(...)`
+       [ ] reach for src/browser/commands/carriers.mjs before writing a page
+           half: one document read and one JSON GET are already there
+       [ ] a page half of your own only for what needs a real DOM, and then it
+           is one exported function that fetches and decides nothing
        [ ] every known failure throws a typed error (references/typed-errors.md)
 [ ] 9. Offline suite:
-       [ ] add a suite that runs the real page half against a synthetic carrier
-       [ ] assert the navigation budget: how many requests, and which
+       [ ] add a suite that runs the real command against synthetic routes —
+           `browserPage(routes)` in tests/carrier.mjs drives both halves
+       [ ] assert the request budget: how many requests, which, and in what order
        [ ] assertRows(COMMAND, rows) — the contract, not just the key count
        [ ] npm test green
 [ ] 10. Live verify:
@@ -238,10 +241,13 @@ npm run check                    ── green ──→ DONE
 - The row is a `z.strictObject` in `row`, and `columns` is derived from it. There
   is no second list to keep in step, and an undeclared key is a failure rather
   than a value that quietly disappears from `-f table`.
-- A command is two files with the same name: the Node half in `src/commands/`
-  and the page half in `src/browser/commands/`. Shared page code goes in
-  `src/browser/prelude/`, which is inlined into every call.
-- Known failures throw one of the four typed errors. Never `return []` from a
+- A command is `src/commands/<name>.mjs`. Everything it decides lives there,
+  in `src/site/` and in `src/schemas/`. `src/browser/` is only what a browser
+  is needed for — a same-origin fetch and a real DOM — and most commands reach
+  the two shared entry points in `src/browser/commands/carriers.mjs` rather than
+  writing a page half at all. Shared page code goes in `src/browser/prelude/`,
+  which is inlined into every call under two rules `src/browser/README.md` states.
+- Known failures throw one of the five typed errors. Never `return []` from a
   catch, never a sentinel row, never `Math.min` on an argument the caller gave you.
 - Raw dumps live in `evidence/` (anonymised, committed) or `/tmp` (anything
   else). Never in `src/`, never in the repository root.

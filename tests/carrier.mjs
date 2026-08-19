@@ -176,14 +176,46 @@ export function makeFetch(routes) {
 }
 
 /**
- * Run a browser-side function with the globals it expects, injected as an
- * explicit `env`. That injection is what lets the same function run here at all:
- * reading `fetch` and `location` off `globalThis` would make this suite either
- * impossible or dependent on a real network.
+ * Run one page function with the globals it expects, for a command whose page
+ * half is still its own — `get-item`, `get-coords`.
  */
 export function evaluateRunner(browserFunction) {
   return async (args, fetchImpl, href = `${ORIGIN}/`) => browserFunction(
     args,
     { DOMParser, fetch: fetchImpl, location: { origin: ORIGIN, href } },
   );
+}
+
+/**
+ * A `page` a command can be run against offline: `evaluateWithArgs` calls the
+ * real page function with the globals it expects, injected as an explicit `env`.
+ * That injection is what lets the same function run here at all — reading
+ * `fetch` and `location` off `globalThis` would make these suites either
+ * impossible or dependent on a real network.
+ *
+ * So a suite drives the whole command, both halves of it, over one set of
+ * stubbed routes: `calls` is every URL the page asked for, in order.
+ *
+ * `directory` answers `page.fetchJson`, which is how the geo checks of
+ * `avito search` reach Avito's location endpoints. Without it a directory call
+ * throws, so a suite that did not expect one finds out.
+ */
+export function browserPage(routes, { href = `${ORIGIN}/`, directory = null } = {}) {
+  const { fetch, calls } = makeFetch(routes);
+  const env = { DOMParser, fetch, location: { origin: ORIGIN, href } };
+  const navigations = [];
+  return {
+    calls,
+    navigations,
+    goto: async (url) => { navigations.push(url); },
+    wait: async () => {},
+    evaluateWithArgs: async (browserFunction, args) => browserFunction(args, env),
+    fetchJson: async (url) => {
+      calls.push(url);
+      if (!directory) throw new Error(`unexpected directory call: ${url}`);
+      const answer = directory(url);
+      if (answer === undefined) throw new Error(`unexpected directory call: ${url}`);
+      return answer;
+    },
+  };
 }

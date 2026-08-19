@@ -20,11 +20,16 @@ in `iva.PriceStep`, a private seller's card has no `UserInfoStep` at all.
 against, so a shape you soften to make a test pass is a fact you have deleted.
 When Avito drifts, the carrier changes together with the domain file.
 
+`tests/carrier.mjs` also holds `browserPage(routes)`: a `page` object whose
+`evaluateWithArgs` runs the real page function against a stubbed `fetch`, so a
+suite drives the whole command — both halves — over one set of routes and can
+read back every URL that was asked for, in order.
+
 `tests/harness.mjs` loads a command with its runtime stubbed, provides the small
 check runner, and offers `assertRows` / `assertRow` — which parse what a command
 returned through the schema it declares. That is the same parse `bin/avito.mjs`
 runs before printing, so a suite cannot pass on a row a caller would never be
-given.
+given. `failureOf(call)` returns the error a call threw, or null.
 
 Keep the carrier complete enough to satisfy it. A synthetic row missing a field
 the real decoder always sets describes a row no decoder produces, and the suite
@@ -39,13 +44,19 @@ refuse **and** the nearby honest code it must stay silent about.
 
 ## What a suite should assert
 
-**The navigation budget.** How many requests the command makes and which ones.
-This is the assertion that keeps the transport model honest: one `robots.txt`
-priming, no rendered catalog page, one document fetch. It is also the one that
-would catch a "harmless" retry appearing.
+**The request budget.** How many requests the command makes, which ones, and in
+what order. This is the assertion that keeps the transport model honest: one
+`robots.txt` priming, no rendered catalog page, one document fetch. It is also
+the one that would catch a "harmless" retry appearing.
+
+**The request itself.** What was serialized onto the URL, read back from
+`page.calls`. A postcondition proves Avito answered about the right thing; only
+the request proves the right thing was asked.
 
 **The decoder against a synthetic carrier.** The real decoder, imported, not a
-copy of its logic. A suite that reimplements the decode tests itself.
+copy of its logic. A suite that reimplements the decode tests itself. It belongs
+in the decoder's own suite: `card.mjs` is read by four commands, and four suites
+asserting the same card is four places to edit when a card changes.
 
 **Every typed error path.** A `429`. A challenge. A missing bootstrap. A
 postcondition that does not hold. A page where every row is filtered out. These
@@ -72,9 +83,11 @@ only true if nothing went out.
 
 ## Growing the suite
 
-The count is tracked and is not allowed to shrink. Each session that adds
-behaviour adds checks; the movement belongs in the commit message, where "141 →
-149" is a normal line.
+The count is tracked and is a floor. Each session that adds behaviour adds
+checks; the movement belongs in the commit message, where "141 → 149" is a normal
+line. It goes down for one reason only — checks that were copies of one another,
+whose coverage survives in one place — and then the commit message names that
+place.
 
 That number is a floor, not a target. Padding it with restatements of the same
 assertion buys nothing; the useful additions are failure paths and legitimately

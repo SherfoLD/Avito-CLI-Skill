@@ -50,13 +50,16 @@ const SEARCH_CORE = {
   locationName: 'Москва',
 };
 
-const observedState = (overrides = {}) => ({
+const observedState = ({ sideNodes = SIDE_NODES, ...overrides } = {}) => ({
   success: true,
   responseUrl: REQUESTED,
-  url: REQUESTED,
-  searchCore: SEARCH_CORE,
-  sideNodes: SIDE_NODES,
-  ...overrides,
+  redirect: null,
+  state: {
+    url: REQUESTED,
+    searchCore: SEARCH_CORE,
+    rubricators: sideNodes === null ? {} : { side: { nodes: sideNodes } },
+    ...overrides,
+  },
 });
 
 const refusal = (code, message, details = {}) => ({
@@ -255,11 +258,10 @@ check('a malformed searchCore is refused before any node is read', async () => {
 
 check('a challenge, a bad status and an empty bootstrap fail closed', async () => {
   const cases = [
-    { observed: refusal('access', 'Доступ ограничен', { status: 429 }), code: 'COMMAND_EXEC', expect: /human verification/ },
+    { observed: refusal('access', 'Доступ ограничен', { status: 429 }), code: 'ACCESS', expect: /not answering this session/ },
     { observed: refusal('http', 'Avito SSR request failed', { status: 500 }), code: 'COMMAND_EXEC', expect: /HTTP 500/ },
     { observed: refusal('content_type', 'Avito SSR response is not HTML', { contentType: 'application/json' }), code: 'COMMAND_EXEC', expect: /application\/json/ },
-    { observed: refusal('missing', 'Avito SSR bootstrap carries no page state'), code: 'EMPTY_RESULT', expect: /no SSR search state/ },
-    { observed: refusal('parse', 'Avito SSR bootstrap carries no page state'), code: 'COMMAND_EXEC', expect: /malformed/ },
+    { observed: refusal('no_state', 'Avito answered a page with no state'), code: 'ACCESS', expect: /not answering this session/ },
   ];
   for (const testCase of cases) {
     await refuses(testCase.observed, testCase.expect, testCase.code);

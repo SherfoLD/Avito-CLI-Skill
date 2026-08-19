@@ -2,8 +2,8 @@
  * The listing row: the columns `search`, `get-page`, `apply-filters` and
  * `move-category` all hand over, and the two pieces of logic they share.
  *
- * `card.mjs` decodes the catalog into `api*` rows inside the page; this is the
- * Node half of the same boundary, mapping those onto the declared columns.
+ * `card.mjs` decodes one catalog into these columns plus `reserved`, which is a
+ * predicate the command applies rather than a value the caller gets.
  */
 
 import { CommandExecutionError, EmptyResultError } from '../runtime/errors.mjs';
@@ -51,27 +51,13 @@ export const LISTING_ROW = z.strictObject({
   searchUrl: searchUrl(),
 });
 
-/**
- * Map the decoder's `api*` rows onto the declared columns. `apiReserved` is not
- * among them: it is a predicate the command applies, not a value the caller gets.
- */
-export function listingRows(apiRows, resultSearchUrl) {
-  return apiRows.map((row) => ({
-    itemId: row.apiItemId,
-    title: row.apiTitle,
-    price: row.apiPrice,
-    minPrice: row.apiMinPrice,
-    hasPriceList: row.apiHasPriceList,
-    location: row.apiLocation,
-    descriptionPreview: row.apiDescriptionPreview,
-    published: row.apiPublished,
-    sellerName: row.apiSeller.name,
-    sellerRating: row.apiSeller.rating,
-    sellerReviewsCount: row.apiSeller.reviewsCount,
-    imageCount: row.apiImageCount,
-    url: row.apiUrl,
-    searchUrl: resultSearchUrl,
-  }));
+/** Drop `reserved` and stamp on the URL every row carries. */
+export function listingRows(rows, resultSearchUrl) {
+  return rows.map((row) => {
+    const columns = { ...row, searchUrl: resultSearchUrl };
+    delete columns.reserved;
+    return columns;
+  });
 }
 
 /**
@@ -81,13 +67,13 @@ export function listingRows(apiRows, resultSearchUrl) {
  */
 export function applyReservedFilter(rows, removeReserved, command) {
   if (!removeReserved) return rows;
-  if (rows.some((row) => typeof row.apiReserved !== 'boolean')) {
+  if (rows.some((row) => typeof row.reserved !== 'boolean')) {
     throw new CommandExecutionError(
       'Avito stopped reporting the reservation flag for part of the page; '
       + 'remove-reserved is refused rather than applied to a guess',
     );
   }
-  const available = rows.filter((row) => row.apiReserved === false);
+  const available = rows.filter((row) => row.reserved === false);
   if (available.length === 0) {
     throw new EmptyResultError(
       command,
