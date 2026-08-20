@@ -11,6 +11,12 @@
  *   fetchJson(url)              one same-origin JSON read from the page
  *   wait(seconds)               the single bounded backoff `search` is allowed
  *
+ * Every one of those that reaches Avito goes out at the pace the machine keeps
+ * (`pace.mjs`), which is one clock shared by every command rather than a gap a
+ * command holds for itself (D-082). The exception is a page function that only
+ * reads the DOM of a document already fetched: it says so with
+ * `{ requests: false }` and costs no gap.
+ *
  * There is no `click` and no `waitForSelector`. The catalog is never rendered:
  * after hydration the live DOM carries neither `script[data-mfe-state]` nor
  * `searchCore`, so the state has to be read by a separate same-origin fetch
@@ -27,6 +33,7 @@ import { COMMAND_TAB, COMMAND_TIMEOUT_SECONDS, connectToBrowser } from './cdp-co
 import { browserPreludeSource } from './browser-prelude.mjs';
 import { callBroker, ensureBroker } from './broker-client.mjs';
 import { resolveBrowserOptions } from './browser-config.mjs';
+import { pacedRequest } from './pace.mjs';
 
 const NAVIGATION_TIMEOUT_SECONDS = 30;
 
@@ -45,22 +52,27 @@ class PageContext {
    * (F-093), so every current call passes zero.
    */
   async goto(url, { waitUntil = 'load', settleMs = 0 } = {}) {
-    return this.backend.goto(url, { waitUntil, settleMs });
+    return pacedRequest(() => this.backend.goto(url, { waitUntil, settleMs }));
   }
 
   /**
    * `fn` crosses the wire through `toString()`, so it must be self-contained:
    * anything it calls has to come from the prelude (`browser-prelude.mjs`), and
    * the browser globals arrive as its second parameter.
+   *
+   * `requests` is true unless the caller says otherwise, because forgetting it
+   * on a function that fetches would cost a rate rather than a wait: a page
+   * function that only reads the DOM of a document already fetched passes
+   * `{ requests: false }`.
    */
-  async evaluateWithArgs(fn, args) {
+  async evaluateWithArgs(fn, args, { requests = true } = {}) {
     const prelude = await browserPreludeSource();
     const expression = `(async () => {
 ${prelude}
 const __command = ${String(fn)};
 return await __command(${JSON.stringify(args ?? {})}, ${BROWSER_ENV_SOURCE});
 })()`;
-    return this.evaluate(expression);
+    return requests ? pacedRequest(() => this.evaluate(expression)) : this.evaluate(expression);
   }
 
   async evaluate(expression) {
@@ -79,9 +91,10 @@ return await __command(${JSON.stringify(args ?? {})}, ${BROWSER_ENV_SOURCE});
   }
 
   /**
-   * One same-origin JSON read. A non-200 is thrown rather than returned: the
-   * directory calls that use this have no meaningful partial answer, and a
-   * challenge must stop the command instead of becoming an empty vocabulary.
+   * One same-origin JSON read, paced by `evaluateWithArgs` like any other
+   * request. A non-200 is thrown rather than returned: the directory calls that
+   * use this have no meaningful partial answer, and a challenge must stop the
+   * command instead of becoming an empty vocabulary.
    */
   async fetchJson(url) {
     return this.evaluateWithArgs(async (input, env) => {

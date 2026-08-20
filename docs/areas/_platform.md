@@ -21,6 +21,12 @@ is closed, and nothing here works around that.
 - No command repeats a request. `429`, a CAPTCHA, an HTTP refusal, schema drift
   and a failed postcondition all mean stop. The single exception is one bounded
   bootstrap-recovery retry in `search`, with a 2 s backoff.
+- Requests go out one gap apart, and the gap is one clock the machine shares
+  rather than a pause a command holds for itself: `~/.avito-cdp/pace.json`, read
+  and written by every process (D-082). It holds inside a command, between two
+  commands and between two commands running at once. Each request draws its own
+  gap between 1000 ms and 2500 ms, and nothing outside `src/runtime/pace.mjs`
+  sets those two numbers.
 - Seven undocumented endpoints at runtime: `/web/1/js/items` (`search`,
   `apply-filters`), `/web/1/slocations`, `/web/1/search/locations`,
   `/web/2/locations/{metro,districts}` (`get-location`, `search`),
@@ -162,10 +168,45 @@ by hand, and held in step with the schema by `npm run check:commands` (D-053).
   `searchUrl`), refinement only in `apply-filters`, and no distinction between
   `params[...]` and short keys for the caller. The price was accepted up front:
   the minimal scenario got one call to `/web/1/js/items` longer.
-- **D-035 — no fixed gaps between requests.** Four provisional two-second pauses
-  were deleted unmeasured on the owner's instruction: the value was chosen by the
-  owner rather than by Avito, and no measurement had been made in two days. Only
-  the backoff before the single bootstrap-recovery retry in `search` remains.
+- **D-082 — one pace, kept in a file, for every request the machine makes.**
+  A command is a process that lives for one call, so a gap held in memory covers
+  only the requests one command happens to make twice; an agent running
+  `get-item` twice in a row was hitting Avito as fast as the shell could start
+  Node. The clock is therefore `pace.json` beside the browser choice: a request
+  reserves the next slot before it goes out and stamps the clock when it comes
+  back, so the gap is measured from the end of the previous request — or from
+  its start while it is still running, which is what keeps two concurrent
+  commands one gap apart rather than together. `src/runtime/pace.mjs` is the
+  whole of it, and every navigation and page fetch goes through it; a page
+  function that only reads a document already on screen says so with
+  `{ requests: false }` and costs nothing. The photo CDN is outside it: those
+  requests are anonymous, go to `img.avito.st` rather than to the data surface,
+  and a gallery of twenty at one gap each would cost half a minute (D-059).
+  The gap is drawn anew for each request between 1000 ms and 2500 ms: a fixed
+  interval is a signature nobody asked this CLI to leave, and the range costs
+  nothing over one that does not vary. Both ends were chosen by the owner rather
+  than by Avito — no safe rate has been measured — and they are constants, not a
+  setting: an environment variable that turns pacing down is a rate the caller
+  chose without knowing more than the file does, and the caller with the most
+  reason to reach for it is the one running a chain in a hurry. The claim is
+  about the CLI's own surface and no wider — the clock sits in the state
+  directory with the rest of it, so `AVITO_BROKER_DIR` moves it, and a caller
+  who deletes `pace.json` between commands is a caller with an empty clock. No
+  file defends itself against whoever owns it.
+  Every way this can fail, it fails towards slower. A clock nobody can read buys
+  a whole gap rather than none. A state directory that will not take a clock
+  buys the longest gap there is instead of throwing an errno out of a command
+  (the pacer must not become a new reason `AVITO_BROKER=off` needs a writable
+  home). A reservation further out than twenty gaps is a clock that stepped
+  backwards or a file that got garbled, not a queue, and is capped on read —
+  taken at face value, `1e18` overflows the 32-bit delay `setTimeout` accepts,
+  Node clamps it to 1 ms, and the overflowed value is written back, which is
+  pacing switched off permanently and in silence. A lock is stale five seconds
+  from now in either direction, because an mtime in the future is what a
+  backward clock step leaves behind and ageing out of it never happens: a
+  command that hangs forever holding no lock is the worst failure this file has.
+  And stamping the clock never throws: it runs in a `finally`, where an errno
+  would replace the 429 or the challenge that is the whole diagnosis.
 - **D-038 — `sellerId` removed from all five commands.** The field was pure
   output: no command grouped by it, built a URL from it, or checked a
   postcondition with it, and the review feed travels by a third identifier
@@ -965,10 +1006,12 @@ by hand, and held in step with the schema by `npm run check:commands` (D-053).
   on the items API recurred across sessions and can recur at any moment. The
   rule: stop without touching the challenge, do not repeat the request, do not
   weaken validation.
-- A safe request rate has never been measured, and the cover a fixed gap provided
-  is gone (D-035). The first candidate measurement turned out to be a refusal on
-  the page past the last one rather than a rate limit (F-061): only a `429` that
-  does not reproduce in silence counts as a number here.
+- A safe request rate has never been measured. Requests are one gap apart and
+  the gap is shared by every command (D-082), but 1000–2500 ms is a range chosen
+  by the owner, not a measurement: it is cover, not a number. The first candidate
+  measurement turned out to be a refusal on the page past the last one rather
+  than a rate limit (F-061): only a `429` that does not reproduce in silence
+  counts as a number here.
 - Drift in the shared listing decoder breaks four commands at once. The price and
   the description now refuse where their carrier goes missing (D-070); the
   location has two live carriers and would still answer from the other one.

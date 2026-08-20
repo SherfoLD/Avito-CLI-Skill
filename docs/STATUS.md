@@ -7,8 +7,8 @@ How each command is built is in its domain file, [docs/areas/](areas/).
 
 ## Commands
 
-Ten commands, all read-only. `npm run check` is green; the offline suite is 234
-checks across seventeen suites. Nine expectations last passed live against Avito on
+Ten commands, all read-only. `npm run check` is green; the offline suite is 246
+checks across eighteen suites. Nine expectations last passed live against Avito on
 2026-08-19 and `get-filters` on 2026-08-20; the four listing ones have grown a
 rule since (D-077) that has not been run live yet. Persistent search routing was
 verified live on 2026-08-20: two searches held two tabs, both URLs reacquired
@@ -66,6 +66,12 @@ and unrelated commands remain ephemeral (D-079). The only interruption left is
 the one approval prompt per connection (F-071, F-073). Live, `get-location`
 opened and released its ephemeral page without changing the two saved search
 tabs (F-098).
+
+Requests leave one gap apart, and that gap is a file rather than a variable:
+every process reads and writes `pace.json` in the same directory, so a chain of
+ten commands is paced like one command making ten requests (D-082). Each request
+draws its own gap between 1000 ms and 2500 ms, there is nothing outside
+`src/runtime/pace.mjs` that sets it, and `avito session status` prints it.
 
 | Command | Domain | Strict live verify |
 |---|---|---|
@@ -201,9 +207,11 @@ Cross-cutting. Risks specific to one command are in its domain file.
   browser-side IP blocks recurred across sessions and can recur at any moment.
   Nothing here works around the protection: it stops without touching the
   challenge.
-- A safe request rate has never been measured, and the fixed gaps between
-  requests were removed (D-035). The first candidate measurement turned out to
-  be a refusal on the page past the last one, not a rate limit (F-061).
+- A safe request rate has never been measured. Requests are paced 1000–2500 ms
+  apart by one clock every command shares — `~/.avito-cdp/pace.json`, so the gap
+  holds between two `avito` runs and not only inside one (D-082) — but that
+  range was chosen by the owner, not by Avito. The first candidate measurement turned out
+  to be a refusal on the page past the last one, not a rate limit (F-061).
 - **`price` still does not say what it counts.** A floor travels as `minPrice`
   and a table as `hasPriceList` (D-056), but a rate does not: «150 ₽ за м²» is
   `price: 150`, the unit sits in the payload and in no field (F-077). Nothing

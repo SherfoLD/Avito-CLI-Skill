@@ -16,6 +16,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { ArgumentError, CliError, EXIT_CODES, exitCodeFor } from '../src/runtime/errors.mjs';
 import { parseOutput } from '../src/runtime/schema.mjs';
 import { brokerEnabled, openBrowserContext } from '../src/runtime/cdp.mjs';
+import { describeRequestPace } from '../src/runtime/pace.mjs';
 import { liveBroker, stopBroker } from '../src/runtime/broker-client.mjs';
 import { requestedSearchUrl } from '../src/site/url.mjs';
 import {
@@ -65,6 +66,10 @@ function usage(commands) {
   lines.push('The connection is held by a session broker, so the browser is approached once');
   lines.push('rather than once per command: `avito session status`, `avito session stop`.');
   lines.push('AVITO_BROKER=off connects directly on every command instead.');
+  lines.push('');
+  lines.push('Requests are paced by one clock the whole machine shares, so the gap holds');
+  lines.push('inside a command and between two commands. The pace is not a setting;');
+  lines.push('`avito session status` prints the one in force.');
   return lines.join('\n');
 }
 
@@ -257,6 +262,9 @@ async function runSessionSubcommand(subcommand) {
     return EXIT_CODES.SUCCESS;
   }
   if (subcommand === undefined || subcommand === 'status') {
+    // A running broker names the endpoint it is already connected to, so the
+    // browser target is only worth probing when nothing holds a connection.
+    let connected = false;
     if (!brokerEnabled()) {
       console.log('session broker: off (AVITO_BROKER=off) — every command connects on its own');
     } else {
@@ -264,11 +272,13 @@ async function runSessionSubcommand(subcommand) {
       if (state) {
         console.log(`session broker: running (pid ${state.pid}, port ${state.port})`);
         console.log(`connected to: ${state.endpoint}`);
-        return EXIT_CODES.SUCCESS;
+        connected = true;
+      } else {
+        console.log('session broker: not running — the next command will start one');
       }
-      console.log('session broker: not running — the next command will start one');
     }
-    await reportBrowserTarget();
+    if (!connected) await reportBrowserTarget();
+    console.log(describeRequestPace());
     return EXIT_CODES.SUCCESS;
   }
   console.error(`unknown session subcommand "${subcommand}" — expected status or stop`);

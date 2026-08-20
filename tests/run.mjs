@@ -15,6 +15,7 @@ const suites = [
   './lint-rules.test.mjs',
   './browser-config.test.mjs',
   './page-registry.test.mjs',
+  './pace.test.mjs',
   './expectations.test.mjs',
   './prelude.test.mjs',
   './card.test.mjs',

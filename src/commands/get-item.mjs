@@ -238,7 +238,9 @@ export default defineCommand({
 
     let fallbackObserved;
     try {
-      fallbackObserved = await page.evaluateWithArgs(readItemPage, {});
+      // The document is already on screen, fetched by the navigation above, so
+      // this read costs no request and waits for no gap.
+      fallbackObserved = await page.evaluateWithArgs(readItemPage, {}, { requests: false });
     } catch (error) {
       asExecutionError(error, 'reading Avito item fallback');
     }
