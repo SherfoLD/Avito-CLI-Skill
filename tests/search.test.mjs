@@ -448,4 +448,66 @@ check('a missing reservation flag refuses the filter instead of keeping the list
   assert(kept.items.length === 2, 'without the flag the page must come back whole, drift or not');
 });
 
+// `itemsCount` and `medianPrice` are facts about the answer rather than about the search:
+// both are taken from the cards this call returns, after --remove-reserved shortened the
+// page, and never from the size or the prices of the result set Avito reports (D-077).
+check('the answer counts the listings it carries and takes the median of their prices', async () => {
+  const priced = (index, visiblePrice, overrides = {}) => item({
+    id: String(7881841669 + index), visiblePrice, ...overrides,
+  });
+
+  const odd = await search(routes(apiRoute({ items: [priced(0, 300), priced(1, 100), priced(2, 200)] }))).answer;
+  assertOutput(COMMAND, odd);
+  assert(odd.itemsCount === 3, `itemsCount must count the answer: ${odd.itemsCount}`);
+  assert(odd.medianPrice === 200, `median of three prices: ${odd.medianPrice}`);
+
+  const even = await search(routes(apiRoute({
+    items: [priced(0, 300), priced(1, 100), priced(2, 200), priced(3, 500)],
+  }))).answer;
+  assert(even.medianPrice === 250, `median of four prices sits between the middle two: ${even.medianPrice}`);
+});
+
+// A card priced «от …» or by a table carries no single price (D-056), so it is left out of
+// the median rather than counted at its floor, and a page of nothing but those has none.
+check('the median reads price and never a floor or a price table', async () => {
+  const priced = (index, visiblePrice, overrides = {}) => item({
+    id: String(7881841669 + index), visiblePrice, ...overrides,
+  });
+
+  const mixed = await search(routes(apiRoute({
+    items: [priced(0, 100), priced(1, 900, { priceForm: 'floor' }), priced(2, 300)],
+  }))).answer;
+  assert(mixed.itemsCount === 3, `every listing stays in the answer: ${mixed.itemsCount}`);
+  assert(mixed.medianPrice === 200, `the floor must not be counted as a price: ${mixed.medianPrice}`);
+
+  // «Бесплатно» is a price of nought rather than a missing one (F-076), so it counts;
+  // «Цена договорная» carries no number at all, and a page of nothing but those has no median.
+  const free = await search(routes(apiRoute({
+    items: [priced(0, 0, { priceForm: 'free' }), priced(1, 100), priced(2, 300)],
+  }))).answer;
+  assert(free.medianPrice === 100, `a free listing is a price of nought: ${free.medianPrice}`);
+
+  const unpriced = await search(routes(apiRoute({
+    items: [priced(0, 0, { priceForm: 'negotiable' }), priced(1, 0, { priceForm: 'negotiable' })],
+  }))).answer;
+  assertOutput(COMMAND, unpriced);
+  assert(unpriced.medianPrice === null, `a page with no price has no median: ${unpriced.medianPrice}`);
+  assert(unpriced.itemsCount === 2, `the listings themselves are still counted: ${unpriced.itemsCount}`);
+});
+
+check('both are taken after remove-reserved shortened the page', async () => {
+  const items = [
+    item({ id: '8329291056', visiblePrice: 100, isReserved: true }),
+    item({ id: '8288791269', visiblePrice: 900, isReserved: false }),
+    item({ id: '8220283533', visiblePrice: 200, isReserved: true }),
+  ];
+  const whole = await search(routes(apiRoute({ items }))).answer;
+  assert(whole.itemsCount === 3 && whole.medianPrice === 200,
+    `the whole page: ${whole.itemsCount} listings, median ${whole.medianPrice}`);
+
+  const filtered = await search(routes(apiRoute({ items })), { 'remove-reserved': true }).answer;
+  assert(filtered.itemsCount === 1 && filtered.medianPrice === 900,
+    `the shortened page: ${filtered.itemsCount} listings, median ${filtered.medianPrice}`);
+});
+
 export default await run('search');

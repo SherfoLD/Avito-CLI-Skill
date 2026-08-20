@@ -18,7 +18,13 @@ import { ArgumentError, CommandExecutionError, EmptyResultError } from '../runti
 import { defineCommand } from '../runtime/command.mjs';
 import { CATALOG_DOCUMENT, SIDEBAR_DOCUMENT } from '../schemas/document.mjs';
 import { MAX_NAME_LENGTH } from '../schemas/rubricator.mjs';
-import { LISTING_ITEM, LISTING_ITEM_TYPE, applyReservedFilter, listingItems } from '../site/listing.mjs';
+import {
+  LISTING_ITEM,
+  LISTING_ITEM_TYPE,
+  LISTING_SUMMARY,
+  LISTING_SUMMARY_TYPE,
+  listingAnswer,
+} from '../site/listing.mjs';
 import { catalogItems } from '../site/card.mjs';
 import {
   CATALOG_KEYS,
@@ -134,6 +140,7 @@ const OUTPUT = z.strictObject({
   locationId: idString(),
   locationName: text(),
   searchUrl: searchUrlField(),
+  ...LISTING_SUMMARY,
   items: z.array(LISTING_ITEM),
 });
 
@@ -143,6 +150,7 @@ const OUTPUT_TYPE = `type Output = {
   locationId: string;     // digits only — the move never changes the region
   locationName: string;
   searchUrl: string;      // the new URL; the previous category's filter keys no longer apply to it
+${LISTING_SUMMARY_TYPE}
   items: Item[];          // page 1 of the new category
 };
 
@@ -281,7 +289,7 @@ export default defineCommand({
       locationId: String(locationId),
       locationName: searchLocation,
       searchUrl: resultUrl.href,
-      items: listingItems(applyReservedFilter(decoded, removeReserved, COMMAND)),
+      ...listingAnswer(decoded, removeReserved, COMMAND),
     };
   },
 });

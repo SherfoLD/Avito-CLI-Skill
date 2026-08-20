@@ -557,6 +557,27 @@ by hand, and held in step with the schema by `npm run check:commands` (D-053).
   count, it was that an answer stays readable and that a field has to justify
   itself (D-054).
 
+- **D-077 — the two numbers on a listing envelope describe the answer, not the
+  search.** The four listing commands carry `itemsCount` and `medianPrice`
+  beside `items`, and both are computed from the cards that call returned, after
+  `--remove-reserved` has shortened the page. Neither is Avito's: the result-set
+  size the items API reports (`count`/`totalCount`) stays where it was, read only
+  to tell an empty answer from a broken one, because a total with this page's
+  reserved cards subtracted is a number that is true of nothing.
+
+  `medianPrice` reads `price` and only `price`. A card priced from a floor or by
+  a table has no single price (D-056), so it is left out rather than counted at
+  its `minPrice` — putting a floor in the middle of a page produces a plausible
+  number no listing costs. A page where no card carries a price has no median and
+  says so with `null`; an even count takes the mean of the two middle prices.
+  «Бесплатно» is nought and counts, «Цена договорная» is nothing and does not
+  (F-076). What the numbers *mean* is still Avito's problem: on a route that
+  prices by the square metre the median is a median of rates (F-077).
+
+  Both live in `listingAnswer` in `src/site/listing.mjs`, next to the reservation
+  filter, so the count cannot drift from the list it counts in one command out of
+  four.
+
 ## Facts
 
 - **F-006 — anonymous fetch is closed.** A direct GET of a search page with no

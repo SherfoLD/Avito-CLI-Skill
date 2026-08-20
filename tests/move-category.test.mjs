@@ -312,4 +312,22 @@ check('remove-reserved works the same as in the other listing commands', async (
   assert(whole.items.length === 2, 'without the flag the page must come back whole');
 });
 
+// The envelope of the new category describes the page it came back with, prices included,
+// and the reservation filter shortens both the list and what is counted from it (D-077).
+check('the envelope counts the new page and takes the median of its prices', async () => {
+  const items = [
+    item({ id: '8329291056', visiblePrice: 100, isReserved: true }),
+    item({ id: '8288791269', visiblePrice: 900 }),
+    item({ id: '8220283533', visiblePrice: 200 }),
+  ];
+  const withPrices = () => routes(sourceRoute(), targetRoute(), targetApi({ items }));
+  const whole = await move(withPrices()).answer;
+  assert(whole.itemsCount === 3 && whole.medianPrice === 200,
+    `the whole page: ${whole.itemsCount} listings, median ${whole.medianPrice}`);
+
+  const filtered = await move(withPrices(), { 'remove-reserved': true }).answer;
+  assert(filtered.itemsCount === 2 && filtered.medianPrice === 550,
+    `the shortened page: ${filtered.itemsCount} listings, median ${filtered.medianPrice}`);
+});
+
 export default await run('move-category');

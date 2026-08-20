@@ -19,7 +19,13 @@
 import { ArgumentError, CommandExecutionError, EmptyResultError } from '../runtime/errors.mjs';
 import { defineCommand } from '../runtime/command.mjs';
 import { CATALOG_DOCUMENT } from '../schemas/document.mjs';
-import { LISTING_ITEM, LISTING_ITEM_TYPE, applyReservedFilter, listingItems } from '../site/listing.mjs';
+import {
+  LISTING_ITEM,
+  LISTING_ITEM_TYPE,
+  LISTING_SUMMARY,
+  LISTING_SUMMARY_TYPE,
+  listingAnswer,
+} from '../site/listing.mjs';
 import { catalogItems } from '../site/card.mjs';
 import {
   CATALOG_KEYS,
@@ -78,6 +84,7 @@ const OUTPUT = z.strictObject({
   locationName: text(),
   page: z.number().int().positive(),
   searchUrl: searchUrlField(),
+  ...LISTING_SUMMARY,
   items: z.array(LISTING_ITEM),
 });
 
@@ -87,6 +94,7 @@ const OUTPUT_TYPE = `type Output = {
   locationName: string;
   page: number;           // the page Avito served, proved against its own state before decoding
   searchUrl: string;      // canonical URL of this page
+${LISTING_SUMMARY_TYPE}
   items: Item[];
 };
 
@@ -203,7 +211,7 @@ export default defineCommand({
       locationName: searchLocation,
       page: requestedPage,
       searchUrl: resultUrl.href,
-      items: listingItems(applyReservedFilter(decoded, removeReserved, COMMAND)),
+      ...listingAnswer(decoded, removeReserved, COMMAND),
     };
   },
 });

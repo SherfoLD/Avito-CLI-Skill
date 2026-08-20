@@ -23,7 +23,13 @@
 import { ArgumentError, CommandExecutionError, EmptyResultError } from '../runtime/errors.mjs';
 import { defineCommand } from '../runtime/command.mjs';
 import { CATALOG_DOCUMENT } from '../schemas/document.mjs';
-import { LISTING_ITEM, LISTING_ITEM_TYPE, applyReservedFilter, listingItems } from '../site/listing.mjs';
+import {
+  LISTING_ITEM,
+  LISTING_ITEM_TYPE,
+  LISTING_SUMMARY,
+  LISTING_SUMMARY_TYPE,
+  listingAnswer,
+} from '../site/listing.mjs';
 import { catalogItems } from '../site/card.mjs';
 import {
   CATALOG_KEYS,
@@ -517,6 +523,7 @@ const OUTPUT = z.strictObject({
   locationId: idString(),
   locationName: text(),
   searchUrl: searchUrlField(),
+  ...LISTING_SUMMARY,
   items: z.array(LISTING_ITEM),
 });
 
@@ -525,6 +532,7 @@ const OUTPUT_TYPE = `type Output = {
   locationId: string;     // digits only — filters never move the search, this is the same region
   locationName: string;
   searchUrl: string;      // the narrowed URL; page it with get-page, re-read it with get-filters
+${LISTING_SUMMARY_TYPE}
   items: Item[];          // page 1 of the narrowed search
 };
 
@@ -638,7 +646,7 @@ export default defineCommand({
       locationId: String(searchLocationId),
       locationName: searchLocation,
       searchUrl: resultSearchUrl,
-      items: listingItems(applyReservedFilter(decoded, removeReserved, COMMAND)),
+      ...listingAnswer(decoded, removeReserved, COMMAND),
     };
   },
 });

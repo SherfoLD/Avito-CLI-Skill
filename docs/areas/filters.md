@@ -26,7 +26,9 @@ control). The syntax is the same for both, so the caller never needs to know the
 type (D-041).
 
 `apply-filters <searchUrl> --set <selections>` accepts page 1 and up to 50
-filters of 50 values per call. Grammar: `;` between filters, `,` between values
+filters of 50 values per call, and answers `{ query, locationId, locationName,
+searchUrl, itemsCount, medianPrice, items }` — the two numbers describing the
+narrowed page rather than the result set behind it (D-077). Grammar: `;` between filters, `,` between values
 of one filter, `..` for a range with optional ends, `key=` with no value clears
 it. Plus `--remove-reserved`. Budget: 3 requests regardless of how many filters.
 

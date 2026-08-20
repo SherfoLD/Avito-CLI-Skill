@@ -67,6 +67,57 @@ export const LISTING_ITEM_TYPE = `type Item = {
   url: string;                       // listing URL, no query
 };`;
 
+/**
+ * What the four say about the answer as a whole, declared once. `medianPrice` is
+ * nullable for the same reason `price` is: a page can hold nothing with a single
+ * price to take a median of.
+ */
+export const LISTING_SUMMARY = {
+  itemsCount: count(),
+  medianPrice: z.number().nonnegative().nullable(),
+};
+
+/** The `Envelope` half of the `type`, wherever the four print their own. */
+export const LISTING_SUMMARY_TYPE = `  itemsCount: number;     // listings in this answer, which is fewer than the page
+                          // Avito served when --remove-reserved dropped some
+  medianPrice: number | null; // median of the price field over the listings in this
+                          // answer that carry one; null where none of them does`;
+
+/**
+ * The two counts and the list, as the four listing commands put them on the
+ * envelope. Both are facts about this answer rather than about the search: they
+ * describe what `items` holds after `--remove-reserved` shortened it, and never
+ * the size or the prices of the result set Avito reports (D-077).
+ */
+export function listingAnswer(items, removeReserved, command) {
+  const answered = listingItems(applyReservedFilter(items, removeReserved, command));
+  return {
+    itemsCount: answered.length,
+    medianPrice: medianPrice(answered),
+    items: answered,
+  };
+}
+
+/**
+ * A listing Avito priced from a floor or by a table carries no single price
+ * (D-056), and its `minPrice` is a different quantity — counting it would put a
+ * number in the middle of the page that no listing costs, so it is left out and
+ * a page where nothing carries a price has no median at all. What the numbers
+ * mean is still Avito's: a route that prints rates rather than sums medians
+ * rates (F-077).
+ */
+function medianPrice(items) {
+  const prices = items
+    .map((item) => item.price)
+    .filter((price) => price != null)
+    .sort((left, right) => left - right);
+  if (prices.length === 0) return null;
+  const middle = prices.length >> 1;
+  return prices.length % 2 === 1
+    ? prices[middle]
+    : (prices[middle - 1] + prices[middle]) / 2;
+}
+
 /** Drop `reserved`, which is a predicate this page answered rather than a field. */
 export function listingItems(items) {
   return items.map((item) => {

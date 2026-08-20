@@ -18,10 +18,12 @@ nothing else. Plus `--remove-reserved`. The URL it returns carries `p=<n>` and i
 therefore only good input for `get-page` and `get-filters`: `apply-filters` and
 `move-category` accept page 1 only.
 
-Both answer with `{ query, locationId, locationName, searchUrl, items }` —
-`search` adds `category` and `get-page` the confirmed `page`. The URL, the
-effective region and the category are stated once, on the envelope, and never
-repeat inside `items` (D-073).
+Both answer with `{ query, locationId, locationName, searchUrl, itemsCount,
+medianPrice, items }` — `search` adds `category` and `get-page` the confirmed
+`page`. The URL, the effective region and the category are stated once, on the
+envelope, and never repeat inside `items` (D-073). `itemsCount` and `medianPrice`
+describe the listings that came back rather than the result set behind them, and
+both are taken after `--remove-reserved` shortened the page (D-077).
 
 Request budget for `search`: 4 with no geo and 4 with `--location-id`
 (`/robots.txt`, the `?q=` redirect payload, the canonical SSR document, the items

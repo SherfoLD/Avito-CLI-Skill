@@ -17,7 +17,8 @@ whether it will take it (D-075).
 
 `move-category <searchUrl> --to <name>` moves the listing into another category
 by its visible name and answers `{ query, category, locationId, locationName,
-searchUrl, items }`. `category` is the name as Avito renders it. Accepts page 1.
+searchUrl, itemsCount, medianPrice, items }`, the last two describing the page it
+came back with (D-077). `category` is the name as Avito renders it. Accepts page 1.
 Plus `--remove-reserved`. Budget: 4 requests.
 
 The move changes both the listing and the set of available filters, so the

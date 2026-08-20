@@ -7,9 +7,10 @@ How each command is built is in its domain file, [docs/areas/](areas/).
 
 ## Commands
 
-Ten commands, all read-only. `npm run check` is green; the offline suite is 218
-checks across sixteen suites, and all ten expectations pass live against Avito
-(2026-08-19).
+Ten commands, all read-only. `npm run check` is green; the offline suite is 224
+checks across sixteen suites. The ten expectations last passed live against Avito
+on 2026-08-19; the four listing ones have grown a rule since (D-077) that has not
+been run live yet.
 
 Every command answers with **one JSON object**, declared as `output:
 z.strictObject({...})` in its descriptor. The CLI parses the whole answer through
@@ -18,7 +19,9 @@ it before printing, the offline suites run the same parse, and there is no
 several of something answers with an envelope plus a list: the `searchUrl`, the
 effective region, the confirmed page and the category the search landed in sit on
 the envelope, and only what differs between the things returned sits inside them
-(D-073, D-076). The runtime holds — `strictObject` at every level, 40 declared fields, 3 objects deep (D-074) —
+(D-073, D-076). The four listing commands say two more things there about the
+page they returned — `itemsCount` and `medianPrice`, both taken from the cards in
+that answer and never from the result set Avito reports behind it (D-077). The runtime holds — `strictObject` at every level, 40 declared fields, 3 objects deep (D-074) —
 and nothing else.
 
 `--help` prints that contract as TypeScript, from the descriptor's `type`, which

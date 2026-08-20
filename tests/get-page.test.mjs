@@ -221,6 +221,23 @@ check('remove-reserved drops the reserved listings of the requested page', async
   assert(untouched.items.length === 3, 'without the flag the page must come back whole');
 });
 
+// The envelope describes this page and not the result set behind it: both numbers are
+// taken from the cards the answer carries, once the filter has shortened them (D-077).
+check('the envelope counts this page and takes the median of its prices', async () => {
+  const items = [
+    item({ id: '8329291056', visiblePrice: 100, isReserved: true }),
+    item({ id: CARD_ID, visiblePrice: 900 }),
+    item({ id: '8220283533', visiblePrice: 200 }),
+  ];
+  const whole = await paginate(withReservations(items)).answer;
+  assert(whole.itemsCount === 3 && whole.medianPrice === 200,
+    `the whole page: ${whole.itemsCount} listings, median ${whole.medianPrice}`);
+
+  const filtered = await paginate(withReservations(items), { 'remove-reserved': true }).answer;
+  assert(filtered.itemsCount === 2 && filtered.medianPrice === 550,
+    `the shortened page: ${filtered.itemsCount} listings, median ${filtered.medianPrice}`);
+});
+
 check('an all-reserved page is empty and a vanished flag refuses the filter', async () => {
   const allReserved = [
     item({ id: '8329291056', isReserved: true }),
