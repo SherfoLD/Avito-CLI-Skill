@@ -9,7 +9,7 @@ import { ORIGIN } from './carrier.mjs';
 const { COMMAND } = await loadCommand('get-categories');
 const { check, assert, run } = runner();
 
-const ROBOTS = 'https://www.avito.ru/robots.txt';
+const PRIMED_ORIGIN = 'https://www.avito.ru/';
 const SOURCE_PATH = '/moskva/telefony/mobilnye_telefony/xiaomi-ASgB';
 const REQUESTED = `${ORIGIN}${SOURCE_PATH}?q=xiaomi`;
 
@@ -68,9 +68,14 @@ const refusal = (code, message, details = {}) => ({
 
 function makePage(observed) {
   const calls = { goto: [], evaluateWithArgs: [] };
+  let tabOrigin = 'null';
   return {
     calls,
-    async goto(url) { calls.goto.push(url); },
+    async goto(url) { calls.goto.push(url); tabOrigin = new URL(url).origin; },
+    async evaluate(expression) {
+      if (expression === 'location.origin') return tabOrigin;
+      throw new Error(`unexpected page.evaluate: ${expression}`);
+    },
     async wait() {},
     async evaluateWithArgs(source, args) {
       calls.evaluateWithArgs.push(args);
@@ -97,13 +102,25 @@ const refuses = async (observed, pattern, code = 'COMMAND_EXEC') => {
   if (!pattern.test(failure.message)) throw new Error(`unexpected message: ${failure.message}`);
 };
 
-check('the reader primes robots.txt once and never renders the catalog page', async () => {
+check('the reader primes the origin once and never renders the catalog page', async () => {
   const { page } = await readCategories();
-  assert(page.calls.goto.length === 1 && page.calls.goto[0] === ROBOTS,
-    `expected one robots.txt priming, got ${JSON.stringify(page.calls.goto)}`);
+  assert(page.calls.goto.length === 1 && page.calls.goto[0] === PRIMED_ORIGIN,
+    `expected one priming navigation, got ${JSON.stringify(page.calls.goto)}`);
   assert(page.calls.evaluateWithArgs.length === 1, 'more than one browser evaluation');
   assert(page.calls.evaluateWithArgs[0].requestUrl === REQUESTED,
     `the requested URL must be read directly, got ${page.calls.evaluateWithArgs[0].requestUrl}`);
+});
+
+// Priming is what a tab needs once, not what a command pays for (D-081): the second
+// command down a persistent tab finds the origin already under it and reads from where
+// it stands. A tab that primed on every command would render the landing page ten times
+// over a flow that asks Avito ten questions.
+check('a tab already on the origin is not primed a second time', async () => {
+  const page = makePage(observedState());
+  await COMMAND.run(page, { searchUrl: REQUESTED });
+  await COMMAND.run(page, { searchUrl: REQUESTED });
+  assert(page.calls.goto.length === 1,
+    `expected the origin to be primed once for the tab, got ${JSON.stringify(page.calls.goto)}`);
 });
 
 // The sidebar is returned in the order Avito drew it, nesting included: the array

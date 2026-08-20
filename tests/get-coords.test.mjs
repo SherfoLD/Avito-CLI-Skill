@@ -7,7 +7,7 @@ import { readCoords } from '../src/browser/commands/get-coords.mjs';
 const { COMMAND } = await loadCommand('get-coords');
 const { check, assert, run } = runner();
 
-const ROBOTS = 'https://www.avito.ru/robots.txt';
+const PRIMED_ORIGIN = 'https://www.avito.ru/';
 const ENDPOINT = '/web/1/coords/by_address';
 const runEvaluate = evaluateRunner(readCoords);
 
@@ -38,9 +38,14 @@ const LOCALITY = {
 
 function makePage(observed) {
   const calls = { goto: [], evaluateWithArgs: [] };
+  let tabOrigin = 'null';
   return {
     calls,
-    async goto(url) { calls.goto.push(url); },
+    async goto(url) { calls.goto.push(url); tabOrigin = new URL(url).origin; },
+    async evaluate(expression) {
+      if (expression === 'location.origin') return tabOrigin;
+      throw new Error(`unexpected page.evaluate: ${expression}`);
+    },
     async evaluateWithArgs(source, args) {
       calls.evaluateWithArgs.push({ source: String(source), args });
       return typeof observed === 'function' ? observed(args) : observed;
@@ -66,7 +71,7 @@ check('a house resolves to Avito own normalized address', async () => {
   assert(answer.postalCode === '125009', 'postal code not decoded');
   assert(Object.keys(answer).length === COMMAND.keys.length, 'the answer drifted from the declared fields');
 
-  assert(page.calls.goto.length === 1 && page.calls.goto[0] === ROBOTS, `expected one robots.txt priming, got ${JSON.stringify(page.calls.goto)}`);
+  assert(page.calls.goto.length === 1 && page.calls.goto[0] === PRIMED_ORIGIN, `expected one priming navigation, got ${JSON.stringify(page.calls.goto)}`);
   const { requestUrl } = page.calls.evaluateWithArgs[0].args;
   assert(requestUrl.startsWith(`https://www.avito.ru${ENDPOINT}?address=`), `unexpected endpoint: ${requestUrl}`);
   assert(decodeURIComponent(new URL(requestUrl).searchParams.get('address')) === 'Тверская улица, 6', 'address not collapsed and passed verbatim');
@@ -164,7 +169,7 @@ check('the browser half reports status, challenge and not-found from the real re
 check('the primed origin is never text-scanned for a challenge', () => {
   const source = readCommandSource('get-coords') + readPageSource('get-coords');
   assert(!/document\.body\.innerText/.test(source), 'coords text-scans a page for a challenge (F-044)');
-  assert(/robots\.txt/.test(readCommandSource('get-coords')), 'coords no longer primes a lightweight origin');
+  assert(/primeOrigin\(page, 'get-coords'\)/.test(readCommandSource('get-coords')), 'coords no longer primes the shared origin');
 });
 
 export default await run('coords (node and browser sides)');

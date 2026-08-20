@@ -97,9 +97,14 @@ const ok = (payload) => ({
 /** A page whose responder decides what each requested URL returns. */
 function makePage(responder) {
   const calls = { goto: [], requests: [] };
+  let tabOrigin = 'null';
   return {
     calls,
-    async goto(url) { calls.goto.push(url); },
+    async goto(url) { calls.goto.push(url); tabOrigin = new URL(url).origin; },
+    async evaluate(expression) {
+      if (expression === 'location.origin') return tabOrigin;
+      throw new Error(`unexpected page.evaluate: ${expression}`);
+    },
     async evaluateWithArgs(source, args) {
       calls.requests.push(args.requestUrl);
       return responder(args.requestUrl, calls.requests.length);
@@ -152,7 +157,7 @@ check('the feed request carries fromItem, the server page size and no sort by de
   })));
   await COMMAND.run(page, { itemUrl: ITEM_URL });
 
-  assert(page.calls.goto[0] === 'https://www.avito.ru/robots.txt', 'origin priming must stay lightweight');
+  assert(page.calls.goto[0] === 'https://www.avito.ru/', 'origin priming must land on the origin, never on a catalog');
   assert(page.calls.requests.length === 2, `expected two requests, got ${page.calls.requests.length}`);
   assert(page.calls.requests[0] === ITEM_API, `unexpected item URL ${page.calls.requests[0]}`);
   const feed = new URL(page.calls.requests[1]);

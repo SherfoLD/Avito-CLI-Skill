@@ -41,7 +41,7 @@ carrier of this command (D-064).
 
 `get-seller-reviews` takes `ratingUserKey` from `buyerItem.rating.userKey` of the
 same item API response and requests `/web/7/user/{key}/ratings`. The listing page
-is not rendered: from a session primed only with `robots.txt`, both requests
+is not rendered: from a session that only primed its origin, both requests
 answer `200 application/json`.
 
 `--sort` is validated against **this** seller's fresh `searchParametersV2` and

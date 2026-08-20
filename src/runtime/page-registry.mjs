@@ -8,7 +8,7 @@
 
 import { randomUUID } from 'node:crypto';
 
-import { HIDDEN_TAB } from './cdp-connection.mjs';
+import { COMMAND_TAB } from './cdp-connection.mjs';
 
 const PROBE_TIMEOUT_SECONDS = 2;
 
@@ -38,7 +38,7 @@ export class PageRegistry {
   }
 
   async create({ persistent, ownerPid }) {
-    const { targetId } = await this.connection.send('Target.createTarget', HIDDEN_TAB);
+    const { targetId } = await this.connection.send('Target.createTarget', COMMAND_TAB);
     const { sessionId } = await this.connection.send('Target.attachToTarget', { targetId, flatten: true });
     await this.connection.send('Page.enable', {}, sessionId);
     await this.connection.send('Runtime.enable', {}, sessionId);

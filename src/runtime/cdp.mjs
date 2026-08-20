@@ -23,7 +23,7 @@
  * Nothing here retries. A refusal is returned to the caller as it arrived.
  */
 
-import { COMMAND_TIMEOUT_SECONDS, HIDDEN_TAB, connectToBrowser } from './cdp-connection.mjs';
+import { COMMAND_TAB, COMMAND_TIMEOUT_SECONDS, connectToBrowser } from './cdp-connection.mjs';
 import { browserPreludeSource } from './browser-prelude.mjs';
 import { callBroker, ensureBroker } from './broker-client.mjs';
 import { resolveBrowserOptions } from './browser-config.mjs';
@@ -109,7 +109,7 @@ return await __command(${JSON.stringify(args ?? {})}, ${BROWSER_ENV_SOURCE});
 /** One connection for this process only. Used when the broker is turned off. */
 async function directBackend(options) {
   const { connection } = await connectToBrowser(options);
-  const { targetId } = await connection.send('Target.createTarget', HIDDEN_TAB);
+  const { targetId } = await connection.send('Target.createTarget', COMMAND_TAB);
   const { sessionId } = await connection.send('Target.attachToTarget', { targetId, flatten: true });
   await connection.send('Page.enable', {}, sessionId);
   await connection.send('Runtime.enable', {}, sessionId);

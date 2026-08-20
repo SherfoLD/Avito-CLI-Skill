@@ -17,10 +17,12 @@ export const DOCUMENT_TIMEOUT_MS = 20000;
 /**
  * Text that means Avito is asking for a human rather than answering.
  *
- * Never run this over a primed origin: `robots.txt` contains the word `captcha`
- * in its own `Clean-param` directives, so it matches every time (F-044). It
- * belongs on a response to a request for data and on a rendered page, nowhere
- * else.
+ * Never run this over a primed origin. The `robots.txt` primed with before D-081
+ * contains the word `captcha` in its own `Clean-param` directives and matched
+ * every time (F-044); the landing page primed with since may genuinely be the
+ * block page, and a command that stopped there would never reach the answer that
+ * decides. It belongs on a response to a request for data and on a rendered page,
+ * nowhere else.
  */
 export function looksLikeChallenge(text) {
   return /captcha|доступ ограничен|провер.{0,3}что вы человек|проблема с ip|слишком много запросов/i
@@ -35,8 +37,8 @@ export function looksLikeChallenge(text) {
  * to classify. Avito serves a verification page as 200 HTML with no state
  * script, which is indistinguishable from a bootstrap that did not arrive — and
  * the two call for the same thing, a person looking at the browser. Nothing
- * reads the page text to tell them apart: `robots.txt` alone would defeat that
- * (F-044).
+ * reads the page text to tell them apart: the primed origin alone would defeat
+ * that (F-044).
  */
 export async function readDocument(url, stage, env) {
   const controller = new AbortController();

@@ -18,10 +18,12 @@ import {
 import { decode } from '../runtime/schema.mjs';
 import { readDocumentState, readItemsApi } from '../browser/commands/carriers.mjs';
 import { ITEMS_API_RESPONSE } from '../schemas/items-api.mjs';
+import { AVITO_ORIGIN } from './url.mjs';
 
-// Origin priming only: the body is never read. Rendering a catalog would pull its
-// scripts, images and telemetry for the sake of one JSON blob in the markup.
-const ORIGIN_BOOTSTRAP_URL = 'https://www.avito.ru/robots.txt';
+// The document a primed tab sits on between reads (D-081). It is the origin's own
+// landing page, not a catalog: a catalog would be pulled whole — scripts, images,
+// impression telemetry — for one JSON blob in its markup, and it is fetched instead.
+const ORIGIN_BOOTSTRAP_URL = `${AVITO_ORIGIN}/`;
 
 /** Seconds a page half waits on one request before it aborts. */
 const CARRIER_TIMEOUT_SECONDS = 20;
@@ -74,9 +76,18 @@ export function carrierResult(observed, command) {
   throw new CommandExecutionError(`${command} ${stage} failed: ${message}`);
 }
 
-/** The same-origin context every read below needs. */
+/**
+ * The same-origin context every read below needs.
+ *
+ * A tab already on the origin has it, so priming is what a tab needs once rather
+ * than what every command pays for: a persistent tab (D-079) navigates on its
+ * first command and answers the rest from where it stands, including from a
+ * listing `get-item` rendered into it. `location.origin` is the whole test —
+ * which Avito document the tab holds does not change what a fetch from it may do.
+ */
 export async function primeOrigin(page, command) {
   try {
+    if (await page.evaluate('location.origin') === AVITO_ORIGIN) return;
     await page.goto(ORIGIN_BOOTSTRAP_URL, { waitUntil: 'load', settleMs: 0 });
   } catch (error) {
     asExecutionError(error, `opening the Avito same-origin context for ${command}`);

@@ -11,8 +11,8 @@ command's domain file.
 The only path to Avito is a browser context the user owns. Anonymous Node fetch
 is closed, and nothing here works around that.
 
-- Every command primes the origin by navigating to
-  `https://www.avito.ru/robots.txt`; the body is never read. `search` then
+- Every command primes the origin by navigating to `https://www.avito.ru/`,
+  and only if the tab is not on it already (D-081). `search` then
   reads its public `?q=` route and canonical catalog as separate same-origin
   document fetches, not rendered navigations. `get-item` renders the listing
   itself only as a fallback when its API read cannot produce the item.
@@ -216,10 +216,35 @@ by hand, and held in step with the schema by `npm run check:commands` (D-053).
   process on the machine.
   `AVITO_BROKER=off` restores per-command connections, which is right for a
   browser started with `--remote-debugging-port`, where nothing ever asks.
-  That tab is created `hidden`, so a chain of commands costs the person in front
-  of the browser nothing at all (F-073).
+  That tab is created `background`, so a chain of commands never takes the screen
+  from the person in front of the browser (F-073, F-099, D-080).
 
-- **D-079 — one search chain owns one hidden tab.** Every `search` opens a new
+- **D-081 — the origin is primed on the landing page, once per tab.**
+  `primeOrigin` navigates to `https://www.avito.ru/` and skips the navigation
+  when `location.origin` already says the tab is there. Two things change from
+  the `robots.txt` priming it replaces. The tab now holds a real Avito document
+  between reads — the same page the person would have open, with the session's
+  own cookies set by it rather than by a text file — and a visible tab (D-080)
+  showing `robots.txt` was a strange thing to hand someone. And the cost of that
+  page is paid once per tab instead of once per command: a persistent chain
+  (D-079) primes on its first command and answers the rest from where it stands,
+  including from a listing `get-item` rendered into it.
+  What this is not is a way to spend less of Avito's patience — the landing page
+  is a render with subresources and its own four clickstream events (F-100),
+  where `robots.txt` was one text file, and F-101 is the measurement that
+  rendering does not earn access. It buys an honest browser session, not
+  tolerance, and no command may render more for that reason.
+
+- **D-080 — the command tab is visible.** `Target.createTarget` is called with
+  `background: true` rather than `hidden: true` (F-099): the person holding the
+  browser can see the tab a command is working in, click into it, read what
+  Avito answered and close it. What that costs is the `hidden` tab's lifetime.
+  A hidden target dies with the socket that opened it, so a broker killed hard
+  enough to skip `closeAll` left nothing behind; a background one survives, and
+  the tabs of a `SIGKILL`ed broker are the user's to close. Graceful shutdown,
+  idle timeout and `release` all still close them.
+
+- **D-079 — one search chain owns one tab.** Every `search` opens a new
   broker-owned tab. `get-page`, `get-filters`, `apply-filters`,
   `get-categories` and `move-category` acquire one by their normalized input
   `searchUrl`; every `searchUrl` they return becomes another key for that same
@@ -824,9 +849,8 @@ by hand, and held in step with the schema by `npm run check:commands` (D-053).
   Measured on Chromium 151, macOS, `Target.createTarget` with the frontmost
   application recorded before and after. Plain: the browser takes the screen
   (`ghostty → Helium`) and the tab joins the strip. `background: true`: no
-  application switch, a tab in the strip, and a document that reports
-  `visibilityState: 'hidden'` — Chromium throttles it, and the protocol
-  documents the flag as unsupported on macOS. `hidden: true`: no application
+  application switch and a tab in the strip; the protocol documents the flag as
+  unsupported on macOS, and what it does there is F-099. `hidden: true`: no application
   switch, no tab in the strip, absent even from `Target.getTargets`, and the
   page still reports `visible`, keeps the profile's cookies (the geo directory
   answered with the profile's own search history) and renders — all ten expectations
@@ -862,6 +886,13 @@ by hand, and held in step with the schema by `npm run check:commands` (D-053).
   no step at all. Live after the fix: `«ремонт стиральных машин»` returns
   `price: null` on all 7 of its «Цена договорная» listings, `«щенок»` returns
   `price: 0` on all 20 of its «Бесплатно» ones.
+  Neither form belongs to Services. 2026-08-21, on the goods route
+  `operativnaya_pamyat?q=ddr5+32gb` narrowed to companies with `user=2`: one run
+  carried a floor on card 46, the next a «Цена договорная» card (`4749794836`,
+  a bulk DDR5 seller). A company advertises over a range or asks to be asked,
+  where the private sellers on the same unnarrowed route all name a number — so
+  a live expectation may not require a price of every card on a route just
+  because it saw one on every card once.
 
 - **F-077 — the price can carry a unit, and the unit is structural.**
   `priceDetailed.postfix` holds it — `за м²`, `за час`, `за м³` — beside the
@@ -881,6 +912,52 @@ by hand, and held in step with the schema by `npm run check:commands` (D-053).
   plain «500 ₽» and a card with no list can print «от 250 ₽», so `hasPriceList`
   is not a proxy for it. 27 cards of 50 on the repair route carry it, none on the
   goods routes read.
+
+- **F-099 — `background: true` is a visible tab that does not take the screen.**
+  Re-measured on Chromium 151, macOS, 2026-08-20, against the same frontmost-app
+  probe as F-073. The application did not switch, the tab joined the strip, it
+  appeared in `Target.getTargets`, and the page reported `visibilityState:
+  'visible'` with `document.hasFocus()` true — not the throttled hidden document
+  the flag's macOS caveat suggests. A catalog rendered in it to 50 cards. So the
+  choice between `hidden` and `background` is not visibility against throttling;
+  it is visibility against lifetime (D-080).
+
+- **F-100 — a rendered catalog posts clickstream; a fetched one posts nothing.**
+  Measured 2026-08-20 by counting `Network.requestWillBeSent` for
+  `/clickstream/events/1/json` in a broker-shaped tab. Loading
+  `/moskva/telefony?q=iphone+15` produced six to seven POSTs before any
+  interaction. Scrolling produced one to five more, and only with a viewport:
+  `Page.getLayoutMetrics` on a `hidden` tab reports `clientWidth: 0`, so nothing
+  is ever *in* the viewport until `Emulation.setDeviceMetricsOverride` gives it
+  one — with 1440×900 set, six wheel deltas moved `window.scrollY` 0 → 6311 and
+  each batch of newly visible cards posted again. The payload is impressions:
+  `event_id: 4906`, `params.iids` naming the card IDs, `common.tab_id` naming the
+  tab. Two hosts carry it, `cs.avito.ru` and `www.avito.ru`. None of this is
+  reachable from a catalog the CLI renders, because it renders none: every
+  carrier is a `fetch`. What it does post is what its primed landing page posts
+  on its own — four events measured on one load of `https://www.avito.ru/`, and
+  once per tab rather than once per command (D-081).
+
+- **F-101 — rendering catalog pages spends the session's access, it does not
+  earn it.** 2026-08-20, six catalog renders in hidden tabs over some fifteen
+  minutes on one profile. The first two rendered in 3–4 s with 50 cards and
+  posted their clickstream; the next four answered `HTTP 200` with `server:
+  QRATOR` and then never streamed a body — `document.readyState` stuck at
+  `loading`, one network response in twenty seconds, zero subresources. The
+  visible tab on the same profile then reloaded into `Доступ ограничен: проблема
+  с IP`, the F-068 page. A rendered page costs one document plus its whole
+  subresource tree where a carrier read costs one `fetch`, and the telemetry it
+  emits bought no tolerance for that.
+
+- **F-102 — the landing page is a priming target the way `robots.txt` was.**
+  Measured 2026-08-21 in a `background` tab: `https://www.avito.ru/` fired
+  `Page.loadEventFired` after 3.5 s, settled at `document.readyState: 'complete'`
+  with the title `Авито — Объявления на сайте Авито`, reported a real viewport
+  (`cssLayoutViewport` 1252×790, which is F-099 measured again from the layout
+  side), posted four clickstream events on that one load, and answered a
+  same-origin `fetch` of `/web/1/slocations` with `200 application/json`. So the
+  same-origin context a carrier needs is there, and it costs one render of the
+  lightest page on the origin (D-081).
 
 ## Risks
 

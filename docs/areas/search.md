@@ -26,7 +26,8 @@ describe the listings that came back rather than the result set behind them, and
 both are taken after `--remove-reserved` shortened the page (D-077).
 
 Request budget for `search`: 4 with no geo and 4 with `--location-id`
-(`/robots.txt`, the `?q=` redirect payload, the canonical SSR document, the items
+(the origin priming, which a warm tab skips, the `?q=` redirect payload, the
+canonical SSR document, the items
 API); 5 with `--coords` / `--radius`; 6 with `--metro` / `--district`, where the
 location directory costs two more. A city cannot be applied by editing a URL, so
 any geo goes through the same items API — which every search now ends with in any

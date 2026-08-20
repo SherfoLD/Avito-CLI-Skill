@@ -32,7 +32,7 @@ Cheapest first, and stop as soon as you have the carrier.
 ## Rules while looking
 
 - **Do not navigate to the catalog to read data.** A catalog page load pulls
-  hundreds of requests. Prime `https://www.avito.ru/robots.txt` and fetch
+  hundreds of requests. Prime `https://www.avito.ru/` and fetch
   same-origin from there — that is the whole transport model, and recon that
   ignores it measures a page the command will never load.
 - **One tab, one purpose.** A tab you have been issuing fetches from can hang;

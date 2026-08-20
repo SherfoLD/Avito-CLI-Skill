@@ -57,8 +57,10 @@ and remembered in `browser.json`: `avito browser` lists the ones offering a
 connection, `avito browser use` writes the answer down, and a file is the only
 form of this setting an agent can see, since it opens a new shell per command
 (D-051, D-052, F-074). The connection is held for the session by a broker;
-`avito session status` reports it and the browser it would use (D-045). Tabs are
-hidden — no tab strip entry, no application switch. A `search` starts one;
+`avito session status` reports it and the browser it would use (D-045). A tab
+sits in the strip where the person can see it and never takes the screen
+(D-080), open on `https://www.avito.ru/`, which it primes once and not once per
+command (D-081). A `search` starts one;
 commands carrying one of its `searchUrl` values reuse it after a liveness probe,
 and unrelated commands remain ephemeral (D-079). The only interruption left is
 the one approval prompt per connection (F-071, F-073). Live, `get-location`

@@ -34,12 +34,13 @@ that survived a green check.
 
 - A challenge — CAPTCHA, `429`, an IP block — is a full stop. No interaction, no
   retry, no weakened validation. Record what you saw and stop.
-- Never text-scan the primed origin for a challenge. `robots.txt` contains the
-  word `captcha` in its own directives (F-044), so the detector always matches.
+- Never text-scan the primed origin for a challenge. It answers nothing: it may
+  be the block page itself, and the `robots.txt` primed with before D-081
+  contains the word `captcha` in its own directives (F-044).
 - Never hardcode an identifier Avito owns: region, category, filter, saved
   search, photo size, sort label. `npm run lint` fails the build over it, and the
   only escape is `// vocabulary-ok: <reason>` for text that quotes an example.
-- Never render the catalog. Prime `robots.txt`, then same-origin fetch.
+- Never render the catalog. Call `primeOrigin`, then same-origin fetch.
 - One request per call. The one exception in the whole repository is the bounded
   bootstrap recovery in `search`.
 

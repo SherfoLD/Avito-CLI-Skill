@@ -139,7 +139,7 @@
     },
     "response": "HTTP 200 with a pure redirect payload: loaderData.redirect equals data.url (the canonical route) and data.redirected is true, while searchCore, filtersV2 and catalog are absent and response.url stays on /?q=",
     "verified_at": "2026-08-14",
-    "notes": "Public route, not an internal endpoint. avito/search reads it as the whole initial submit through the current same-origin browser context after lightweight /robots.txt priming: it works from the bare origin, keeps the session region and needs no region slug. `q` survives for some queries (`ddr5 32gb`) and is absorbed into a category or model route for others (`iphone`), where searchCore.query is empty too; both are accepted, while a homepage target and a foreign `q` are rejected before the next request. The canonical target is then read as a second document fetch, and its loaderData.data.catalog.items supplies the returned listings, so no catalog page is ever rendered."
+    "notes": "Public route, not an internal endpoint. avito/search reads it as the whole initial submit through the current same-origin browser context after priming the origin (D-081): it works from the bare origin, keeps the session region and needs no region slug. `q` survives for some queries (`ddr5 32gb`) and is absorbed into a category or model route for others (`iphone`), where searchCore.query is empty too; both are accepted, while a homepage target and a foreign `q` are rejected before the next request. The canonical target is then read as a second document fetch, and its loaderData.data.catalog.items supplies the returned listings, so no catalog page is ever rendered."
   },
   "catalogSearchBootstrap": {
     "url": "https://www.avito.ru/<canonical-search-route>",

@@ -100,8 +100,8 @@ check('a visible sidebar option resolves to its Avito route and returns its list
   assert(returned.query === 'xiaomi', `unexpected query: ${returned.query}`);
   assert(returned.items.every((entry) => !('searchUrl' in entry)), 'the search URL must not repeat on every listing');
   assertOutput(COMMAND, returned);
-  assert(page.navigations.length === 1 && page.navigations[0] === 'https://www.avito.ru/robots.txt',
-    `expected one robots.txt priming, got ${JSON.stringify(page.navigations)}`);
+  assert(page.navigations.length === 1 && page.navigations[0] === 'https://www.avito.ru/',
+    `expected one priming navigation, got ${JSON.stringify(page.navigations)}`);
 });
 
 // Moving a search has to keep being that search. The sidebar has never been observed dropping

@@ -16,8 +16,17 @@ export const args = [
 //
 // The two numbers on the envelope are about this page and not about the result
 // set behind it, so they are checked against the listings that came back: the
-// count exactly, the median by the range it was taken from. On this route every
-// card carries a price, which is why the median is required to be one.
+// count exactly, the median by the range it was taken from. Enough of this page
+// is priced with one number for the median to be one.
+//
+// A card here may carry no price at all. This is the same goods route as
+// `search`, but narrowed to companies, and a company sells differently: it
+// advertises «от N ₽» over a range, and it prints «Цена договорная» over a
+// catalogue it wants to be asked about. Both were live on 2026-08-21 — a floor
+// on card 46 of one run, a phrase on a bulk DDR5 listing in the next. So the
+// price is checked by its shape rather than by its presence: a floor arrives as
+// `minPrice`, a phrase as neither (F-076, F-078), and no card is ever both
+// priced and priced-from, which is what would mean two prices for one thing.
 export const output = z.looseObject({
   query: z.literal('ddr5 32gb'),
   locationId: z.literal('637640'),
@@ -27,9 +36,14 @@ export const output = z.looseObject({
   medianPrice: z.number().positive(),
   items: z.array(z.looseObject({
     descriptionPreview: z.string().min(1),
-    price: z.number().positive(),
+    price: z.number().positive().nullable(),
+    minPrice: z.number().positive().nullable(),
+    hasPriceList: z.boolean(),
   })).min(1).max(50),
 }).refine(
+  (answer) => answer.items.every((entry) => entry.price == null || entry.minPrice == null),
+  'a card carries a price or a floor, never both',
+).refine(
   (answer) => answer.itemsCount === answer.items.length,
   'itemsCount must be the number of listings the answer carries',
 ).refine((answer) => {

@@ -46,7 +46,8 @@ refuse **and** the nearby honest code it must stay silent about.
 
 **The request budget.** How many requests the command makes, which ones, and in
 what order. This is the assertion that keeps the transport model honest: one
-`robots.txt` priming, no rendered catalog page, one document fetch. It is also
+origin priming on a cold tab and none on a warm one, no rendered catalog page,
+one document fetch. It is also
 the one that would catch a "harmless" retry appearing.
 
 **The request itself.** What was serialized onto the URL, read back from

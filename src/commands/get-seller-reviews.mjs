@@ -36,10 +36,8 @@ import {
 } from '../runtime/schema.mjs';
 import { AVITO_BASE_URL } from '../site/geo.mjs';
 import { readJsonResponse } from '../browser/prelude/json.mjs';
+import { primeOrigin } from '../site/carriers.mjs';
 
-// Origin priming only: the body is never read. Rendering the catalog would pull its
-// scripts, images and telemetry for the sake of one JSON blob in the markup.
-const ORIGIN_BOOTSTRAP_URL = 'https://www.avito.ru/robots.txt';
 const AVITO_HOSTS = new Set(['avito.ru', 'www.avito.ru']);
 // Avito serves the feed in fixed pages of 25 and ignores a smaller limit (F-046), so the
 // page size is a property of the server, not an argument.
@@ -358,14 +356,11 @@ export default defineCommand({
     const requestedPage = normalizePage(args.page);
     const offset = (requestedPage - 1) * FEED_PAGE_SIZE;
 
-    try {
-      await page.goto(ORIGIN_BOOTSTRAP_URL, { waitUntil: 'load', settleMs: 0 });
-    } catch (error) {
-      asExecutionError(error, 'opening the Avito API context');
-    }
+    await primeOrigin(page, 'get-seller-reviews');
 
-    // The primed origin is never text-scanned for a challenge: robots.txt lists "captcha"
-    // in its own Clean-param directives (F-044). Both responses below carry the signal.
+    // The primed origin is never text-scanned for a challenge, whatever it renders to:
+    // the challenge that matters is the one on the answer, and both responses below
+    // carry that signal themselves.
     const requestJson = async (requestUrl, action) => {
       let observed;
       try {

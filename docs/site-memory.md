@@ -21,9 +21,9 @@ assembled by hand.
   from the same origin. Everything happens inside a browser the user owns.
 - No login, no cookie handling, no token. Everything read here is visible to an
   anonymous visitor.
-- Prime the origin with a lightweight navigation to
-  `https://www.avito.ru/robots.txt` before same-origin fetches; never navigate to
-  the catalog page, which pulls scripts, images and telemetry.
+- Prime the origin by navigating to `https://www.avito.ru/` before same-origin
+  fetches, once per tab and not once per command. Never navigate to a catalog
+  page: it is the expensive render, and it is fetched instead.
 - An anonymous direct GET from Node answers `HTTP 429` with `server: QRATOR` and
   a CAPTCHA. The browser context is the only path.
 - The photo CDN is the exception, and only for photos: `*.img.avito.st` answers
@@ -80,7 +80,7 @@ one.
 
 ## Pitfalls
 
-1. **`robots.txt` contains the word `captcha`** in its `Clean-param` directives. A text challenge detector run over the primed origin fires on it. Read the challenge from the target response and from the rendered page instead.
+1. **The primed origin is never the challenge signal.** `robots.txt`, which the CLI primed with until D-081, contains the word `captcha` in its `Clean-param` directives, so a text detector over it fires every time; the landing page it primes with now may itself be the block page. Read the challenge from the target response and from the rendered page instead.
 2. **Avito validates nothing and reports nothing.** An unknown metro ID is silently ignored, a station from another city is silently accepted, `metro` and `district` are accepted together, an unknown review sort is silently downgraded to `date_desc`, and an unknown rating key returns `200` with an empty feed. Every guard has to live on your side.
 3. **`searchCore.activeTab` is not proof** that a geo mode applied: `smallRadius` comes back even with no geo parameters at all. Assert on `searchCore.metroId` / `districtId` / `searchRadius` / `geoCoords` instead.
 4. **The city cannot be applied by editing the URL.** `locationId` in the document route is silently ignored; the only working path is the items API.

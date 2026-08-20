@@ -24,10 +24,8 @@ import {
 import { assertPhotoDirectory, savePhotos } from '../site/photos.mjs';
 import { decodeBuyerItem } from '../site/item.mjs';
 import { readItemApi, readItemPage } from '../browser/commands/get-item.mjs';
+import { primeOrigin } from '../site/carriers.mjs';
 
-// Origin priming only: the body is never read. Rendering the catalog would pull its
-// scripts, images and telemetry for the sake of one JSON blob in the markup.
-const ORIGIN_BOOTSTRAP_URL = 'https://www.avito.ru/robots.txt';
 const AVITO_HOSTS = new Set(['avito.ru', 'www.avito.ru']);
 
 export function normalizeItemUrl(value) {
@@ -190,17 +188,16 @@ export default defineCommand({
     let apiContextReady = false;
     let apiFailureReason = 'Avito API context was unavailable';
     try {
-      await page.goto(ORIGIN_BOOTSTRAP_URL, { waitUntil: 'load', settleMs: 0 });
+      await primeOrigin(page, 'get-item');
       apiContextReady = true;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       apiFailureReason = `opening API context failed: ${message.slice(0, 200)}`;
     }
 
-    // The primed origin is not read for an access challenge: robots.txt itself lists
-    // "captcha" in its Clean-param directives, so any text detector run against it would
-    // false-positive. The challenge is detected where it is actually visible — in the item
-    // API response and, further down, in the rendered item page.
+    // The primed origin is not read for an access challenge, whatever it renders to. The
+    // challenge is detected where it is actually visible — in the item API response and,
+    // further down, in the rendered item page.
     if (apiContextReady) {
       let apiAttempt;
       try {

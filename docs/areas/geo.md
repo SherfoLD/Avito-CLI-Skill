@@ -40,10 +40,10 @@ Three undocumented directories, all read-only through the browser context:
   (`hasMetro`, `hasDistricts`) and the visible list of `smallRadius` kilometres;
 - `/web/2/locations/{metro,districts}?locationId=<id>` — the ID lists themselves.
 
-Like every other command, `get-location` primes the Avito origin with
-`robots.txt` and never reads that body. It does not render the homepage: each
-directory response is where an access refusal is classified, so geo mode stops
-on the first refused read instead of treating it as an empty directory.
+Like every other command, `get-location` primes the Avito origin (D-081) and
+reads nothing from what it lands on: each directory response is where an access
+refusal is classified, so geo mode stops on the first refused read instead of
+treating it as an empty directory.
 
 `--geo` requires exactly one exact name match among the suggestions and is only
 available if the fresh location configuration reports the corresponding

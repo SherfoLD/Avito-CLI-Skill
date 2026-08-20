@@ -15,7 +15,7 @@ const { COMMAND, buildQueryUrl, decodeLandedSearch } = await loadCommand('search
 ]);
 const { check, assert, run } = runner();
 
-const ROBOTS = 'https://www.avito.ru/robots.txt';
+const PRIMED_ORIGIN = 'https://www.avito.ru/';
 const CANONICAL = '/moskva/tovary_dlya_kompyutera/komplektuyuschie/operativnaya_pamyat-ASgB?localPriority=1&q=ddr5+32gb';
 const ABSORBED = '/moskva/telefony/mobilnye_telefony/apple-ASgB?cd=1&context=H4sIAAA';
 const API = `${ORIGIN}${ITEMS_API_PATH}`;
@@ -152,7 +152,7 @@ check('geo IDs are validated before any search request', async () => {
   const failure = await failureOf(() => driven.answer);
   assert(failure?.code === 'ARGUMENT', `unknown metro accepted: ${failure && failure.message}`);
   assert(driven.page.calls.length === 2, `expected two directory calls, got ${JSON.stringify(driven.page.calls)}`);
-  assert(driven.page.navigations.length === 1 && driven.page.navigations[0] === ROBOTS,
+  assert(driven.page.navigations.length === 1 && driven.page.navigations[0] === PRIMED_ORIGIN,
     'geo validation changed the navigation budget');
 });
 
@@ -194,8 +194,8 @@ check('two document hops name the search and the items API answers it with the l
   assert(answer.query === 'ddr5 32gb', `unexpected query ${answer.query}`);
   assert(answer.items.every((entry) => !('searchUrl' in entry)), 'the search URL must not repeat on every listing');
   assertOutput(COMMAND, answer);
-  assert(driven.page.navigations.length === 1 && driven.page.navigations[0] === ROBOTS,
-    `expected one robots.txt priming, got ${JSON.stringify(driven.page.navigations)}`);
+  assert(driven.page.navigations.length === 1 && driven.page.navigations[0] === PRIMED_ORIGIN,
+    `expected one priming navigation, got ${JSON.stringify(driven.page.navigations)}`);
 });
 
 // The category is a fact about the whole answer, so it sits on the envelope

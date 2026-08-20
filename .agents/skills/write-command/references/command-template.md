@@ -33,8 +33,7 @@ import { ArgumentError, CommandExecutionError, EmptyResultError } from '../runti
 import { idString, itemUrl, searchUrl, text, z } from '../runtime/schema.mjs';
 import { answeredUrl } from '../site/url.mjs';
 import { decodeItems } from '../decoders/example.mjs';
-
-const ORIGIN_BOOTSTRAP_URL = 'https://www.avito.ru/robots.txt';
+import { primeOrigin, readDocument } from '../site/carriers.mjs';
 
 export default defineCommand({
   name: 'example',
@@ -109,8 +108,8 @@ run: async (page, args) => {
   // 1. Validate everything that can be validated without the network.
   const requestedUrl = requestedSearchUrl(args.searchUrl);   // throws ArgumentError
 
-  // 2. Prime the origin. The body is never read, and it is never text-scanned
-  //    for a challenge — robots.txt contains the word `captcha` itself (F-044).
+  // 2. Prime the origin, which a tab already on Avito skips (D-081). What it
+  //    lands on is never read and never text-scanned for a challenge.
   await primeOrigin(page, COMMAND);
 
   // 3. One same-origin read from page context, decoded against a schema. A

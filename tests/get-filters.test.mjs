@@ -9,7 +9,7 @@ import { assertOutput, loadCommand, runner } from './harness.mjs';
 const { COMMAND } = await loadCommand('get-filters');
 const { check, assert, run } = runner();
 
-const ROBOTS = 'https://www.avito.ru/robots.txt';
+const PRIMED_ORIGIN = 'https://www.avito.ru/';
 const REQUESTED = 'https://www.avito.ru/moskva/telefony/mobilnye_telefony/xiaomi-ASgB?q=xiaomi';
 
 const FILTERS = [
@@ -100,9 +100,14 @@ const refusal = (code, message, details = {}) => ({
 
 function makePage(observed) {
   const calls = { goto: [], evaluateWithArgs: [] };
+  let tabOrigin = 'null';
   return {
     calls,
-    async goto(url) { calls.goto.push(url); },
+    async goto(url) { calls.goto.push(url); tabOrigin = new URL(url).origin; },
+    async evaluate(expression) {
+      if (expression === 'location.origin') return tabOrigin;
+      throw new Error(`unexpected page.evaluate: ${expression}`);
+    },
     async wait() {},
     async getCurrentUrl() { throw new Error('the filter reader must not navigate to the catalog'); },
     async evaluateWithArgs(source, args) {
@@ -126,10 +131,10 @@ const byKey = (filters, key) => filters.find((entry) => entry.key === key);
 
 // This command is called at every step of the flow, so it primes the same lightweight
 // origin as its neighbours rather than rendering the catalog for one JSON blob.
-check('the reader primes robots.txt and never renders the catalog page', async () => {
+check('the reader primes the origin and never renders the catalog page', async () => {
   const { page } = await readFilters();
-  assert(page.calls.goto.length === 1 && page.calls.goto[0] === ROBOTS,
-    `expected one robots.txt priming, got ${JSON.stringify(page.calls.goto)}`);
+  assert(page.calls.goto.length === 1 && page.calls.goto[0] === PRIMED_ORIGIN,
+    `expected one priming navigation, got ${JSON.stringify(page.calls.goto)}`);
   assert(page.calls.evaluateWithArgs.length === 1, 'more than one browser evaluation');
   assert(page.calls.evaluateWithArgs[0].requestUrl === REQUESTED,
     `the requested URL must be read directly, got ${page.calls.evaluateWithArgs[0].requestUrl}`);

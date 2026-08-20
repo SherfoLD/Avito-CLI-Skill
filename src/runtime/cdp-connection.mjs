@@ -17,13 +17,14 @@ export const COMMAND_TIMEOUT_SECONDS = 30;
  * `Target.createTarget` arguments for the tab a command works in.
  *
  * A target created plainly is a foreground tab: the browser takes the screen
- * away from whatever the person was doing, and does it once per command. A
- * `hidden` one is in no tab strip and in no `Target.getTargets` listing, while
- * the page still reports `visibilityState: 'visible'` and carries the profile's
- * cookies (F-073). Its life is bounded by the connection that created it, so
- * the broker's tabs go when the broker does.
+ * away from whatever the person was doing. `background` keeps the application
+ * where it was and still puts the tab in the strip and in `Target.getTargets`,
+ * unthrottled and reporting `visibilityState: 'visible'` (F-073, F-099) — a tab
+ * the person can watch, click into and close. What it does not have is the
+ * `hidden` tab's lifetime: that one dies with the socket that opened it, while
+ * this one outlives a broker killed hard enough to skip `closeAll` (D-080).
  */
-export const HIDDEN_TAB = { url: 'about:blank', hidden: true };
+export const COMMAND_TAB = { url: 'about:blank', background: true };
 
 /**
  * There are two ways a Chromium exposes the protocol, and they are not

@@ -29,10 +29,11 @@ that fails, because nobody goes looking.
 - Do not work around CAPTCHA, rate limits, signatures or access control. A
   challenge is a full stop: no interaction with it, no repeated request, no
   weakened validation.
-- Do not text-scan a primed origin for a challenge. Avito's own `robots.txt`
-  contains the word `captcha` in its `Clean-param` directives (F-044), so the
-  detector matches every time. Look for a challenge where it is visible: in the
-  response to a data request and in the rendered page.
+- Do not text-scan a primed origin for a challenge. It is not the answer to
+  anything: `robots.txt` matched `captcha` in its own `Clean-param` directives
+  (F-044) and the landing page primed with since D-081 may be the block page
+  itself. Look for a challenge where it is visible: in the response to a data
+  request and in the rendered page.
 - Do not treat an echo as an application. Avito puts keys it did not apply into
   `searchCore` (F-062) and accepts geo IDs it ignores (F-037). Every
   postcondition names the carrier that proves the value took effect, by exact

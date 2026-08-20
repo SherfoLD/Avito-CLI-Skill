@@ -9,7 +9,7 @@ import { assertOutput, loadCommand, runner } from './harness.mjs';
 const { COMMAND } = await loadCommand('get-location');
 const { check, assert, run } = runner();
 
-const ORIGIN_BOOTSTRAP = 'https://www.avito.ru/robots.txt';
+const PRIMED_ORIGIN = 'https://www.avito.ru/';
 
 const suggestion = (id, name, parent = null) => ({
   id,
@@ -63,9 +63,14 @@ const DISTRICTS = {
 // does not ask for is an error, so a change in the request budget is loud.
 function makePage(routes) {
   const calls = { goto: [], fetchJson: [] };
+  let tabOrigin = 'null';
   return {
     calls,
-    async goto(url) { calls.goto.push(url); },
+    async goto(url) { calls.goto.push(url); tabOrigin = new URL(url).origin; },
+    async evaluate(expression) {
+      if (expression === 'location.origin') return tabOrigin;
+      throw new Error(`unexpected page.evaluate: ${expression}`);
+    },
     async wait() {},
     async fetchJson(url) {
       calls.fetchJson.push(url);
@@ -104,7 +109,7 @@ check('resolver mode costs one directory read and returns the suggestions', asyn
   assert(locations[0].locationId === '637640' && locations[0].locationName === 'Москва', 'the location was not decoded');
   assert(answer.geoMode === null && answer.geo.length === 0, 'suggestion mode answers about no geo at all');
   assertOutput(COMMAND, answer);
-  assert(page.calls.goto.length === 1 && page.calls.goto[0] === ORIGIN_BOOTSTRAP,
+  assert(page.calls.goto.length === 1 && page.calls.goto[0] === PRIMED_ORIGIN,
     `expected one origin priming navigation, got ${JSON.stringify(page.calls.goto)}`);
   assert(page.calls.fetchJson.length === 1, `resolver mode must cost one read, got ${page.calls.fetchJson.length}`);
   const asked = new URL(page.calls.fetchJson[0]);

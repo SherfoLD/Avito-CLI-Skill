@@ -208,14 +208,14 @@ check('the input URL must be a full Avito item URL', () => {
   }
 });
 
-check('the fallback primes robots.txt and reads the hydration state, never the DOM', () => {
+check('the fallback primes the origin and reads the hydration state, never the DOM', () => {
   // A rendered listing cannot be built here, so the current source is asserted directly
   // instead of executed. The split between the two halves is why there are two sources:
   // the navigation belongs to the command, the carrier to the browser half.
   const source = readCommandSource('get-item');
   const browserSource = readPageSource('get-item');
-  assert(source.includes("const ORIGIN_BOOTSTRAP_URL = 'https://www.avito.ru/robots.txt'"), 'priming must use the lightweight origin');
-  assert(source.includes('page.goto(ORIGIN_BOOTSTRAP_URL'), 'the API context must be primed through robots.txt, not the homepage');
+  assert(source.includes("primeOrigin(page, 'get-item')"), 'the API context must be primed through the shared primeOrigin (D-081)');
+  assert(!/page\.goto\((?!normalizedUrl)/.test(source), 'the only navigation this command owns is the rendered listing');
   assert(browserSource.includes('__staticRouterHydrationData'), 'the fallback must read the hydration state of the rendered page');
   assert(source.includes('decodeBuyerItem(fallbackObserved?.buyerItem'), 'the fallback must come from the shared decoder');
   assert(!/decodeBuyerItem/.test(browserSource), 'the page half hands the carrier over, it does not decode it');
@@ -225,8 +225,8 @@ check('the fallback primes robots.txt and reads the hydration state, never the D
 });
 
 check('the primed origin is never text-scanned for a challenge, the API response is', () => {
-  // robots.txt lists "captcha" in its own Clean-param directives, so a detector run against
-  // the primed page reports a challenge that is not there.
+  // The primed origin is a document like any other and may render to anything, including
+  // the block page. What the command acts on is the challenge on the answer, not on it.
   const source = readCommandSource('get-item');
   const browserSource = readPageSource('get-item');
   assert(!/looksLikeChallenge/.test(source), 'the primed page must not be scanned for challenge text');
@@ -248,6 +248,7 @@ const temporaryDirectory = () => fs.mkdtempSync(path.join(os.tmpdir(), 'avito-ph
 /** The item API answered, and nothing else in the command has to run. */
 const apiPage = (rawBuyerItem) => ({
   goto: async () => {},
+  evaluate: async () => 'null',
   wait: async () => {},
   evaluateWithArgs: async () => ({
     responseOk: true,

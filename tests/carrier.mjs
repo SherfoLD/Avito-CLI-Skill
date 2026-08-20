@@ -203,14 +203,22 @@ export function evaluateRunner(browserFunction) {
  * `avito search` reach Avito's location endpoints. Without it a directory call
  * throws, so a suite that did not expect one finds out.
  */
-export function browserPage(routes, { href = `${ORIGIN}/`, directory = null } = {}) {
+export function browserPage(routes, { href = `${ORIGIN}/`, directory = null, origin = 'null' } = {}) {
   const { fetch, calls } = makeFetch(routes);
   const env = { DOMParser, fetch, location: { origin: ORIGIN, href } };
   const navigations = [];
+  // A command tab starts on `about:blank`, whose origin is the string "null", and
+  // carries the origin of wherever it was sent afterwards. That is what decides
+  // whether `primeOrigin` navigates at all, so the fake has to keep it (D-081).
+  let tabOrigin = origin;
   return {
     calls,
     navigations,
-    goto: async (url) => { navigations.push(url); },
+    goto: async (url) => { navigations.push(url); tabOrigin = new URL(url).origin; },
+    evaluate: async (expression) => {
+      if (expression === 'location.origin') return tabOrigin;
+      throw new Error(`unexpected page.evaluate: ${expression}`);
+    },
     wait: async () => {},
     evaluateWithArgs: async (browserFunction, args) => browserFunction(args, env),
     fetchJson: async (url) => {

@@ -25,8 +25,8 @@ import {
 } from '../runtime/schema.mjs';
 import { AVITO_BASE_URL } from '../site/geo.mjs';
 import { readCoords } from '../browser/commands/get-coords.mjs';
+import { primeOrigin } from '../site/carriers.mjs';
 
-const ORIGIN_BOOTSTRAP_URL = 'https://www.avito.ru/robots.txt';
 const COORDS_ENDPOINT = '/web/1/coords/by_address';
 const MAX_ADDRESS_LENGTH = 300;
 
@@ -129,11 +129,7 @@ export default defineCommand({
     const endpoint = new URL(COORDS_ENDPOINT, AVITO_BASE_URL);
     endpoint.searchParams.set('address', address);
 
-    try {
-      await page.goto(ORIGIN_BOOTSTRAP_URL, { waitUntil: 'load', settleMs: 0 });
-    } catch (error) {
-      asExecutionError(error, 'opening the Avito API context');
-    }
+    await primeOrigin(page, 'get-coords');
 
     let observed;
     try {
