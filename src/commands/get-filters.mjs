@@ -3,8 +3,11 @@
  *
  * The rule that shapes the file: **a filter is returned ⇔ `apply-filters` can set the
  * key.** Everything `filtersV2` carries for Avito's own rendering — section
- * codes, attrIds, nesting, API type names, suggest and form flags, hidden route
- * constraints — is resolved here and never reaches the caller (D-037).
+ * codes, attrIds, nesting, API type names, suggest flags, hidden route
+ * constraints — is resolved here and never reaches the caller (D-037). The one
+ * flag that survives is `updatesForm`, because it is not about rendering: it is
+ * the only warning that this answer is incomplete for the state the caller is
+ * about to create (D-078).
  *
  * Dropping the inapplicable is not tolerance for drift. What *is* returned is
  * decoded strictly: an option with no value, a filter with no stable name, an
@@ -215,6 +218,11 @@ function normalizeOption(rawOption, key) {
  * `valueSyntax` are never null: a filter that cannot be applied is not returned.
  * `options` is empty for a range with plain numeric bounds and for a keyword
  * field, which is what separates those from an enum (F-063, F-064).
+ *
+ * `changesFiltersOnSelect` is the one field that is not about this filter's own
+ * value: it says the *set* of filters may be different once this one carries a
+ * value, so the answer holding it is a snapshot of one state and not of the
+ * route (F-097).
  */
 const OUTPUT = z.strictObject({
   searchUrl: searchUrl(),
@@ -224,6 +232,7 @@ const OUTPUT = z.strictObject({
     unit: text().max(MAX_LABEL_LENGTH).nullable(),
     valueSyntax: VALUE_SYNTAX,
     currentValue: text().max(MAX_CURRENT_VALUE_LENGTH).nullable(),
+    changesFiltersOnSelect: z.boolean(),
     options: z.record(text().max(MAX_OPTION_VALUE_LENGTH), text().max(MAX_LABEL_LENGTH)),
   })),
 });
@@ -239,6 +248,9 @@ type Filter = {
   unit: string | null;     // «₽», «км»
   valueSyntax: "<value>" | "<value>[,<value>]" | "<text>[,<text>]" | "<from>..<to>" | "1";
   currentValue: string | null;  // what is applied to this URL now; null means nothing is
+  // true: applying a value here rebuilds the form — another filter may appear, vanish or
+  // change its options, so re-read get-filters afterwards to see the new set
+  changesFiltersOnSelect: boolean;
   options: Record<string, string>;  // value → visible name; empty means a free numeric range
 };`;
 
@@ -338,6 +350,10 @@ export default defineCommand({
           : (normalizedType === 'range'
             ? appliedRangeValue(rawFilter.currentValue, filterKey)
             : appliedParamsValue(rawFilter.currentValue, filterKey)),
+        // Avito's `updatesForm`, renamed to what it does for the caller. Absent is the
+        // ordinary case and means no: most filters narrow the listing and leave the form
+        // alone (D-078).
+        changesFiltersOnSelect: rawFilter.updatesForm === true,
         options: Object.fromEntries(options.map((option) => [option.optionValue, option.optionName])),
       });
     }

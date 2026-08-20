@@ -7,10 +7,10 @@ How each command is built is in its domain file, [docs/areas/](areas/).
 
 ## Commands
 
-Ten commands, all read-only. `npm run check` is green; the offline suite is 224
-checks across sixteen suites. The ten expectations last passed live against Avito
-on 2026-08-19; the four listing ones have grown a rule since (D-077) that has not
-been run live yet.
+Ten commands, all read-only. `npm run check` is green; the offline suite is 226
+checks across sixteen suites. Nine expectations last passed live against Avito on
+2026-08-19 and `get-filters` on 2026-08-20; the four listing ones have grown a
+rule since (D-077) that has not been run live yet.
 
 Every command answers with **one JSON object**, declared as `output:
 z.strictObject({...})` in its descriptor. The CLI parses the whole answer through
@@ -62,7 +62,7 @@ interruption left is the one approval prompt per connection (F-071, F-073).
 |---|---|---|
 | `search` | [search](areas/search.md) | 2026-08-19 |
 | `get-page` | [search](areas/search.md) | 2026-08-19 |
-| `get-filters` | [filters](areas/filters.md) | 2026-08-19 |
+| `get-filters` | [filters](areas/filters.md) | 2026-08-20 |
 | `apply-filters` | [filters](areas/filters.md) | 2026-08-19 |
 | `get-categories` | [categories](areas/categories.md) | 2026-08-19 |
 | `move-category` | [categories](areas/categories.md) | 2026-08-19 |
@@ -97,7 +97,7 @@ The consumer flow is one chain around one carrier of state, the canonical `searc
 ```
 get-location <city>             → locationId
 search <query> --location-id    → items + searchUrl
-get-filters <searchUrl>         → keys, options, what is already applied
+get-filters <searchUrl>         → keys, options, what is applied, what rebuilds the form
 apply-filters <searchUrl> --set → items + a new searchUrl
 get-page <searchUrl> --page 2   → the next page
 get-item <url>                  → the full text, and the photos as files

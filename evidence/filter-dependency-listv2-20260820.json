@@ -1,0 +1,167 @@
+{
+  "verifiedAt": "2026-08-20",
+  "question": "Can a dependent filter — one that only exists after another is chosen — be predicted without applying?",
+  "route": {
+    "searchUrl": "https://www.avito.ru/moskva/tovary_dlya_kompyutera/komplektuyuschie/zhestkie_diski-ASgBAgICAkTGB~pm7gmwZw?localPriority=0&q=ssd",
+    "categoryId": 101,
+    "locationId": 637640,
+    "verticalCategoryId": 4,
+    "rootCategoryId": 6,
+    "searchCoreParams": {
+      "483": 6581,
+      "631": 6616
+    }
+  },
+  "declaredMarker": {
+    "field": "updatesForm",
+    "carrier": "filtersV2 filter object (sits beside id/attrId/type/currentValue/values/hasSuggest)",
+    "meaning": "changing this filter reloads the form; it does not say what appears",
+    "trueOnThisRoute": [
+      "params[162409] Тип накопителя",
+      "params[483] Вид товара (hidden)",
+      "params[631] Тип товара (hidden)",
+      "params[149569] Слова в описании"
+    ],
+    "presentInSsrBootstrap": true,
+    "presentInListV2": true
+  },
+  "oracle": {
+    "endpoint": "/search/filters/listV2",
+    "method": "GET, same-origin, x-requested-with: XMLHttpRequest",
+    "answers": "the filtersV2 shape alone: {Sections:[{Code,Filters}], URLs, Popup, errorToast, InfmVersion}",
+    "minimalQueryConfirmed": "categoryId, locationId, query, correctorMode, page, params[...], verticalCategoryId, rootCategoryId, localPriority, useReload=true, spaFlow=true, filtersGroup=desktop_catalog_filters",
+    "contextParamRequired": false,
+    "size": {
+      "listV2Bytes": 26063,
+      "ssrDocumentBytes": 2197024
+    },
+    "agreesWithSsrBootstrap": "same 23 filters, same keys, for the same input",
+    "carriesNoSearchCore": true
+  },
+  "probes": [
+    {
+      "sent": "baseline (no extra params)",
+      "filterCount": 23,
+      "formFactorPresent": false
+    },
+    {
+      "sent": "params[162409][0]=18707097 (Тип накопителя = SSD, updatesForm true)",
+      "filterCount": 24,
+      "appeared": {
+        "id": "params[162424]",
+        "title": "Форм-фактор",
+        "type": "multiselect",
+        "updatesForm": true,
+        "values": 18
+      },
+      "disappeared": [],
+      "changed": [
+        "params[162409].currentValue [] -> [\"18707097\"]"
+      ]
+    },
+    {
+      "sent": "params[162409][0]=18707245 (Тип накопителя = HDD)",
+      "filterCount": 24,
+      "appeared": {
+        "id": "params[162424]",
+        "title": "Форм-фактор",
+        "values": 3,
+        "vocabulary": [
+          "1.8",
+          "2.5",
+          "3.5"
+        ]
+      },
+      "note": "same key appears, different vocabulary — the dependency is scoped to the value, not just to the key"
+    },
+    {
+      "sent": "params[110396][0]=Новое (Состояние, updatesForm absent)",
+      "filterCount": 23,
+      "appeared": [],
+      "disappeared": []
+    },
+    {
+      "sent": "params[162409][0]=18707097 & params[162424][0]=18707361 (SSD + M.2, parent and child in one form state)",
+      "filterCount": 24,
+      "appeared": [],
+      "currentValues": {
+        "params[162409]": [
+          "18707097"
+        ],
+        "params[162424]": [
+          "18707361"
+        ]
+      },
+      "note": "the chain is one level deep here — M.2 unlocks nothing further"
+    },
+    {
+      "sent": "params[162424][0]=18707361 alone (child without its parent)",
+      "filterCount": 23,
+      "keyInAnswer": false,
+      "note": "no echo: the key is dropped entirely"
+    },
+    {
+      "sent": "params[162409][0]=99999999 (value that does not exist)",
+      "filterCount": 23,
+      "currentValue": [],
+      "note": "no echo: an unknown value is not accepted into currentValue"
+    },
+    {
+      "sent": "params[162409][0]=18714999 (SSHD)",
+      "filterCount": 24,
+      "appeared": {
+        "id": "params[162424]",
+        "title": "Форм-фактор",
+        "values": 2,
+        "vocabulary": [
+          "2.5",
+          "3.5"
+        ],
+        "updatesForm": true
+      }
+    },
+    {
+      "sent": "params[162409][0]=18707097 & [1]=18707245 (SSD and HDD together, one multiselect)",
+      "filterCount": 23,
+      "appeared": [],
+      "disappeared": [
+        "params[162424] Форм-фактор"
+      ],
+      "note": "the dependency is not monotone over a multiselect: two parent values remove the child that either one alone unlocks"
+    }
+  ],
+  "conclusions": [
+    "updatesForm is a necessary condition, not a map: it names the filters that can change the form and nothing about the result.",
+    "What appears is discovered only by asking with a hypothetical selection; listV2 answers that in one 26 KB request without navigating and without fetching a listing.",
+    "listV2 does not echo — an inapplicable key is dropped and an unknown value is refused — so its currentValue is a postcondition carrier, unlike searchCore (F-062).",
+    "A parent and its dependent child are accepted together in one form state, so the two-step 'apply, re-read, apply' is not forced by Avito's filter service.",
+    "A map built from single-value probes is wrong for multi-value selections (SSD+HDD removes Форм-фактор), so it can only be published as a single-value statement."
+  ],
+  "notChecked": [
+    "whether /web/1/js/items applies a parent and its dependent child in one request (listV2 is the schema service, not the application path)",
+    "whether the same marker and the same probe hold outside Goods",
+    "the canonical URL for a state — listV2.URLs is a popular-links block, not the route the selection resolves to"
+  ],
+  "closureCost": {
+    "route": "жёсткие диски, q=ssd, 23 filters",
+    "enumerableUpdatesFormFilters": {
+      "params[162409]": 3
+    },
+    "notEnumerable": {
+      "params[483]": "hidden, no values",
+      "params[631]": "hidden, no values",
+      "params[149569]": "keywords, free text — infinite domain"
+    },
+    "depth1Requests": 3,
+    "depth2Requests": {
+      "underSSD": 18,
+      "underHDD": 3,
+      "underSSHD": 2,
+      "total": 23,
+      "actuallyRun": 1,
+      "result": "SSD+M.2 unlocked nothing"
+    },
+    "singleValueClosureTotal": 26,
+    "combinationClosure": "not finite in practice: 7 non-empty subsets of the parent alone, and subsets are proved not to behave as the union of their members"
+  }
+}

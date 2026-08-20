@@ -44,6 +44,7 @@ const FILTERS = [
     attrId: 112691,
     defaultTitle: 'Встроенная память',
     currentValue: ['757883', '757884'],
+    updatesForm: true,
     values: [{ value: '757883', name: '128 ГБ' }, { value: '757884', name: '256 ГБ' }],
   },
   {
@@ -413,6 +414,19 @@ check('a vocabulary of thousands of options is returned whole, never clamped', a
     'both ends of the vocabulary must survive');
 });
 
+// The one field that describes the answer rather than the filter. Avito marks the controls
+// that rebuild the form, and on a marked one the returned set is a snapshot of the current
+// state, not of the route: choosing a value can add a filter, remove one or change its
+// vocabulary (F-097). Absent is the ordinary case and it means no.
+check('a filter that rebuilds the form says so, and the rest say the opposite', async () => {
+  const { answer: { filters } } = await readFilters();
+  assert(byKey(filters, 'params[112691]').changesFiltersOnSelect === true,
+    'a filter Avito marks with updatesForm must reach the caller marked');
+  const unmarked = filters.filter((entry) => entry.key !== 'params[112691]');
+  assert(unmarked.every((entry) => entry.changesFiltersOnSelect === false),
+    `a filter Avito does not mark must read as false, got ${JSON.stringify(unmarked.map((entry) => [entry.key, entry.changesFiltersOnSelect]))}`);
+});
+
 check('the unit Avito measures the filter in stays with the filter', async () => {
   const { answer: { filters } } = await readFilters();
   assert(byKey(filters, 'price').unit === '₽', 'a dimension must reach the caller');
@@ -497,6 +511,12 @@ check('a drifted schema of a returned filter still fails closed', async () => {
         { id: 'params[112691]', type: 'select', attrId: 112691, defaultTitle: 'Память', values: [{ value: '1', name: '128 ГБ' }] },
       ],
       expect: /duplicate key/,
+    },
+    {
+      // The form flag is read from Avito's carrier or it is nothing: drift that quietly
+      // read as `false` would hide the one filter whose answer goes stale on application.
+      filters: [{ id: 'params[112691]', type: 'multiselect', attrId: 112691, defaultTitle: 'Память', updatesForm: 'true', values: [{ value: '1', name: '128 ГБ' }] }],
+      expect: /updatesForm: .*expected boolean/,
     },
   ];
   for (const testCase of cases) {

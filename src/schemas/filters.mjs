@@ -32,6 +32,11 @@ export const FILTER = z.looseObject({
   currentValue: z.union([RANGE_VALUE, SCALAR, z.array(SCALAR)], {
     error: 'must be {from, to}, a value, or a list of values',
   }).nullish(),
+  // Avito's own marker that this control rebuilds the form: choosing a value
+  // here can make another filter appear, vanish or change its vocabulary. It is
+  // declared as the boolean it arrives as, because a filter that starts sending
+  // something else would otherwise read as "changes nothing" (F-097).
+  updatesForm: z.boolean().nullish(),
   // Either a flat option list or a list of named groups, each holding options.
   // Avito repeats a popular option in more than one group of the same control,
   // so a repeat is one option; the two forms mixed in one array is drift, and

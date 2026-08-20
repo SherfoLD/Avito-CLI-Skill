@@ -1,6 +1,6 @@
 # Filters — `get-filters`, `apply-filters`
 
-Confirmed live: 2026-08-16
+Confirmed live: 2026-08-20
 
 The shared listing decoder, the item shape and the transport are in
 [_platform.md](_platform.md).
@@ -9,8 +9,15 @@ The shared listing decoder, the item shape and the transport are in
 
 `get-filters <searchUrl>` answers two questions: what can be applied to this
 route, and what is already applied. It answers `{ searchUrl, filters }`, each
-filter carrying `key`, `name`, `unit`, `valueSyntax`, `currentValue`, `options`.
-Budget: 2 requests.
+filter carrying `key`, `name`, `unit`, `valueSyntax`, `currentValue`,
+`changesFiltersOnSelect`, `options`. Budget: 2 requests.
+
+Six of the seven describe the filter. The seventh describes the *answer*:
+`changesFiltersOnSelect` is true where applying a value rebuilds the form, and
+where it is true this list is a snapshot of the current state rather than of the
+route — another filter may appear, vanish or change its vocabulary once this one
+carries a value (D-078). Reading it costs nothing: the marker ships in the same
+bootstrap.
 
 The governing rule: **a filter is returned ⇔ it is applicable**. The absence of a
 key *is* "you cannot apply this"; there is no separate marker for it.
@@ -140,6 +147,25 @@ that appears after applying will reach them on the next `get-filters`.
   against implausible data, not a size policy: Avito honestly lists 12150
   manufacturers on truck parts, and trimming that list would reintroduce the very
   silent clamp this command exists to avoid (F-067).
+- **D-078 — the dependency is reported as Avito declares it, and not probed.**
+  A filter can be unreachable until another one is set: on «Жёсткие диски»,
+  «Форм-фактор» does not exist until «Тип накопителя» carries a value. Avito
+  marks the controls this can happen on — `updatesForm` on the filter object —
+  and that marker is now the field `changesFiltersOnSelect`, renamed to what it
+  means for a caller and read as `=== true`, with the boolean declared in the
+  schema so a change of form stops the command instead of reading as "no".
+  What the command does **not** do is find out what appears. That would mean one
+  request per value of every marked filter, and the closure was measured rather
+  than guessed (F-097): 26 extra requests on this small route, 23 of them for a
+  second level that came back empty in the one branch checked — and on cars,
+  where «Марка» carries 418 values and each unlocks «Модель», the same procedure
+  is some 27 000 requests. The map would also be false where it matters most:
+  the answer is not the union of its parts, and two values of one multiselect
+  remove the filter either one alone unlocks. So the honest statement is the one
+  Avito makes — "this key rebuilds the form" — and the way to see the new set is
+  the next `get-filters`, which is one request and always right. The paragraph
+  above ("no apply, re-read, apply loop") is unchanged by this: the caller is now
+  told when to re-read instead of discovering it.
 - **D-037 — `get-filters` returns only what is applicable and only what the
   caller needs.** Twelve fields became six. Not one of the removed fields
   enabled an action: `attrId` was the same number already inside `key`;
@@ -312,6 +338,25 @@ that appears after applying will reach them on the next `get-filters`.
   a listing page is compared by `itemId` (F-042). Sorting them to hide it was
   rejected for the same reason the alphabetized `attributes` was (F-070): an
   order Avito does not have is not ours to invent.
+- **F-097 — a dependent filter, measured on «Жёсткие диски» (`q=ssd`).** The
+  route ships 23 filters in `filtersV2` and four carry `updatesForm: true`:
+  «Тип накопителя» `params[162409]`, the two `hidden` route constraints
+  `params[483]` / `params[631]` and the keyword field `params[149569]`. Probing
+  used `/search/filters/listV2`, which answers with the `filtersV2` shape alone
+  — 26 KB against the 2.2 MB document — agreed with the bootstrap filter for
+  filter on the same input, and needs no `context`. What it showed: SSD
+  (`params[162409]=18707097`) adds `params[162424]` «Форм-фактор» with 18 values
+  and `updatesForm` of its own; HDD adds the same key with 3 (1.8 / 2.5 / 3.5);
+  SSHD with 2. «Состояние», which carries no marker, changed nothing — the
+  marker is a real condition, not decoration. Three properties decided D-078.
+  The set is not monotone: SSD **and** HDD in the same multiselect answers 23
+  filters and «Форм-фактор» is gone, so a map built from single-value probes
+  would state something false about a two-value selection. Half the marked keys
+  cannot be enumerated at all — `hidden` declares no values and `keywords` is
+  free text. And unlike `searchCore`, this endpoint does not echo: a child key
+  sent without its parent is dropped from the answer entirely and an invented
+  option value comes back as no selection, which is what makes it an oracle
+  rather than a hint. Raw sample: `evidence/filter-dependency-listv2-20260820.json`.
 - **F-051 — two defects found by reading the code during the rebuild.** The old
   filter command did not carry `metro` / `district` / `radius` into the request and
   did not check them as preserved, so a filter on a URL with a metro station could
@@ -355,6 +400,19 @@ that appears after applying will reach them on the next `get-filters`.
   confirmation is `filtersV2.currentValue`. The other side of that: if Avito ever
   stops sending `currentValue` for `params[...]` the way it already does for short
   keys (F-032), range application will start failing as drift.
+- **`changesFiltersOnSelect` says that the set can change, never what changes.**
+  A caller who applies a marked filter and does not re-read `get-filters` will
+  not see the filter that appeared, exactly as before — the field only tells them
+  when re-reading is worth a request. Neither does it promise the set grows: on
+  the route it was measured on, two values of one marked filter took a filter
+  away (F-097).
+- **The marker is read strictly, so it can stop the command.** `updatesForm` is
+  declared as a boolean, and a route where Avito starts sending `"true"` will
+  fail `get-filters` as drift rather than quietly reading as "no". That is the
+  same trade the rest of this decoder makes, and it is the reason
+  `expectations/get-filters.mjs` requires at least one marked filter live: a
+  carrier that vanishes altogether would otherwise turn every filter on every
+  route into a silent false.
 - SSR completeness can degrade transiently: one and the same route once returned
   a payload with no valid `searchCore`, and an immediate independent read passed.
   The guard must not be weakened, and it must not be patched around one transient
