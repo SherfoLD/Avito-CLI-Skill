@@ -424,6 +424,7 @@ export default defineCommand({
   name: 'search',
   description: 'Start an Avito search: returns the first page of listings and the search URL every other command takes. Refine that URL with avito get-filters and avito apply-filters, not here',
   access: 'read',
+  browserTab: 'new-search',
   // vocabulary-ok: sample argument in help text, not an identifier the command uses
   example: 'avito search <query> --location-id 650400',
   domain: 'www.avito.ru',

@@ -123,6 +123,27 @@ check('a command declares the type --help prints, and it names Output', () => {
   );
 });
 
+check('a command declares how its browser tab is owned', () => {
+  const output = z.strictObject({ itemId: idString() });
+  const persistentOutput = z.strictObject({ searchUrl: z.string() });
+  const ephemeral = defineCommand({ ...base, output });
+  assert(ephemeral.browserTab === 'ephemeral', 'the default tab must end with the command');
+
+  const search = defineCommand({ ...base, output: persistentOutput, browserTab: 'new-search' });
+  assert(search.browserTab === 'new-search', 'a new search did not keep its tab mode');
+
+  const byUrl = defineCommand({
+    ...base,
+    output: persistentOutput,
+    browserTab: 'search-url',
+    args: [{ name: 'searchUrl', type: 'string', required: true, positional: true, help: 'Search URL' }],
+  });
+  assert(byUrl.browserTab === 'search-url', 'a search URL command did not keep its tab mode');
+  refusesDescriptor({ output: persistentOutput, browserTab: 'search-url' }, /needs a searchUrl argument/);
+  refusesDescriptor({ output, browserTab: 'new-search' }, /needs searchUrl in its output/);
+  refusesDescriptor({ output, browserTab: 'forever' }, /browserTab must be/);
+});
+
 check('declaredKeyNames reaches every name the answer can carry', () => {
   const names = declaredKeyNames(z.strictObject({
     query: text(),
@@ -223,6 +244,17 @@ check('every command prints the contract it enforces', async () => {
         `avito ${entry.name} declares ${name} and does not print it`,
       );
     }
+  }
+});
+
+check('only the search chain owns persistent browser tabs', async () => {
+  const modes = new Map((await loadManifest()).map((entry) => [entry.name, entry.browserTab]));
+  assert(modes.get('search') === 'new-search', 'search must start a new tab');
+  for (const name of ['get-page', 'get-filters', 'apply-filters', 'get-categories', 'move-category']) {
+    assert(modes.get(name) === 'search-url', `${name} must reacquire by searchUrl`);
+  }
+  for (const name of ['get-location', 'get-coords', 'get-item', 'get-seller-reviews']) {
+    assert(modes.get(name) === 'ephemeral', `${name} must not inherit a search tab`);
   }
 });
 

@@ -20,7 +20,6 @@ same-origin `fetch` with the user's cookies, and a real DOM.
 | `carriers.mjs` | the two reads six commands share: one SSR document, and one URL the node half built |
 | `get-item.mjs` | the item API, and the hydration state of a listing that was actually rendered |
 | `get-coords.mjs` | one JSON read, plus the one classification only that endpoint makes |
-| `get-location.mjs` | whether the rendered homepage is a challenge |
 
 `carriers.mjs` is what `search`, `get-page`, `apply-filters`, `move-category`,
 `get-filters` and `get-categories` run. `readDocumentState` hands over the state
@@ -75,8 +74,8 @@ state script is a refusal from there, not a value for a caller to classify: what
 Avito serves as a verification page and what a missing bootstrap looks like are
 the same 200 HTML page, and `looksLikeChallenge` is not run over it. That
 function survives only where there is a real rendered page to read —
-`get-item`'s hydration path, `get-location`, and the text of a response that
-should have been JSON.
+`get-item`'s hydration path and the text of a response that should have been
+JSON.
 
 ## What does not belong here
 

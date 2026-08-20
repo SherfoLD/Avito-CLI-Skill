@@ -8,6 +8,7 @@
  *     description: '…',            // one sentence, what the caller gets
  *     access: 'read',              // 'read' | 'write' — read-only for now
  *     domain: 'www.avito.ru',
+ *     browserTab: 'ephemeral',      // or 'new-search' / 'search-url'
  *     example: 'avito search <query> --location-id 650400',
  *     args: [
  *       { name: 'query', type: 'string', required: true, positional: true, help: '…' },
@@ -38,19 +39,24 @@ import {
 } from './schema.mjs';
 
 const ARG_TYPES = new Set(['string', 'int', 'bool']);
+const BROWSER_TABS = new Set(['ephemeral', 'new-search', 'search-url']);
 
 export { MAX_OUTPUT_DEPTH, MAX_OUTPUT_LEAVES };
 
 export function defineCommand(descriptor) {
   assert(isRecord(descriptor), 'command descriptor must be an object');
 
-  const { name, description, access, domain, example, args, output, type, run } = descriptor;
+  const {
+    name, description, access, domain, example, args, output, type, run,
+    browserTab = 'ephemeral',
+  } = descriptor;
 
   assert(typeof name === 'string' && name.trim() !== '', 'command needs a name');
   assert(typeof description === 'string' && description.trim() !== '', `${name}: needs a description`);
   assert(access === 'read' || access === 'write', `${name}: access must be 'read' or 'write'`);
   assert(typeof domain === 'string' && domain.trim() !== '', `${name}: needs a domain`);
   assert(typeof run === 'function', `${name}: needs a run function`);
+  assert(BROWSER_TABS.has(browserTab), `${name}: browserTab must be ephemeral, new-search or search-url`);
   assert(descriptor.row === undefined, `${name}: the contract is 'output', a schema over the whole answer`);
   assert(descriptor.columns === undefined, `${name}: there are no columns — declare the answer in 'output'`);
 
@@ -75,6 +81,9 @@ export function defineCommand(descriptor) {
       seenNamed = true;
     }
   }
+  assert(browserTab !== 'search-url' || seen.has('searchUrl'), `${name}: browserTab search-url needs a searchUrl argument`);
+  const keys = Object.freeze(outputKeys(output));
+  assert(browserTab === 'ephemeral' || keys.includes('searchUrl'), `${name}: a persistent browserTab needs searchUrl in its output`);
 
   return Object.freeze({
     site: 'avito',
@@ -82,11 +91,12 @@ export function defineCommand(descriptor) {
     description,
     access,
     domain,
+    browserTab,
     example: example ?? null,
     args: Object.freeze(declaredArgs.map((arg) => Object.freeze({ ...arg }))),
     output,
     type: type.trim(),
-    keys: Object.freeze(outputKeys(output)),
+    keys,
     run,
   });
 }

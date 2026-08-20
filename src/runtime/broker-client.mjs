@@ -15,6 +15,7 @@ import { fileURLToPath } from 'node:url';
 import { describeBrowserTarget, stateDir } from './browser-config.mjs';
 
 export const BROKER_STATE_FILE = path.join(stateDir(), 'broker.json');
+export const BROKER_PROTOCOL_VERSION = 2;
 const BROKER_LOCK_FILE = path.join(stateDir(), 'broker.lock');
 
 /**
@@ -98,6 +99,18 @@ export async function liveBroker() {
       fs.rmSync(BROKER_STATE_FILE);
     } catch {
       // Someone else removed it first, which is the outcome we wanted.
+    }
+    return null;
+  }
+  if (alive.protocolVersion !== BROKER_PROTOCOL_VERSION) {
+    try {
+      await callBroker(state, '/shutdown');
+    } catch {
+      try {
+        fs.rmSync(BROKER_STATE_FILE);
+      } catch {
+        // The stale broker or another client already removed it.
+      }
     }
     return null;
   }

@@ -17,6 +17,7 @@ import { ArgumentError, CliError, EXIT_CODES, exitCodeFor } from '../src/runtime
 import { parseOutput } from '../src/runtime/schema.mjs';
 import { brokerEnabled, openBrowserContext } from '../src/runtime/cdp.mjs';
 import { liveBroker, stopBroker } from '../src/runtime/broker-client.mjs';
+import { requestedSearchUrl } from '../src/site/url.mjs';
 import {
   browserConfigFile,
   clearBrowserConfig,
@@ -350,21 +351,31 @@ async function main() {
     forwarded.push(token);
   }
   const args = parseArguments(descriptor, forwarded);
+  const persistentTab = descriptor.browserTab !== 'ephemeral';
+  const tabKey = descriptor.browserTab === 'search-url'
+    ? requestedSearchUrl(args.searchUrl)
+    : null;
 
   const context = await openBrowserContext({
     ...(options.browserUrl ? { browserUrl: options.browserUrl } : {}),
     ...(options.browserProfile ? { browserProfile: options.browserProfile } : {}),
     ...(options.browserWs ? { browserWs: options.browserWs } : {}),
-  });
-  let returned;
+  }, { key: tabKey, persistent: persistentTab });
+  let parsed;
+  let succeeded = false;
   try {
-    returned = await descriptor.run(context.page, args);
+    const returned = await descriptor.run(context.page, args);
+    parsed = parseOutput(descriptor.output, returned, descriptor.name);
+    if (persistentTab && parsed.searchUrl) {
+      await context.bind(requestedSearchUrl(parsed.searchUrl));
+    }
+    succeeded = true;
   } finally {
-    await context.release();
+    await context.release({ discardCreated: !succeeded });
   }
 
   // The only gate that sees the answer a caller actually gets.
-  console.log(JSON.stringify(parseOutput(descriptor.output, returned, descriptor.name), null, 2));
+  console.log(JSON.stringify(parsed, null, 2));
   return EXIT_CODES.SUCCESS;
 }
 

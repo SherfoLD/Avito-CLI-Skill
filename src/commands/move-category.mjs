@@ -160,6 +160,7 @@ export default defineCommand({
   name: 'move-category',
   description: 'Widen or narrow the category Avito auto-detected for a search URL. This changes which filters exist and which listings come back, so re-read avito get-filters afterwards',
   access: 'read',
+  browserTab: 'search-url',
   example: "avito move-category <searchUrl> --to 'Телефоны'",
   domain: 'www.avito.ru',
   args: [

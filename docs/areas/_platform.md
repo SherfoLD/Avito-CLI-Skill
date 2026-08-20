@@ -1,6 +1,6 @@
 # Platform — shared by all ten commands
 
-Confirmed live: 2026-08-19
+Confirmed live: 2026-08-20
 
 What belongs to no single command: transport, carriers of state, the shared listing
 decoder, output shape, repository rules. Anything command-specific is in that
@@ -11,9 +11,11 @@ command's domain file.
 The only path to Avito is a browser context the user owns. Anonymous Node fetch
 is closed, and nothing here works around that.
 
-- Priming the origin: navigate to `https://www.avito.ru/robots.txt`; the body is
-  never read. `search` needs no priming — its own `?q=` navigation is the hard
-  load of the origin it needs.
+- Every command primes the origin by navigating to
+  `https://www.avito.ru/robots.txt`; the body is never read. `search` then
+  reads its public `?q=` route and canonical catalog as separate same-origin
+  document fetches, not rendered navigations. `get-item` renders the listing
+  itself only as a fallback when its API read cannot produce the item.
 - Every read after priming is a same-origin `fetch` from the browser context,
   not a page render.
 - No command repeats a request. `429`, a CAPTCHA, an HTTP refusal, schema drift
@@ -205,17 +207,37 @@ by hand, and held in step with the schema by `npm run check:commands` (D-053).
   modals. A broker process holds the one connection for the session and each
   command talks to it over local HTTP; `avito session status` and `avito session
   stop` make it visible and stoppable, and it closes itself after five idle
-  minutes. What is *not* shared is the tab: a tab is still opened and closed per
-  command, so no command inherits another's page.
-  Two consequences worth stating. The broker speaks a four-operation HTTP
-  contract rather than relaying CDP, which keeps it incapable of doing more to
-  the browser than a command could, and it is gated by a token in a file only
-  the user can read — holding a connection open for convenience must not become
-  an open door onto a logged-in session for every process on the machine.
+  minutes. Which commands share a tab is D-079.
+  Two consequences worth stating. The broker exposes only page ownership,
+  navigation and runtime evaluation rather than relaying CDP, which keeps it
+  incapable of doing more to the browser than a command could, and it is gated
+  by a token in a file only the user can read — holding a connection open for
+  convenience must not become an open door onto a logged-in session for every
+  process on the machine.
   `AVITO_BROKER=off` restores per-command connections, which is right for a
   browser started with `--remote-debugging-port`, where nothing ever asks.
   That tab is created `hidden`, so a chain of commands costs the person in front
   of the browser nothing at all (F-073).
+
+- **D-079 — one search chain owns one hidden tab.** Every `search` opens a new
+  broker-owned tab. `get-page`, `get-filters`, `apply-filters`,
+  `get-categories` and `move-category` acquire one by their normalized input
+  `searchUrl`; every `searchUrl` they return becomes another key for that same
+  tab. An identical URL from a later `search` points to the later tab, because
+  the URL is the whole identity the caller carries. The other four commands
+  remain ephemeral, and `AVITO_BROKER=off` remains ephemeral for all ten.
+  Before reuse the broker probes the saved CDP session and replaces a dead tab;
+  two live commands are never allowed to navigate one tab concurrently. No SSR
+  value is cached with the tab: every command still fetches its document and
+  carries that fresh `searchCore` immediately into its items API request.
+
+- **F-098 — a returned search URL aliases the tab that produced it.** Live on
+  2026-08-20, two different `search` calls held two broker pages; a
+  URL-consuming command reacquired each URL without changing that count.
+  `apply-filters` then returned a different URL, `get-filters` read the applied
+  `sort=1` through it, and the broker still held two pages. `get-location`
+  completed in between without changing the count, which confirms that its
+  priming page remained ephemeral.
 
 - **D-047 — there is a third kind of shared code, and it needed its own place.**
   `src/browser/` is what runs inside the page; `src/runtime/` is scaffolding
@@ -290,9 +312,9 @@ by hand, and held in step with the schema by `npm run check:commands` (D-053).
   are the same 200 HTML page with no state script, calling for the same thing: a
   person looking at the browser. So `readDocument` refuses `no_state` once, and
   eight copies of `if (document.challenge)` across six commands went with it.
-  `looksLikeChallenge` stays where there is a rendered page to read — `get-item`
-  and `get-location` — and where a response that should have been JSON came back
-  as HTML.
+  `looksLikeChallenge` stays where there is a rendered page to read —
+  `get-item` — and where a response that should have been JSON came back as
+  HTML.
   That refusal is `AccessError`, exit code 77, the fifth class. It is the one
   refusal a caller must not retry and cannot fix, so it stops looking like a
   drifted shape. Two mappings changed with it: `get-filters` used to answer a
@@ -604,7 +626,8 @@ by hand, and held in step with the schema by `npm run check:commands` (D-053).
 - **F-044 — Avito's `robots.txt` itself contains the word `captcha`** (in
   `Clean-param` directives), so a primed origin must not be text-scanned for a
   challenge — the detector would match every time. A challenge is looked for
-  where it is visible: in the response to a data request and in the rendered page.
+  where it is visible: in the response to a data request and in the rendered
+  item fallback.
 - **F-047 — page size belongs to Avito.** There is no count parameter in the
   listing (50 listings; the UI changes only `p`) and none in the review feed
   (`limit=2` returned 25 records). Checked against the source in passing: a photo

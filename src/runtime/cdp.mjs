@@ -40,10 +40,9 @@ class PageContext {
   }
 
   /**
-   * `settleMs` is time after the load event, for the one navigation that lands
-   * on the homepage to see whether Avito is serving this session at all.
-   * Everything else passes 0: a document is fetched, not rendered, and the
-   * state a rendered page does carry is inline in it (F-093).
+   * `settleMs` is time after the load event. SSR documents are fetched rather
+   * than rendered, and the state a rendered item page carries is inline in it
+   * (F-093), so every current call passes zero.
    */
   async goto(url, { waitUntil = 'load', settleMs = 0 } = {}) {
     return this.backend.goto(url, { waitUntil, settleMs });
@@ -140,10 +139,14 @@ async function directBackend(options) {
   };
 }
 
-/** A tab inside the broker's single connection, shared by the whole session. */
-async function brokerBackend(options) {
+/** A tab owned by the broker, ephemeral or keyed for a search chain. */
+async function brokerBackend(options, { key = null, persistent = false } = {}) {
   const state = await ensureBroker(options);
-  const { pageId, sessionId } = await callBroker(state, '/page/open');
+  const { pageId, sessionId, created } = await callBroker(state, '/page/open', {
+    key,
+    persistent,
+    ownerPid: process.pid,
+  });
 
   return {
     async goto(url, { waitUntil, settleMs }) {
@@ -158,9 +161,12 @@ async function brokerBackend(options) {
       });
       return result;
     },
-    async release() {
+    async bind(nextKey) {
+      await callBroker(state, '/page/bind', { pageId, key: nextKey });
+    },
+    async release({ discardCreated = false } = {}) {
       try {
-        await callBroker(state, '/page/close', { pageId });
+        await callBroker(state, '/page/release', { pageId, discard: discardCreated && created });
       } catch {
         // The broker went away or already closed the tab; the connection it
         // holds is not this command's to clean up either way.
@@ -174,17 +180,15 @@ export function brokerEnabled() {
 }
 
 /**
- * A tab is created per call rather than reused, so no command inherits another's
- * page. The connection is what survives a command, not the tab.
- *
  * Which browser gets talked to is settled here, once, before either backend
  * sees it: both would otherwise resolve it separately and could disagree.
  */
-export async function openBrowserContext(options = {}) {
+export async function openBrowserContext(options = {}, pageOptions = {}) {
   const target = resolveBrowserOptions(options);
-  const backend = brokerEnabled() ? await brokerBackend(target) : await directBackend(target);
+  const backend = brokerEnabled() ? await brokerBackend(target, pageOptions) : await directBackend(target);
   return {
     page: new PageContext(backend),
-    release: () => backend.release(),
+    bind: (key) => backend.bind?.(key),
+    release: (releaseOptions) => backend.release(releaseOptions),
   };
 }

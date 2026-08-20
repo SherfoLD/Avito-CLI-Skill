@@ -20,7 +20,6 @@ import {
   ArgumentError,
   CommandExecutionError,
   EmptyResultError,
-  TimeoutError,
 } from '../runtime/errors.mjs';
 import { defineCommand } from '../runtime/command.mjs';
 import {
@@ -32,13 +31,13 @@ import {
   z,
 } from '../runtime/schema.mjs';
 import {
-  AVITO_BASE_URL,
   fetchAvitoJson,
   geoDirectory,
   locationDescriptor,
 } from '../site/geo.mjs';
-import { readAccessState } from '../browser/commands/get-location.mjs';
+import { primeOrigin } from '../site/carriers.mjs';
 
+const COMMAND = 'avito get-location';
 const SUGGEST_LIMIT = 10;
 const GEO_LIMIT = 400;
 // The two tabs of Avito's geo filter. The argument, the field and the
@@ -113,14 +112,6 @@ function cleanText(value) {
 
 function comparable(value) {
   return cleanText(value).toLocaleLowerCase('ru-RU');
-}
-
-function asExecutionError(error, action) {
-  const message = error instanceof Error ? error.message : String(error);
-  if (/timed?\s*out|timeout/i.test(message)) {
-    throw new TimeoutError(action, 15);
-  }
-  throw new CommandExecutionError(`${action} failed: ${message}`);
 }
 
 function decodeSuggestions(payload, query) {
@@ -272,21 +263,7 @@ export default defineCommand({
     }
     const limit = normalizeLimit(args.limit, geoMode ? GEO_LIMIT : SUGGEST_LIMIT);
 
-    // The homepage rather than robots.txt: this command reads directories that are only
-    // meaningful for a session Avito is actually serving, and the page it lands on is the
-    // one honest place to see a challenge before three reads are made against it.
-    try {
-      await page.goto(AVITO_BASE_URL, { waitUntil: 'load', settleMs: 500 });
-    } catch (error) {
-      asExecutionError(error, 'opening Avito');
-    }
-
-    const accessState = await page.evaluateWithArgs(readAccessState, {});
-    if (accessState?.blocked) {
-      throw new CommandExecutionError(
-        `Avito requires human verification (${accessState.title || 'access challenge'})`,
-      );
-    }
+    await primeOrigin(page, COMMAND);
 
     const suggestions = decodeSuggestions(
       await fetchAvitoJson(

@@ -258,6 +258,7 @@ export default defineCommand({
   name: 'get-filters',
   description: 'Get every filter you can apply to a search URL, with the values it accepts and what is already applied to this URL. Pass key and value straight into avito apply-filters',
   access: 'read',
+  browserTab: 'search-url',
   example: 'avito get-filters <searchUrl>',
   domain: 'www.avito.ru',
   args: [

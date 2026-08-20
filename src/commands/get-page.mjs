@@ -104,6 +104,7 @@ export default defineCommand({
   name: 'get-page',
   description: 'Get another result page of a search URL. Returns the same listing fields as avito search',
   access: 'read',
+  browserTab: 'search-url',
   example: 'avito get-page <searchUrl> --page 2',
   domain: 'www.avito.ru',
   args: [

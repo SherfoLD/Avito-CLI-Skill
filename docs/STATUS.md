@@ -1,16 +1,19 @@
 # State
 
-Updated: 2026-08-19
+Updated: 2026-08-20
 
 Facts only: what works, what does not, and why. The future is in [PLAN.md](PLAN.md).
 How each command is built is in its domain file, [docs/areas/](areas/).
 
 ## Commands
 
-Ten commands, all read-only. `npm run check` is green; the offline suite is 226
-checks across sixteen suites. Nine expectations last passed live against Avito on
+Ten commands, all read-only. `npm run check` is green; the offline suite is 234
+checks across seventeen suites. Nine expectations last passed live against Avito on
 2026-08-19 and `get-filters` on 2026-08-20; the four listing ones have grown a
-rule since (D-077) that has not been run live yet.
+rule since (D-077) that has not been run live yet. Persistent search routing was
+verified live on 2026-08-20: two searches held two tabs, both URLs reacquired
+their own tab, and a URL returned by `apply-filters` became an alias without a
+third tab (D-079, F-098). Dead-tab replacement and idle shutdown remain open.
 
 Every command answers with **one JSON object**, declared as `output:
 z.strictObject({...})` in its descriptor. The CLI parses the whole answer through
@@ -32,7 +35,7 @@ is four ESLint rules over the AST (`npm run lint`).
 
 What Avito answers with is declared in `src/schemas/`, one file per response,
 and a command imports it rather than describing the shape again (D-067). The
-page fetches and nothing more: `src/browser/` is four entry points and three
+page fetches and nothing more: `src/browser/` is three entry points and three
 prelude files, two of the entry points being the reads six commands share, and
 every request, postcondition and decode is Node (D-069). A command's offline
 suite therefore drives both halves over one set of stubbed routes.
@@ -54,9 +57,13 @@ and remembered in `browser.json`: `avito browser` lists the ones offering a
 connection, `avito browser use` writes the answer down, and a file is the only
 form of this setting an agent can see, since it opens a new shell per command
 (D-051, D-052, F-074). The connection is held for the session by a broker;
-`avito session status` reports it and the browser it would use (D-045). A
-command's tab is hidden — no tab strip entry, no application switch, so the only
-interruption left is the one approval prompt per connection (F-071, F-073).
+`avito session status` reports it and the browser it would use (D-045). Tabs are
+hidden — no tab strip entry, no application switch. A `search` starts one;
+commands carrying one of its `searchUrl` values reuse it after a liveness probe,
+and unrelated commands remain ephemeral (D-079). The only interruption left is
+the one approval prompt per connection (F-071, F-073). Live, `get-location`
+opened and released its ephemeral page without changing the two saved search
+tabs (F-098).
 
 | Command | Domain | Strict live verify |
 |---|---|---|

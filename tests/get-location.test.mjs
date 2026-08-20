@@ -9,7 +9,7 @@ import { assertOutput, loadCommand, runner } from './harness.mjs';
 const { COMMAND } = await loadCommand('get-location');
 const { check, assert, run } = runner();
 
-const HOMEPAGE = 'https://www.avito.ru/';
+const ORIGIN_BOOTSTRAP = 'https://www.avito.ru/robots.txt';
 
 const suggestion = (id, name, parent = null) => ({
   id,
@@ -61,16 +61,12 @@ const DISTRICTS = {
 
 // The three directories, keyed by the path each read hits. A route the command
 // does not ask for is an error, so a change in the request budget is loud.
-function makePage(routes, { blocked = false, title = 'Авито' } = {}) {
-  const calls = { goto: [], fetchJson: [], evaluateWithArgs: [] };
+function makePage(routes) {
+  const calls = { goto: [], fetchJson: [] };
   return {
     calls,
     async goto(url) { calls.goto.push(url); },
     async wait() {},
-    async evaluateWithArgs(source, args) {
-      calls.evaluateWithArgs.push(args);
-      return { blocked, title };
-    },
     async fetchJson(url) {
       calls.fetchJson.push(url);
       const path = new URL(url).pathname;
@@ -108,8 +104,8 @@ check('resolver mode costs one directory read and returns the suggestions', asyn
   assert(locations[0].locationId === '637640' && locations[0].locationName === 'Москва', 'the location was not decoded');
   assert(answer.geoMode === null && answer.geo.length === 0, 'suggestion mode answers about no geo at all');
   assertOutput(COMMAND, answer);
-  assert(page.calls.goto.length === 1 && page.calls.goto[0] === HOMEPAGE,
-    `expected one homepage navigation, got ${JSON.stringify(page.calls.goto)}`);
+  assert(page.calls.goto.length === 1 && page.calls.goto[0] === ORIGIN_BOOTSTRAP,
+    `expected one origin priming navigation, got ${JSON.stringify(page.calls.goto)}`);
   assert(page.calls.fetchJson.length === 1, `resolver mode must cost one read, got ${page.calls.fetchJson.length}`);
   const asked = new URL(page.calls.fetchJson[0]);
   assert(asked.searchParams.get('q') === 'Москва', 'the query must be collapsed and passed verbatim');
@@ -221,11 +217,13 @@ check('a bad query and a geo-query without a mode never reach the network', asyn
   }
 });
 
-check('a challenge on the homepage stops before any directory is read', async () => {
-  const page = makePage(ALL_ROUTES, { blocked: true, title: 'Доступ ограничен: проблема с IP' });
-  const failure = await refuses(page, { query: 'Москва' }, 'COMMAND_EXEC', /human verification/);
-  assert(/Доступ ограничен/.test(failure.message), 'the page title must reach the caller');
-  assert(page.calls.fetchJson.length === 0, 'a directory was read through a challenge');
+check('a refused directory stops the command on that response', async () => {
+  const page = makePage({
+    ...ALL_ROUTES,
+    '/web/1/slocations': () => { throw new Error('Avito answered 429 — rate limit or access challenge'); },
+  });
+  await refuses(page, { query: 'Москва' }, 'COMMAND_EXEC', /429/);
+  assert(page.calls.fetchJson.length === 1, 'the refusal must stop on the first directory response');
 });
 
 check('a drifted directory response fails closed instead of returning fewer entries', async () => {

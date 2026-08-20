@@ -61,6 +61,7 @@ export async function loadManifest() {
       description: descriptor.description,
       access: descriptor.access,
       domain: descriptor.domain,
+      browserTab: descriptor.browserTab,
       example: descriptor.example ?? null,
       args: descriptor.args.map((arg) => ({ ...arg })),
       output: descriptor.output,

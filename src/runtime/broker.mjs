@@ -6,9 +6,9 @@
  * — so connecting per invocation turns a ten-command chain into ten modals.
  * This process holds the connection and the commands talk to it instead.
  *
- * It speaks plain HTTP and exposes the four operations a command may perform,
- * which keeps it incapable of doing more to the browser than a command could
- * (D-045).
+ * It speaks plain HTTP and exposes only page ownership, navigation and runtime
+ * evaluation, which keeps it incapable of doing more to the browser than a
+ * command could (D-045, D-079).
  *
  * It knows nothing about Avito. No URL, no decoder, no header belongs here.
  *
@@ -22,9 +22,14 @@ import * as http from 'node:http';
 import * as path from 'node:path';
 import { randomUUID } from 'node:crypto';
 
-import { HIDDEN_TAB, connectToBrowser } from './cdp-connection.mjs';
-import { BROKER_STATE_FILE, writeBrokerStartError } from './broker-client.mjs';
+import { connectToBrowser } from './cdp-connection.mjs';
+import {
+  BROKER_PROTOCOL_VERSION,
+  BROKER_STATE_FILE,
+  writeBrokerStartError,
+} from './broker-client.mjs';
 import { resolveBrowserOptions, stateDir } from './browser-config.mjs';
+import { PageRegistry } from './page-registry.mjs';
 
 const DEFAULT_IDLE_SECONDS = 300;
 const MAX_BODY_BYTES = 4 * 1024 * 1024;
@@ -68,18 +73,12 @@ export async function startBroker({
 } = {}) {
   const { connection, endpoint } = await connectToBrowser({ browserWs, browserProfile, browserUrl });
   const token = randomUUID();
-  const pages = new Map();
+  const pages = new PageRegistry(connection);
 
   let idleTimer = null;
   const shutdown = async (reason) => {
     clearTimeout(idleTimer);
-    for (const targetId of pages.values()) {
-      try {
-        await connection.send('Target.closeTarget', { targetId });
-      } catch {
-        // The tab is already gone; nothing to release.
-      }
-    }
+    await pages.closeAll();
     connection.close();
     try {
       fs.rmSync(BROKER_STATE_FILE);
@@ -94,7 +93,7 @@ export async function startBroker({
   const touch = () => {
     clearTimeout(idleTimer);
     idleTimer = setTimeout(() => {
-      if (pages.size === 0) shutdown('idle, closing the browser connection');
+      if (pages.busySize === 0) shutdown('idle, closing the browser connection');
       else touch();
     }, idleSeconds * 1000);
     idleTimer.unref?.();
@@ -111,7 +110,13 @@ export async function startBroker({
       const body = request.method === 'POST' ? await readBody(request) : {};
 
       if (url.pathname === '/health') {
-        send(response, 200, { ok: true, endpoint, pages: pages.size, pid: process.pid });
+        send(response, 200, {
+          ok: true,
+          protocolVersion: BROKER_PROTOCOL_VERSION,
+          endpoint,
+          pages: pages.size,
+          pid: process.pid,
+        });
         return;
       }
       if (url.pathname === '/shutdown') {
@@ -120,19 +125,31 @@ export async function startBroker({
         return;
       }
       if (url.pathname === '/page/open') {
-        const { targetId } = await connection.send('Target.createTarget', HIDDEN_TAB);
-        const { sessionId } = await connection.send('Target.attachToTarget', { targetId, flatten: true });
-        await connection.send('Page.enable', {}, sessionId);
-        await connection.send('Runtime.enable', {}, sessionId);
-        const pageId = randomUUID();
-        pages.set(pageId, targetId);
-        send(response, 200, { ok: true, pageId, sessionId });
+        const page = await pages.acquire({
+          key: typeof body.key === 'string' && body.key ? body.key : null,
+          persistent: body.persistent === true,
+          ownerPid: Number(body.ownerPid) || null,
+        });
+        send(response, 200, {
+          ok: true,
+          pageId: page.pageId,
+          sessionId: page.sessionId,
+          created: page.created,
+        });
+        return;
+      }
+      if (url.pathname === '/page/bind') {
+        await pages.bind(body.pageId, body.key);
+        send(response, 200, { ok: true });
+        return;
+      }
+      if (url.pathname === '/page/release') {
+        await pages.release(body.pageId, { discard: body.discard === true });
+        send(response, 200, { ok: true });
         return;
       }
       if (url.pathname === '/page/close') {
-        const targetId = pages.get(body.pageId);
-        pages.delete(body.pageId);
-        if (targetId) await connection.send('Target.closeTarget', { targetId });
+        await pages.release(body.pageId, { discard: true });
         send(response, 200, { ok: true });
         return;
       }
@@ -173,7 +190,13 @@ export async function startBroker({
   fs.mkdirSync(stateDir(), { recursive: true });
   fs.writeFileSync(
     BROKER_STATE_FILE,
-    `${JSON.stringify({ port, token, pid: process.pid, endpoint }, null, 2)}\n`,
+    `${JSON.stringify({
+      protocolVersion: BROKER_PROTOCOL_VERSION,
+      port,
+      token,
+      pid: process.pid,
+      endpoint,
+    }, null, 2)}\n`,
     { mode: 0o600 },
   );
 

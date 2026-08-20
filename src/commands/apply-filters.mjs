@@ -542,6 +542,7 @@ export default defineCommand({
   name: 'apply-filters',
   description: 'Apply filters to a search URL and return the matching listings plus the new search URL. Takes several filters at once; keys and values come from avito get-filters',
   access: 'read',
+  browserTab: 'search-url',
   // vocabulary-ok: sample argument in help text, not an identifier the command uses
   example: "avito apply-filters <searchUrl> --set 'price=1000..5000;params[112691]=757883,757884'",
   domain: 'www.avito.ru',

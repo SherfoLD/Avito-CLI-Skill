@@ -105,6 +105,7 @@ export default defineCommand({
   name: 'get-categories',
   description: 'Get the whole Avito category sidebar of a search URL as a tree: where the search sits, and every category it can be moved to. Feed a name into avito move-category',
   access: 'read',
+  browserTab: 'search-url',
   example: 'avito get-categories <searchUrl>',
   domain: 'www.avito.ru',
   args: [
